@@ -788,4 +788,63 @@ class KataGoAutoSetupDialogLayoutTest {
     Files.writeString(weight, "test weight");
     return KataGoAutoSetupHelper.inspectSelectedLocalKataGo(engine, gtpConfig, weight).toSnapshot();
   }
+
+  @Test
+  void lateCatalogCompletionCannotOverwriteANewerRefreshOrWeightSwitch(@TempDir Path tempDir)
+      throws Exception {
+    SetupSnapshot first = createSetupSnapshot(tempDir, "first.bin.gz");
+    SetupSnapshot second = createSetupSnapshot(tempDir, "second.bin.gz");
+    AtomicReference<SetupSnapshot> displayed = new AtomicReference<>(first);
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch completed = new CountDownLatch(1);
+    java.util.concurrent.atomic.AtomicLong generation =
+        new java.util.concurrent.atomic.AtomicLong(1);
+    SwingUtilities.invokeAndWait(
+        () -> {
+          KataGoAutoSetupDialog.createUiBackgroundWorker(
+                  () -> {
+                    started.countDown();
+                    assertTrue(release.await(3, TimeUnit.SECONDS));
+                    return first.scanWeightCatalog();
+                  },
+                  scanned -> {
+                    if (KataGoAutoSetupDialog.isCurrentCatalogScan(
+                        1, generation.get(), first, displayed.get())) {
+                      displayed.set(scanned);
+                    }
+                    completed.countDown();
+                  },
+                  failure -> completed.countDown())
+              .execute();
+        });
+    assertTrue(started.await(3, TimeUnit.SECONDS));
+    SwingUtilities.invokeAndWait(
+        () -> {
+          generation.incrementAndGet();
+          displayed.set(second);
+        });
+    release.countDown();
+    assertTrue(completed.await(3, TimeUnit.SECONDS));
+    assertSame(second, displayed.get());
+    assertFalse(KataGoAutoSetupDialog.isCurrentCatalogScan(2, 2, first, second));
+  }
+
+  @Test
+  void catalogCompletionPreservesPendingAndCommittedEngineState(@TempDir Path tempDir)
+      throws Exception {
+    SetupSnapshot current = createSetupSnapshot(tempDir, "current.bin.gz");
+    SetupSnapshot requested = createSetupSnapshot(tempDir, "requested.bin.gz");
+    SetupSnapshot scanned = requested.scanWeightCatalog();
+    var pending = KataGoAutoSetupDialog.WeightSwitchDisplayState.active(current).begin(requested);
+    var updated = pending.replaceSnapshot(requested, scanned);
+    assertEquals(pending.token(), updated.token());
+    assertSame(current, updated.committedSnapshot());
+    assertSame(scanned, updated.bannerSnapshot());
+    assertTrue(updated.isPendingWeight(requested.activeWeightPath));
+    assertTrue(updated.isActiveWeight(current.activeWeightPath));
+    var completed = updated.succeed(updated.token(), scanned);
+    assertTrue(completed.isActiveWeight(requested.activeWeightPath));
+    assertSame(scanned, completed.committedSnapshot());
+  }
 }

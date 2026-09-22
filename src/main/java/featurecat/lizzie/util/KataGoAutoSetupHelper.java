@@ -360,6 +360,9 @@ public final class KataGoAutoSetupHelper {
     public final String savedEntryId;
     public final Path executionDirectory;
     public final List<String> sourceArguments;
+    public final WeightCatalogSnapshot weightCatalog;
+    public final HumanSlModelStatus humanSlModelStatus;
+    public final QuickAnalysisModelStatus quickAnalysisModelStatus;
 
     private SetupSnapshot(
         Path workingDir,
@@ -389,6 +392,32 @@ public final class KataGoAutoSetupHelper {
         Path activeWeightPath,
         List<Path> weightCandidates,
         LocalKataGoDiscoveryResult discovery) {
+      this(
+          workingDir,
+          appRoot,
+          enginePath,
+          gtpConfigPath,
+          analysisConfigPath,
+          activeWeightPath,
+          weightCandidates,
+          discovery,
+          null,
+          null,
+          null);
+    }
+
+    private SetupSnapshot(
+        Path workingDir,
+        Path appRoot,
+        Path enginePath,
+        Path gtpConfigPath,
+        Path analysisConfigPath,
+        Path activeWeightPath,
+        List<Path> weightCandidates,
+        LocalKataGoDiscoveryResult discovery,
+        WeightCatalogSnapshot weightCatalog,
+        HumanSlModelStatus humanSlModelStatus,
+        QuickAnalysisModelStatus quickAnalysisModelStatus) {
       this.workingDir = workingDir;
       this.appRoot = appRoot;
       this.enginePath = enginePath;
@@ -397,6 +426,9 @@ public final class KataGoAutoSetupHelper {
       this.activeWeightPath = activeWeightPath;
       this.weightCandidates = Collections.unmodifiableList(new ArrayList<>(weightCandidates));
       this.discovery = discovery;
+      this.weightCatalog = weightCatalog;
+      this.humanSlModelStatus = humanSlModelStatus;
+      this.quickAnalysisModelStatus = quickAnalysisModelStatus;
       this.savedEntryId = discovery == null ? "" : discovery.savedEntryId;
       this.sourceArguments = discovery == null ? List.of() : discovery.launchArguments;
       this.executionDirectory =
@@ -419,7 +451,27 @@ public final class KataGoAutoSetupHelper {
     }
 
     public boolean hasWeight() {
+      if (weightCatalog != null) {
+        WeightCatalogSnapshot.Entry entry = weightCatalog.entry(activeWeightPath);
+        return entry != null && entry.regularFile();
+      }
       return activeWeightPath != null && Files.isRegularFile(activeWeightPath);
+    }
+
+    /** Explicit rescan, including same-size/same-mtime replacements. Call off the UI thread. */
+    public SetupSnapshot scanWeightCatalog() {
+      return new SetupSnapshot(
+          workingDir,
+          appRoot,
+          enginePath,
+          gtpConfigPath,
+          analysisConfigPath,
+          activeWeightPath,
+          weightCandidates,
+          discovery,
+          WeightCatalogSnapshot.scan(activeWeightPath, weightCandidates),
+          inspectHumanSlModel(this),
+          inspectQuickAnalysisModel(this));
     }
 
     public SetupSnapshot withActiveWeight(Path weightPath) {
@@ -442,7 +494,13 @@ public final class KataGoAutoSetupHelper {
           analysisConfigPath,
           weightPath == null ? activeWeightPath : weightPath.toAbsolutePath().normalize(),
           new ArrayList<>(dedup),
-          discovery);
+          discovery,
+          weightCatalog != null
+                  && (weightPath == null || weightCatalog.entry(weightPath) != null)
+              ? weightCatalog
+              : null,
+          humanSlModelStatus,
+          quickAnalysisModelStatus);
     }
 
     public SetupSnapshot withEnginePath(Path enginePath) {
@@ -454,7 +512,10 @@ public final class KataGoAutoSetupHelper {
           analysisConfigPath,
           activeWeightPath,
           weightCandidates,
-          discovery);
+          discovery,
+          weightCatalog,
+          humanSlModelStatus,
+          quickAnalysisModelStatus);
     }
   }
 
@@ -544,31 +605,39 @@ public final class KataGoAutoSetupHelper {
       this.engineName = engineName;
       this.createdEngine = createdEngine;
     }
+
+    public SetupResult scanWeightCatalog() {
+      return new SetupResult(snapshot.scanWeightCatalog(), engineIndex, engineName, createdEngine);
+    }
   }
 
   public static final class HumanSlModelStatus {
     public final Path modelPath;
     public final List<Path> candidates;
+    private final boolean installed;
 
     private HumanSlModelStatus(Path modelPath, List<Path> candidates) {
       this.modelPath = modelPath == null ? null : modelPath.toAbsolutePath().normalize();
       this.candidates = Collections.unmodifiableList(new ArrayList<>(candidates));
+      this.installed = isValidHumanSlModelFile(this.modelPath);
     }
 
     public boolean isInstalled() {
-      return isValidHumanSlModelFile(modelPath);
+      return installed;
     }
   }
 
   public static final class QuickAnalysisModelStatus {
     public final Path modelPath;
+    private final boolean installed;
 
     private QuickAnalysisModelStatus(Path modelPath) {
       this.modelPath = modelPath == null ? null : modelPath.toAbsolutePath().normalize();
+      this.installed = isValidQuickAnalysisModelFile(this.modelPath);
     }
 
     public boolean isInstalled() {
-      return isValidQuickAnalysisModelFile(modelPath);
+      return installed;
     }
 
     public boolean isEnabled() {
@@ -1939,7 +2008,8 @@ public final class KataGoAutoSetupHelper {
       throw new IOException(
           resource("AutoSetup.missingConfig", "No KataGo config file was found."));
     }
-    if (!snapshot.hasWeight()) {
+    // A display snapshot is not authorization to launch a file deleted since that scan.
+    if (snapshot.activeWeightPath == null || !Files.isRegularFile(snapshot.activeWeightPath)) {
       throw new IOException(
           resource("AutoSetup.missingWeight", "No KataGo weight file was found."));
     }
@@ -3763,6 +3833,7 @@ public final class KataGoAutoSetupHelper {
   }
 
   private static Path configuredWeightPath(String key, Path workingDir, Path appRoot) {
+    if (Lizzie.config == null || Lizzie.config.uiConfig == null) return null;
     String value = Lizzie.config.uiConfig.optString(key, "").trim();
     return resolveConfiguredPath(value, workingDir, appRoot);
   }

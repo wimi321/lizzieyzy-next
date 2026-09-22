@@ -175,6 +175,9 @@ public class KataGoAutoSetupDialog extends JDialog {
   private long engineValidationRequestId;
   private long stateRefreshRequestId;
   private SwingWorker<SetupSnapshot, Void> stateRefreshWorker;
+  private SwingWorker<SetupSnapshot, Void> catalogRefreshWorker;
+  private SetupSnapshot catalogRefreshSource;
+  private long catalogRefreshRequestId;
   private long progressStartedAtMillis;
   private String lastBackgroundErrorMessage = "";
   private long lastBackgroundErrorMillis = 0L;
@@ -559,7 +562,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     setStateRefreshPending(true);
     SwingWorker<SetupSnapshot, Void> worker =
         createUiBackgroundWorker(
-            KataGoAutoSetupHelper::inspectLocalSetup,
+            () -> KataGoAutoSetupHelper.inspectLocalSetup().scanWeightCatalog(),
             discoveredSnapshot -> {
               if (requestId != stateRefreshRequestId) {
                 return;
@@ -605,16 +608,37 @@ public class KataGoAutoSetupDialog extends JDialog {
       btnExperimentalPerformance.setEnabled(false);
       return;
     }
-    snapshot = KataGoAutoSetupHelper.inspectSavedEngine(entry);
-    benchmarkTarget = null;
-    benchmarkDisplayState = BenchmarkDisplayState.IDLE;
-    benchmarkTransientStatus = "";
-    engineValidationResult = null;
-    updateBenchmarkInfo();
-    if (KataGoRuntimeHelper.benchmarkUnavailableReason(snapshot).isEmpty()) {
-      validateDiscoveredEngineAsync();
-    }
-    if (afterRefresh != null) afterRefresh.run();
+    cancelStateRefresh();
+    final long requestId = ++stateRefreshRequestId;
+    setStateRefreshPending(true);
+    stateRefreshWorker =
+        createUiBackgroundWorker(
+            () -> {
+              SetupSnapshot selected = KataGoAutoSetupHelper.inspectSavedEngine(entry);
+              return selected == null ? null : selected.scanWeightCatalog();
+            },
+            selected -> {
+              if (requestId != stateRefreshRequestId) return;
+              stateRefreshWorker = null;
+              setStateRefreshPending(false);
+              snapshot = selected;
+              benchmarkTarget = null;
+              benchmarkDisplayState = BenchmarkDisplayState.IDLE;
+              benchmarkTransientStatus = "";
+              engineValidationResult = null;
+              updateBenchmarkInfo();
+              if (KataGoRuntimeHelper.benchmarkUnavailableReason(snapshot).isEmpty()) {
+                validateDiscoveredEngineAsync();
+              }
+              if (afterRefresh != null) afterRefresh.run();
+            },
+            error -> {
+              if (requestId != stateRefreshRequestId) return;
+              stateRefreshWorker = null;
+              setStateRefreshPending(false);
+              onBackgroundError(new IOException(error));
+            });
+    stateRefreshWorker.execute();
   }
 
   private void applyDiscoveredSnapshot(SetupSnapshot discoveredSnapshot) {
@@ -700,6 +724,10 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void cancelStateRefresh() {
+    catalogRefreshRequestId++;
+    if (catalogRefreshWorker != null) catalogRefreshWorker.cancel(true);
+    catalogRefreshWorker = null;
+    catalogRefreshSource = null;
     SwingWorker<SetupSnapshot, Void> worker = stateRefreshWorker;
     stateRefreshWorker = null;
     if (worker != null) {
@@ -2056,6 +2084,11 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void renderSnapshot() {
+    if (snapshot == null) return;
+    if (snapshot.weightCatalog == null) {
+      scanSnapshotForDisplay();
+      return;
+    }
     if (!selectedBenchmarkEntryId.isBlank()) {
       updateBenchmarkInfo();
       return;
@@ -2086,6 +2119,80 @@ public class KataGoAutoSetupDialog extends JDialog {
     updateSelectedWeightInfo();
 
     renderSetupStatus();
+  }
+
+  /** Older action paths may publish discovery only; metadata still always loads off the EDT. */
+  private void scanSnapshotForDisplay() {
+    if (catalogRefreshSource == snapshot && catalogRefreshWorker != null) return;
+    if (catalogRefreshWorker != null) catalogRefreshWorker.cancel(true);
+    SetupSnapshot source = snapshot;
+    catalogRefreshSource = source;
+    long requestId = ++catalogRefreshRequestId;
+    btnUseWeight.setEnabled(false);
+    btnDownloadWeight.setEnabled(false);
+    weightCatalogList.setEnabled(false);
+    catalogRefreshWorker =
+        createUiBackgroundWorker(
+            source::scanWeightCatalog,
+            scanned -> {
+              if (catalogRefreshSource != source) return;
+              catalogRefreshWorker = null;
+              catalogRefreshSource = null;
+              if (!isCurrentCatalogScan(requestId, catalogRefreshRequestId, source, snapshot))
+                return;
+              snapshot = scanned;
+              if (weightSwitchDisplayState != null) {
+                weightSwitchDisplayState =
+                    weightSwitchDisplayState.replaceSnapshot(source, scanned);
+              }
+              renderSnapshot();
+              refreshIdleControls();
+            },
+            error -> {
+              if (catalogRefreshSource != source) return;
+              catalogRefreshWorker = null;
+              catalogRefreshSource = null;
+              if (!isCurrentCatalogScan(requestId, catalogRefreshRequestId, source, snapshot))
+                return;
+              lblStatus.setText(error.getMessage());
+              lblStatus.setForeground(ERROR_COLOR);
+            });
+    catalogRefreshWorker.execute();
+  }
+
+  static boolean isCurrentCatalogScan(
+      long completed, long current, SetupSnapshot scannedSource, SetupSnapshot currentSource) {
+    return completed == current && scannedSource == currentSource;
+  }
+
+  private static String catalogModelName(SetupSnapshot state) {
+    return state == null || state.weightCatalog == null
+        ? ""
+        : state.weightCatalog.modelName(state.activeWeightPath);
+  }
+
+  private String catalogModelName(Path path) {
+    return snapshot == null || snapshot.weightCatalog == null
+        ? ""
+        : snapshot.weightCatalog.modelName(path);
+  }
+
+  private String catalogDisplayName(Path path) {
+    return snapshot == null || snapshot.weightCatalog == null
+        ? path == null || path.getFileName() == null ? "" : path.getFileName().toString()
+        : snapshot.weightCatalog.displayName(path);
+  }
+
+  private boolean hasQuickAnalysisModel() {
+    return snapshot != null
+        && snapshot.quickAnalysisModelStatus != null
+        && snapshot.quickAnalysisModelStatus.isInstalled();
+  }
+
+  private boolean hasHumanSlModel() {
+    return snapshot != null
+        && snapshot.humanSlModelStatus != null
+        && snapshot.humanSlModelStatus.isInstalled();
   }
 
   private void renderDiscoveryDetails() {
@@ -2272,7 +2379,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (state.activeWeightPath == null) {
       return text("AutoSetup.notFound");
     }
-    String displayName = KataGoAutoSetupHelper.resolveActiveWeightDisplayName(state);
+    String displayName =
+        state.weightCatalog == null ? "" : state.weightCatalog.displayName(state.activeWeightPath);
     if (displayName == null || displayName.trim().isEmpty()) {
       return state.activeWeightPath.getFileName().toString();
     }
@@ -2285,10 +2393,10 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void renderHumanSlModel() {
     KataGoAutoSetupHelper.HumanSlModelStatus status =
-        KataGoAutoSetupHelper.inspectHumanSlModel(snapshot);
+        snapshot == null ? null : snapshot.humanSlModelStatus;
     String release = text("AutoSetup.humanSlModelRelease");
     lblHumanSlModelValue.setText(text("AutoSetup.humanSlModelDescription") + "  ·  " + release);
-    if (status.isInstalled()) {
+    if (hasHumanSlModel()) {
       String path = status.modelPath.toAbsolutePath().normalize().toString();
       lblHumanSlModelValue.setToolTipText(path);
       lblHumanSlModelValue.setForeground(TEXT_SECONDARY);
@@ -2310,7 +2418,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void renderQuickAnalysisModel() {
     KataGoAutoSetupHelper.QuickAnalysisModelStatus status =
-        KataGoAutoSetupHelper.inspectQuickAnalysisModel(snapshot);
+        snapshot == null ? null : snapshot.quickAnalysisModelStatus;
     boolean busy = activeDownloadSession != null || activeWorkerThread != null;
     boolean requiresUpgrade = quickAnalysisModelRequiresKataGo117();
     boolean configured =
@@ -2318,18 +2426,18 @@ public class KataGoAutoSetupDialog extends JDialog {
     lblQuickAnalysisModelValue.setText(text("AutoSetup.quickAnalysisModelDescription"));
     lblQuickAnalysisModelValue.setForeground(TEXT_SECONDARY);
     lblQuickAnalysisModelValue.setToolTipText(
-        status.isInstalled()
+        hasQuickAnalysisModel()
             ? status.modelPath.toAbsolutePath().normalize().toString()
             : text("AutoSetup.quickAnalysisModelMissing"));
     chkUseQuickAnalysisModel.setSelected(configured);
-    chkUseQuickAnalysisModel.setVisible(status.isInstalled());
+    chkUseQuickAnalysisModel.setVisible(hasQuickAnalysisModel());
     chkUseQuickAnalysisModel.setEnabled(
-        !busy && status.isInstalled() && (configured || canEnableQuickAnalysisModel()));
-    btnDownloadQuickAnalysisModel.setVisible(!status.isInstalled());
+        !busy && hasQuickAnalysisModel() && (configured || canEnableQuickAnalysisModel()));
+    btnDownloadQuickAnalysisModel.setVisible(!hasQuickAnalysisModel());
     btnDownloadQuickAnalysisModel.setEnabled(
-        !busy && !status.isInstalled() && canEnableQuickAnalysisModel());
+        !busy && !hasQuickAnalysisModel() && canEnableQuickAnalysisModel());
 
-    if (!status.isInstalled()) {
+    if (!hasQuickAnalysisModel()) {
       lblQuickAnalysisModelStatus.setStatus(text("AutoSetup.notDownloaded"), StatusTagTone.GOLD);
     } else if (requiresUpgrade) {
       lblQuickAnalysisModelStatus.setStatus(
@@ -3279,8 +3387,9 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void useSelectedWeight() {
-    if (snapshot == null) {
-      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+    if (snapshot == null || snapshot.weightCatalog == null) {
+      refreshState(this::useSelectedWeight);
+      return;
     }
     Path selectedWeight = getSelectedLocalWeight();
     if (selectedWeight == null) {
@@ -3454,15 +3563,19 @@ public class KataGoAutoSetupDialog extends JDialog {
       return;
     }
     setBusy(true, text("AutoSetup.importingWeight"), 0, -1);
+    cancelStateRefresh();
+    final long requestId = ++stateRefreshRequestId;
     Thread worker =
         new Thread(
             () -> {
               try {
                 Path importedWeight = KataGoAutoSetupHelper.importWeight(source);
-                SetupSnapshot refreshed = KataGoAutoSetupHelper.inspectLocalSetup();
+                SetupSnapshot refreshed =
+                    KataGoAutoSetupHelper.inspectLocalSetup().scanWeightCatalog();
                 SwingUtilities.invokeLater(
                     () -> {
                       activeWorkerThread = null;
+                      if (requestId != stateRefreshRequestId) return;
                       setBusy(false, text("AutoSetup.importWeightDone"), 0, 0);
                       snapshot = refreshed;
                       renderSnapshot();
@@ -3500,16 +3613,21 @@ public class KataGoAutoSetupDialog extends JDialog {
       return;
     }
     setBusy(true, text("AutoSetup.importingHumanSlModel"), 0, -1);
+    cancelStateRefresh();
+    final long requestId = ++stateRefreshRequestId;
     Thread worker =
         new Thread(
             () -> {
               try {
                 Path importedModel = KataGoAutoSetupHelper.importHumanSlModel(source);
+                SetupSnapshot refreshed =
+                    KataGoAutoSetupHelper.inspectLocalSetup().scanWeightCatalog();
                 SwingUtilities.invokeLater(
                     () -> {
                       activeWorkerThread = null;
+                      if (requestId != stateRefreshRequestId) return;
                       setBusy(false, text("AutoSetup.importHumanSlModelDone"), 0, 0);
-                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                      snapshot = refreshed;
                       renderSnapshot();
                       Utils.showMsg(
                           text("AutoSetup.importHumanSlModelDoneMessage") + "\n" + importedModel,
@@ -3532,6 +3650,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     final DownloadSession session = new DownloadSession();
     activeDownloadSession = session;
     setBusy(true, text("AutoSetup.downloadingHumanSlModel"), 0, -1);
+    cancelStateRefresh();
+    final long requestId = ++stateRefreshRequestId;
     Thread worker =
         new Thread(
             () -> {
@@ -3549,10 +3669,13 @@ public class KataGoAutoSetupDialog extends JDialog {
                                         downloadedBytes,
                                         totalBytes)),
                         session);
+                SetupSnapshot refreshed =
+                    KataGoAutoSetupHelper.inspectLocalSetup().scanWeightCatalog();
                 SwingUtilities.invokeLater(
                     () -> {
+                      if (requestId != stateRefreshRequestId) return;
                       setBusy(false, text("AutoSetup.humanSlModelDownloadDone"), 0, 0);
-                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                      snapshot = refreshed;
                       renderSnapshot();
                       Utils.showMsg(
                           text("AutoSetup.humanSlModelDownloadDoneMessage")
@@ -3585,6 +3708,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     final DownloadSession session = new DownloadSession();
     activeDownloadSession = session;
     setBusy(true, text("AutoSetup.downloadingQuickAnalysisModel"), 0, -1);
+    cancelStateRefresh();
+    final long requestId = ++stateRefreshRequestId;
     Thread worker =
         new Thread(
             () -> {
@@ -3601,10 +3726,13 @@ public class KataGoAutoSetupDialog extends JDialog {
                                     downloadedBytes,
                                     totalBytes)),
                     session);
+                SetupSnapshot refreshed =
+                    KataGoAutoSetupHelper.inspectLocalSetup().scanWeightCatalog();
                 SwingUtilities.invokeLater(
                     () -> {
+                      if (requestId != stateRefreshRequestId) return;
                       setBusy(false, text("AutoSetup.quickAnalysisModelDownloadDone"), 0, 0);
-                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                      snapshot = refreshed;
                       renderSnapshot();
                       refreshAutomaticQuickAnalysisModelSelection();
                     });
@@ -3663,6 +3791,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     final DownloadSession session = new DownloadSession();
     activeDownloadSession = session;
     setBusy(true, text("AutoSetup.downloading"), 0, -1);
+    cancelStateRefresh();
+    final long requestId = ++stateRefreshRequestId;
     Thread worker =
         new Thread(
             () -> {
@@ -3679,9 +3809,11 @@ public class KataGoAutoSetupDialog extends JDialog {
                                         downloadedBytes,
                                         totalBytes)),
                         session);
-                SetupSnapshot refreshed = KataGoAutoSetupHelper.inspectLocalSetup();
+                SetupSnapshot refreshed =
+                    KataGoAutoSetupHelper.inspectLocalSetup().scanWeightCatalog();
                 SwingUtilities.invokeLater(
                     () -> {
+                      if (requestId != stateRefreshRequestId) return;
                       setBusy(false, text("AutoSetup.downloadDone"), 0, 0);
                       snapshot = refreshed;
                       renderSnapshot();
@@ -4129,7 +4261,8 @@ public class KataGoAutoSetupDialog extends JDialog {
         new Thread(
             () -> {
               try {
-                SetupResult result = KataGoAutoSetupHelper.addWeightEngineProfile(state);
+                SetupResult result =
+                    KataGoAutoSetupHelper.addWeightEngineProfile(state).scanWeightCatalog();
                 SwingUtilities.invokeLater(
                     () -> {
                       activeWorkerThread = null;
@@ -4442,8 +4575,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                   : weightSwitchDisplayState.fail(weightSwitchToken, authoritativeSnapshot);
           snapshot = weightSwitchDisplayState.displayedSnapshot();
           renderSnapshot();
-          selectRemoteWeightByModelName(
-              KataGoAutoSetupHelper.resolveActiveWeightModelName(snapshot));
+          selectRemoteWeightByModelName(catalogModelName(snapshot));
           updateSelectedRemoteWeightInfo();
           if (succeeded) {
             lblStatus.setText(message);
@@ -4475,6 +4607,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     long[] token = new long[1];
     runWeightSwitchUiUpdate(
         () -> {
+          cancelStateRefresh();
+          stateRefreshRequestId++;
           if (weightSwitchDisplayState == null) {
             weightSwitchDisplayState = WeightSwitchDisplayState.active(snapshot);
           }
@@ -4483,8 +4617,7 @@ public class KataGoAutoSetupDialog extends JDialog {
           snapshot = weightSwitchDisplayState.displayedSnapshot();
           renderSnapshot();
           SetupSnapshot bannerSnapshot = weightSwitchDisplayState.bannerSnapshot();
-          selectRemoteWeightByModelName(
-              KataGoAutoSetupHelper.resolveActiveWeightModelName(bannerSnapshot));
+          selectRemoteWeightByModelName(catalogModelName(bannerSnapshot));
           updateSelectedRemoteWeightInfo();
         });
     return token[0];
@@ -4674,12 +4807,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnDownloadHumanSlModel.setEnabled(!busy && canDownloadHumanSlModel());
     btnImportHumanSlModel.setEnabled(!busy);
     btnDownloadQuickAnalysisModel.setEnabled(
-        !busy
-            && !KataGoAutoSetupHelper.inspectQuickAnalysisModel().isInstalled()
-            && canEnableQuickAnalysisModel());
+        !busy && !hasQuickAnalysisModel() && canEnableQuickAnalysisModel());
     chkUseQuickAnalysisModel.setEnabled(
         !busy
-            && KataGoAutoSetupHelper.inspectQuickAnalysisModel().isInstalled()
+            && hasQuickAnalysisModel()
             && (chkUseQuickAnalysisModel.isSelected() || canEnableQuickAnalysisModel()));
     weightCatalogList.setEnabled(!busy && !weightCatalogModel.isEmpty());
     btnOfficialWeightTab.setEnabled(!busy);
@@ -4817,6 +4948,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private boolean hasActiveBackgroundTask() {
     return stateRefreshWorker != null
+        || catalogRefreshWorker != null
         || activeDownloadSession != null
         || activeWorkerThread != null
         || pendingWeightSwitchTimer != null;
@@ -4859,9 +4991,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private boolean canDownloadHumanSlModel() {
-    return !KataGoAutoSetupHelper.inspectHumanSlModel().isInstalled()
-        && activeDownloadSession == null
-        && activeWorkerThread == null;
+    return !hasHumanSlModel() && activeDownloadSession == null && activeWorkerThread == null;
   }
 
   private boolean isBenchmarkPermilleProgress(
@@ -4880,6 +5010,7 @@ public class KataGoAutoSetupDialog extends JDialog {
         && !isCurrentLocalWeight(selectedWeight)
         && isSelectedWeightCompatibleWithEngine(selectedWeight)
         && snapshot != null
+        && snapshot.weightCatalog != null
         && snapshot.hasEngine()
         && snapshot.hasConfigs()
         && isEngineValidationReady()
@@ -4888,7 +5019,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private boolean isSelectedWeightCompatibleWithEngine(Path weightPath) {
-    if (!KataGoAutoSetupHelper.isTransformerWeight(weightPath)) {
+    if (!KataGoAutoSetupHelper.isTransformerWeight(catalogModelName(weightPath))) {
       return true;
     }
     return engineValidationResult == null
@@ -4898,7 +5029,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private boolean requiresKataGo117(Path weightPath) {
-    return KataGoAutoSetupHelper.isTransformerWeight(weightPath)
+    return KataGoAutoSetupHelper.isTransformerWeight(catalogModelName(weightPath))
         && engineValidationResult != null
         && engineValidationResult.hasKnownVersion()
         && !engineValidationResult.isVersionAtLeast(
@@ -4990,7 +5121,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       btnUseWeight.setEnabled(downloaded && !pending && !current && canUseSelectedLocalWeight());
     } else {
       Path path = entry.localPath;
-      String displayName = KataGoAutoSetupHelper.resolveWeightDisplayName(path);
+      String displayName = catalogDisplayName(path);
       boolean pending = isPendingLocalWeight(path);
       boolean current = isCurrentLocalWeight(path);
       lblSelectedWeightName.setText(displayName);
@@ -5194,7 +5325,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (path == null || path.getFileName() == null) {
       return null;
     }
-    String modelName = KataGoAutoSetupHelper.readWeightModelName(path);
+    String modelName = catalogModelName(path);
     for (RemoteWeightInfo info : remoteWeightInfos) {
       if (matchesModelName(info, modelName)) {
         return info;
@@ -5204,17 +5335,13 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private Path findDownloadedRemoteWeightPath(RemoteWeightInfo info) {
-    if (info == null || snapshot == null || snapshot.weightCandidates == null) {
+    if (info == null || snapshot == null || snapshot.weightCatalog == null) {
       return null;
     }
-    for (Path candidate :
-        prioritizeActiveWeightCandidate(snapshot.activeWeightPath, snapshot.weightCandidates)) {
-      RemoteWeightInfo matched = findRemoteWeightForLocalPath(candidate);
-      if (matched != null && matchesModelName(info, matched.modelName)) {
-        return candidate;
-      }
-    }
-    return null;
+    Path match = snapshot.weightCatalog.findModel(info.modelName, snapshot.activeWeightPath);
+    return match != null
+        ? match
+        : snapshot.weightCatalog.findModel(info.fileName(), snapshot.activeWeightPath);
   }
 
   static List<Path> prioritizeActiveWeightCandidate(Path activeWeight, List<Path> candidates) {
@@ -5300,12 +5427,13 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (path == null) {
       return "";
     }
-    try {
-      return LOCAL_WEIGHT_DATE_FORMAT.format(
-          Files.getLastModifiedTime(path).toInstant().atZone(ZoneId.systemDefault()));
-    } catch (IOException e) {
-      return "";
-    }
+    var entry =
+        snapshot == null || snapshot.weightCatalog == null
+            ? null
+            : snapshot.weightCatalog.entry(path);
+    return entry == null || entry.modified() == null
+        ? ""
+        : LOCAL_WEIGHT_DATE_FORMAT.format(entry.modified().atZone(ZoneId.systemDefault()));
   }
 
   private String formatSize(long bytes) {
@@ -5461,7 +5589,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (remoteWeightInfos.isEmpty()) {
       return null;
     }
-    String currentModel = KataGoAutoSetupHelper.resolveActiveWeightModelName(snapshot);
+    String currentModel = catalogModelName(snapshot);
     if (currentModel != null && !currentModel.trim().isEmpty()) {
       for (RemoteWeightInfo info : remoteWeightInfos) {
         if (matchesModelName(info, currentModel)) {
@@ -5630,12 +5758,14 @@ public class KataGoAutoSetupDialog extends JDialog {
         weightSwitchDisplayState == null
             ? snapshot
             : weightSwitchDisplayState.committedSnapshot();
-    return matchesModelName(info, KataGoAutoSetupHelper.resolveActiveWeightModelName(committed));
+    return matchesModelName(info, catalogModelName(committed));
   }
 
   private boolean canDownloadSelectedRemoteWeight() {
     RemoteWeightInfo info = getSelectedRemoteWeight();
     return info != null
+        && snapshot != null
+        && snapshot.weightCatalog != null
         && !isDownloadedRemoteWeight(info)
         && activeDownloadSession == null
         && activeWorkerThread == null;
@@ -5835,6 +5965,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     static WeightSwitchDisplayState active(SetupSnapshot snapshot) {
       return new WeightSwitchDisplayState(
           0L, WeightSwitchDisplayPhase.SUCCEEDED, snapshot, null, snapshot);
+    }
+
+    WeightSwitchDisplayState replaceSnapshot(SetupSnapshot source, SetupSnapshot scanned) {
+      return new WeightSwitchDisplayState(
+          token,
+          phase,
+          committedSnapshot == source ? scanned : committedSnapshot,
+          targetSnapshot == source ? scanned : targetSnapshot,
+          displayedSnapshot == source ? scanned : displayedSnapshot);
     }
 
     static WeightSwitchDisplayState discovered(SetupSnapshot snapshot) {
@@ -6525,9 +6664,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       model.setText(
           remote != null
               ? formatRemoteModelName(remote)
-              : local == null
-                  ? text("AutoSetup.noLocalWeights")
-                  : KataGoAutoSetupHelper.resolveWeightDisplayName(local));
+              : local == null ? text("AutoSetup.noLocalWeights") : catalogDisplayName(local));
       model.setForeground(primary);
       Font baseFont = list.getFont() == null ? model.getFont() : list.getFont();
       model.setFont(baseFont.deriveFont(Font.PLAIN));
@@ -6571,8 +6708,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                       remote.fileName(),
                       remote.downloadUrl)
                   : weightTooltip(
-                      KataGoAutoSetupHelper.resolveWeightDisplayName(local),
-                      local.toAbsolutePath().normalize().toString());
+                      catalogDisplayName(local), local.toAbsolutePath().normalize().toString());
       setToolTipText(tooltip);
       model.setToolTipText(tooltip);
       elo.setToolTipText(tooltip);
