@@ -21,6 +21,9 @@ replacing a model under the same name with the same length and timestamp becomes
 on the next refresh. A displayed snapshot remains internally consistent until then.
 Corrupt or unavailable headers retain filename fallbacks; the engine still validates
 actual model contents, and applying a profile checks that the model still exists.
+The setup worker rereads the selected identity and checks engine compatibility immediately
+before writing a weight profile. A replacement after the displayed scan is rejected and
+the catalog refreshed; a cached display identity never authorizes an incompatible switch.
 
 ## Validation
 
@@ -33,6 +36,8 @@ actual model contents, and applying a profile checks that the model still exists
 - Delayed worker completion cannot overwrite a later refresh or selection. Metadata
   completion preserves pending and committed engine-switch state.
 - Existing identity helpers retain their fresh-read behavior for other consumers.
+- An unavailable saved-engine refresh restores the Refresh button while preserving the
+  saved-entry sidebar lock. Same-path replacement on Use cannot mutate the saved profile.
 
 Windows headless verification on 2026-09-22: 206 tests, zero failures/errors and three
 existing platform skips. The suite includes catalog, weight identity, setup helper,

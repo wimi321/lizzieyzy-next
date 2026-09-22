@@ -626,7 +626,7 @@ public class KataGoAutoSetupDialog extends JDialog {
               benchmarkDisplayState = BenchmarkDisplayState.IDLE;
               benchmarkTransientStatus = "";
               engineValidationResult = null;
-              updateBenchmarkInfo();
+              refreshIdleControls();
               if (KataGoRuntimeHelper.benchmarkUnavailableReason(snapshot).isEmpty()) {
                 validateDiscoveredEngineAsync();
               }
@@ -683,7 +683,11 @@ public class KataGoAutoSetupDialog extends JDialog {
       progressBar.setString("");
       progressPanel.setVisible(false);
       footerPanel.setVisible(false);
-      sectionNav.setEnabled(true);
+      // A saved-entry performance page must remain scoped to that entry, even if discovery fails.
+      sectionNav.setEnabled(selectedBenchmarkEntryId.isBlank());
+      // Missing/unsupported entries skip validation, so completion itself must restore retry.
+      btnRefresh.setEnabled(true);
+      btnClose.setEnabled(true);
       btnRemoteCompute.setEnabled(true);
       setCursor(Cursor.getDefaultCursor());
     }
@@ -4256,13 +4260,19 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void startWeightEngineSetup(
       SetupSnapshot state, boolean resumeQuickAnalysis, long weightSwitchToken) {
+    final EngineValidationResult validatedEngine = engineValidationResult;
     setBusy(true, text("AutoSetup.settingUp"), 0, -1);
     Thread worker =
         new Thread(
             () -> {
               try {
                 SetupResult result =
-                    KataGoAutoSetupHelper.addWeightEngineProfile(state).scanWeightCatalog();
+                    applyWeightProfileAfterPreflight(
+                        state,
+                        validatedEngine,
+                        selected ->
+                            KataGoAutoSetupHelper.addWeightEngineProfile(selected)
+                                .scanWeightCatalog());
                 SwingUtilities.invokeLater(
                     () -> {
                       activeWorkerThread = null;
@@ -4286,7 +4296,10 @@ public class KataGoAutoSetupDialog extends JDialog {
                       }
                       failWeightSwitchDisplay(
                           weightSwitchToken, KataGoAutoSetupHelper.inspectLocalSetup());
-                      onBackgroundError(e);
+                      onBackgroundError(
+                          e instanceof WeightPreflightException
+                              ? new IOException(text(((WeightPreflightException) e).check.messageKey))
+                              : e);
                       resumeQuickAnalysisAfterWeightSwitchIfNeeded();
                     });
               }
@@ -4294,6 +4307,61 @@ public class KataGoAutoSetupDialog extends JDialog {
             "katago-add-weight-engine");
     activeWorkerThread = worker;
     worker.start();
+  }
+
+  @FunctionalInterface
+  interface WeightProfileWriter {
+    SetupResult apply(SetupSnapshot selected) throws IOException;
+  }
+
+  enum WeightSelectionCheck {
+    READY(""),
+    MISSING("AutoSetup.missingWeight"),
+    CHANGED("AutoSetup.weightChangedOnDisk"),
+    INCOMPATIBLE("AutoSetup.transformerRequires117");
+
+    final String messageKey;
+
+    WeightSelectionCheck(String messageKey) {
+      this.messageKey = messageKey;
+    }
+  }
+
+  static final class WeightPreflightException extends IOException {
+    private static final long serialVersionUID = 1L;
+    final WeightSelectionCheck check;
+
+    WeightPreflightException(WeightSelectionCheck check) {
+      super(check.messageKey);
+      this.check = check;
+    }
+  }
+
+  /** Called on the setup worker immediately before any saved-profile mutation. */
+  static SetupResult applyWeightProfileAfterPreflight(
+      SetupSnapshot selected, EngineValidationResult validation, WeightProfileWriter writer)
+      throws IOException {
+    WeightSelectionCheck check = inspectWeightSelectionForApply(selected, validation);
+    if (check != WeightSelectionCheck.READY) throw new WeightPreflightException(check);
+    return writer.apply(selected);
+  }
+
+  static WeightSelectionCheck inspectWeightSelectionForApply(
+      SetupSnapshot selected, EngineValidationResult validation) {
+    if (selected == null
+        || selected.activeWeightPath == null
+        || !Files.isRegularFile(selected.activeWeightPath)) {
+      return WeightSelectionCheck.MISSING;
+    }
+    String actual = KataGoAutoSetupHelper.readWeightModelName(selected.activeWeightPath);
+    if (!isWeightModelCompatibleWithEngine(actual, validation)) {
+      return WeightSelectionCheck.INCOMPATIBLE;
+    }
+    if (selected.weightCatalog == null
+        || !actual.equals(selected.weightCatalog.modelName(selected.activeWeightPath))) {
+      return WeightSelectionCheck.CHANGED;
+    }
+    return WeightSelectionCheck.READY;
   }
 
   private void onSetupApplied(SetupResult result, String message) {
@@ -5019,12 +5087,17 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private boolean isSelectedWeightCompatibleWithEngine(Path weightPath) {
-    if (!KataGoAutoSetupHelper.isTransformerWeight(catalogModelName(weightPath))) {
+    return isWeightModelCompatibleWithEngine(catalogModelName(weightPath), engineValidationResult);
+  }
+
+  private static boolean isWeightModelCompatibleWithEngine(
+      String modelName, EngineValidationResult validation) {
+    if (!KataGoAutoSetupHelper.isTransformerWeight(modelName)) {
       return true;
     }
-    return engineValidationResult == null
-        || !engineValidationResult.hasKnownVersion()
-        || engineValidationResult.isVersionAtLeast(
+    return validation == null
+        || !validation.hasKnownVersion()
+        || validation.isVersionAtLeast(
             KataGoAutoSetupHelper.TRANSFORMER_MINIMUM_KATAGO_VERSION);
   }
 
