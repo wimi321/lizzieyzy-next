@@ -1010,39 +1010,41 @@ public class SGFParser {
   }
 
   private static GameInfo copyGameInfo(GameInfo original) {
-    GameInfo copy = new GameInfo();
-    if (original == null) {
-      return copy;
-    }
-    copy.setPlayerBlack(original.getPlayerBlack());
-    copy.setPlayerWhite(original.getPlayerWhite());
-    copy.setDate(original.getDate());
-    copy.setKomiNoMenu(original.getKomi());
-    copy.setHandicap(original.getHandicap());
-    copy.setResult(original.getResult());
-    copy.copyEngineGameHistoryFrom(original);
-    return copy;
+    return original == null ? new GameInfo() : original.copyForSave();
   }
 
   private static BoardHistoryList captureSaveHistory(BoardHistoryList source) {
-    BoardHistoryList copy = source.shallowCopy();
-    Map<BoardHistoryNode, BoardHistoryNode> nodes = new IdentityHashMap<>();
-    ArrayDeque<BoardHistoryNode> pending = new ArrayDeque<>();
-    BoardHistoryNode root = source.getStart();
-    nodes.put(root, root.copyForSave());
-    pending.add(root);
-    while (!pending.isEmpty()) {
-      BoardHistoryNode original = pending.removeFirst();
-      BoardHistoryNode parent = nodes.get(original);
-      for (BoardHistoryNode child : original.getVariations()) {
-        BoardHistoryNode detached = child.copyForSave();
-        detached.reparentAsLastVariationOf(parent);
-        nodes.put(child, detached);
-        pending.addLast(child);
+    BoardHistoryList copy;
+    BoardHistoryNode current;
+    Map<BoardHistoryNode, List<BoardHistoryNode>> topology = new IdentityHashMap<>();
+    // Engine-game responses commit structure on their reader thread under this exact history
+    // monitor. A shallow copy has a different monitor and cannot protect the live child lists.
+    // Freeze only references/metadata here: payload commits may acquire other owners' locks, so
+    // never acquire a BoardData monitor while holding the history monitor.
+    synchronized (source) {
+      copy = source.shallowCopy();
+      current = source.getCurrentHistoryNode();
+      copy.setGameInfo(copyGameInfo(source.getGameInfo()));
+      ArrayDeque<BoardHistoryNode> pending = new ArrayDeque<>();
+      pending.add(source.getStart());
+      while (!pending.isEmpty()) {
+        BoardHistoryNode original = pending.removeFirst();
+        List<BoardHistoryNode> children = List.copyOf(original.getVariations());
+        topology.put(original, children);
+        pending.addAll(children);
       }
     }
-    copy.setHead(nodes.get(source.getCurrentHistoryNode()));
-    copy.setGameInfo(copyGameInfo(source.getGameInfo()));
+    Map<BoardHistoryNode, BoardHistoryNode> nodes = new IdentityHashMap<>();
+    for (BoardHistoryNode original : topology.keySet()) {
+      nodes.put(original, original.copyForSave());
+    }
+    for (Map.Entry<BoardHistoryNode, List<BoardHistoryNode>> entry : topology.entrySet()) {
+      BoardHistoryNode parent = nodes.get(entry.getKey());
+      for (BoardHistoryNode child : entry.getValue()) {
+        nodes.get(child).reparentAsLastVariationOf(parent);
+      }
+    }
+    copy.setHead(nodes.get(current));
     return copy;
   }
 
@@ -1337,7 +1339,16 @@ public class SGFParser {
       boolean captureSnapshot)
       throws IOException {
     maybeCaptureEngineGameSaveSnapshot(board);
-    BoardHistoryList history = board.getHistory().shallowCopy();
+    BoardHistoryList sourceHistory = board.getHistory();
+    if (captureSnapshot
+        && !LizzieFrame.isSavingRaw
+        && sourceHistory.getGameInfo().hasEngineGameHistory()) {
+      // Preserve save-time analysis comments before detaching; do not call back into the live
+      // game while holding the structural monitor or after the payload has already been copied.
+      board.updateWinrate();
+    }
+    BoardHistoryList history =
+        captureSnapshot ? captureSaveHistory(sourceHistory) : sourceHistory.shallowCopy();
     int[] historyBoardSize = resolveHistoryBoardSize(history);
     int historyBoardWidth = historyBoardSize[0];
     int historyBoardHeight = historyBoardSize[1];
@@ -1373,8 +1384,8 @@ public class SGFParser {
                 komi, playerW, playerB, date, result, boardSizeTag));
       } else {
         if (engineGameHistory) {
-          Lizzie.board.updateWinrate();
-          appendTime(gameInfo);
+          if (!captureSnapshot) Lizzie.board.updateWinrate();
+          appendTime(gameInfo, history);
           appendMatchRulesComment(history, gameInfo, engineContext);
         } else {
           if (Lizzie.leelaz != null && Lizzie.leelaz.isKatago && !fromAutoSave) {
@@ -1405,27 +1416,26 @@ public class SGFParser {
               }
             }
             if (usingSpecificRues) {
-              if (Lizzie.board.getHistory().getStart().getData().comment.equals(""))
-                Lizzie.board.getHistory().getStart().getData().comment +=
+              if (history.getStart().getData().comment.equals(""))
+                history.getStart().getData().comment +=
                     Lizzie.resourceBundle.getString("SGFParse.rules") + rules;
-              else if (!Lizzie.board
-                  .getHistory()
+              else if (!history
                   .getStart()
                   .getData()
                   .comment
                   .contains(Lizzie.resourceBundle.getString("SGFParse.rules")))
-                Lizzie.board.getHistory().getStart().getData().comment =
+                history.getStart().getData().comment =
                     Lizzie.resourceBundle.getString("SGFParse.rules")
                         + rules
                         + "\n\n"
-                        + Lizzie.board.getHistory().getStart().getData().comment;
+                        + history.getStart().getData().comment;
               else {
-                String oldComment = Lizzie.board.getHistory().getStart().getData().comment;
+                String oldComment = history.getStart().getData().comment;
                 int leftIndex =
                     oldComment.indexOf(
                         "\n",
                         oldComment.indexOf(Lizzie.resourceBundle.getString("SGFParse.rules")));
-                Lizzie.board.getHistory().getStart().getData().comment =
+                history.getStart().getData().comment =
                     oldComment.substring(
                             0,
                             oldComment.indexOf(Lizzie.resourceBundle.getString("SGFParse.rules")))
@@ -1478,7 +1488,6 @@ public class SGFParser {
       // }
 
       // move to the first move
-      if (captureSnapshot) history = captureSaveHistory(history);
       Map<BoardHistoryNode, BoardHistoryNode> selectedBranch = new IdentityHashMap<>();
       if (mainTrunkOnly) {
         BoardHistoryNode selected = history.getCurrentHistoryNode();
@@ -1637,12 +1646,14 @@ public class SGFParser {
   }
 
   private static void appendTime(GameInfo info) {
-    if (Lizzie.board == null
-        || Lizzie.board.getHistory() == null
-        || Lizzie.resourceBundle == null) {
+    appendTime(info, Lizzie.board == null ? null : Lizzie.board.getHistory());
+  }
+
+  private static void appendTime(GameInfo info, BoardHistoryList history) {
+    if (history == null || Lizzie.resourceBundle == null) {
       return;
     }
-    BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
+    BoardHistoryNode node = history.getCurrentHistoryNode();
     if (node.getData().moveNumber < 3 || node.getData().getPlayouts() <= 0) {
       return;
     }

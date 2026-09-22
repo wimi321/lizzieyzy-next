@@ -5,11 +5,152 @@ import static org.junit.jupiter.api.Assertions.*;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.LizzieFrame;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
 class SGFSaveSnapshotTest {
+  @Test
+  void engineMoveWaitsForTopologyCaptureAndCannotEnterTheSavedTree() throws Exception {
+    try (var ignored = RulesLayerTestHarness.open()) {
+      Board board = Lizzie.board;
+      BoardHistoryList history = board.getHistory();
+      CountDownLatch readingChildren = new CountDownLatch(1);
+      CountDownLatch releaseCapture = new CountDownLatch(1);
+      AtomicBoolean firstRead = new AtomicBoolean(true);
+      BoardHistoryNode root =
+          new BoardHistoryNode(history.getData()) {
+            @Override
+            public List<BoardHistoryNode> getVariations() {
+              if (SwingUtilities.isEventDispatchThread() && firstRead.getAndSet(false)) {
+                readingChildren.countDown();
+                await(releaseCapture);
+              }
+              return super.getVariations();
+            }
+          };
+      history.setHead(root);
+      var worker = Executors.newSingleThreadExecutor();
+      CompletableFuture<String> saved = captureAsync(board);
+      try {
+        assertTrue(readingChildren.await(5, TimeUnit.SECONDS));
+        CountDownLatch committing = new CountDownLatch(1);
+        var move =
+            worker.submit(
+                () -> {
+                  committing.countDown();
+                  return board.commitEngineGamePlace(
+                      history, root, true, 0, 0, Stone.BLACK, false, false, false);
+                });
+        assertTrue(committing.await(5, TimeUnit.SECONDS));
+        assertThrows(TimeoutException.class, () -> move.get(100, TimeUnit.MILLISECONDS));
+        releaseCapture.countDown();
+        String sgf = saved.get(5, TimeUnit.SECONDS);
+        assertNotNull(move.get(5, TimeUnit.SECONDS));
+        assertEquals(1, history.getMoveNumber());
+        assertFalse(
+            sgf.contains(";B[aa]"), "the captured topology ends before the concurrent move");
+        assertEquals(0, SGFParser.parseSgf(sgf, true).getEnd().getData().moveNumber);
+      } finally {
+        releaseCapture.countDown();
+        saved.handle((value, failure) -> null).get(5, TimeUnit.SECONDS);
+        worker.shutdownNow();
+      }
+    }
+  }
+
+  @Test
+  void payloadCopyReleasesHistoryLockButKeepsTheFrozenTopology() throws Exception {
+    try (var ignored = RulesLayerTestHarness.open()) {
+      Board board = Lizzie.board;
+      BoardHistoryList history = board.getHistory();
+      CountDownLatch cloningPayload = new CountDownLatch(1);
+      CountDownLatch releaseClone = new CountDownLatch(1);
+      String originalDate =
+          new java.text.SimpleDateFormat("yyyy-MM-dd").format(history.getGameInfo().getDate());
+      BoardHistoryNode root =
+          new BoardHistoryNode(history.getData()) {
+            @Override
+            BoardHistoryNode copyForSave() {
+              cloningPayload.countDown();
+              await(releaseClone);
+              return super.copyForSave();
+            }
+          };
+      history.setHead(root);
+      var worker = Executors.newSingleThreadExecutor();
+      CompletableFuture<String> saved = captureAsync(board);
+      try {
+        assertTrue(cloningPayload.await(5, TimeUnit.SECONDS));
+        var move =
+            worker.submit(
+                () ->
+                    board.commitEngineGamePlace(
+                        history, root, true, 0, 0, Stone.BLACK, false, false, false));
+        assertNotNull(
+            move.get(5, TimeUnit.SECONDS), "payload copies must not hold the history lock");
+        history.getGameInfo().setPlayerBlack("changed after topology capture");
+        java.util.Date liveDate = history.getGameInfo().getDate();
+        liveDate.setTime(liveDate.getTime() + TimeUnit.DAYS.toMillis(2));
+        releaseClone.countDown();
+        String sgf = saved.get(5, TimeUnit.SECONDS);
+        assertFalse(sgf.contains(";B[aa]"));
+        assertFalse(sgf.contains("changed after topology capture"));
+        assertTrue(sgf.contains("DT[" + originalDate + "]"));
+        assertEquals(1, history.getMoveNumber());
+      } finally {
+        releaseClone.countDown();
+        saved.handle((value, failure) -> null).get(5, TimeUnit.SECONDS);
+        worker.shutdownNow();
+      }
+    }
+  }
+
+  @Test
+  void normalSnapshotKeepsRulesHeaderOnTheDetachedRoot() throws Exception {
+    try (var ignored = RulesLayerTestHarness.open()) {
+      Lizzie.leelaz.isKatago = true;
+      Lizzie.leelaz.usingSpecificRules = 1;
+      BoardData root = Lizzie.board.getHistory().getData();
+      root.comment = "original comment";
+      String saved = capture(false, false, false);
+      assertTrue(saved.contains(Lizzie.resourceBundle.getString("SGFParse.rules")));
+      assertTrue(
+          saved.contains(Lizzie.resourceBundle.getString("LizzieFrame.currentRules.chinese")));
+      assertTrue(saved.contains("original comment"));
+      assertEquals("original comment", root.comment);
+    }
+  }
+
+  private static CompletableFuture<String> captureAsync(Board board) {
+    CompletableFuture<String> result = new CompletableFuture<>();
+    SwingUtilities.invokeLater(
+        () -> {
+          try {
+            result.complete(SGFParser.saveSnapshot(board, true, false, false));
+          } catch (Throwable failure) {
+            result.completeExceptionally(failure);
+          }
+        });
+    return result;
+  }
+
+  private static void await(CountDownLatch latch) {
+    try {
+      assertTrue(latch.await(5, TimeUnit.SECONDS));
+    } catch (InterruptedException failure) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError(failure);
+    }
+  }
+
   @Test
   void selectedBranchKeepsAncestorPathAndContinuationWithoutMutatingLiveTree() throws Exception {
     try (var ignored = RulesLayerTestHarness.open()) {

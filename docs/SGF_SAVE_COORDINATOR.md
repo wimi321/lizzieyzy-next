@@ -7,8 +7,12 @@ is created. Saving over the current original file uses the same write pipeline.
 
 ## Snapshot and publication
 
-The event thread captures a detached tree, including the selected branch and
-complete analysis payloads. Each node is copied under the short lock also used
+The event thread freezes node relationships, the selected node and game metadata
+under the original history's structural lock, which also guards engine-game move
+commits on reader threads. It releases that lock before copying node payloads or
+serializing SGF, avoiding a nested history-to-payload lock order. A subsequent
+engine move cannot appear halfway through the captured tree. Each node is copied
+under the short lock also used
 by primary, secondary and whole-game payload commits. Engine publication can
 continue after each node copy. No engine lock is held while serializing the
 whole tree or writing to disk. The resulting immutable SGF string is the only
@@ -45,12 +49,13 @@ the event thread.
   snapshot-only worker input, retired-board completion, ordered repeated saves,
   write/rejection failure and shutdown completion.
 - `SGFSaveSnapshotTest`: selected branches, setup/pass round trips, mode/flag
-  restoration, continued edits and a deliberately interrupted analysis commit.
+  restoration, continued edits, a deliberately interrupted analysis commit, and
+  concurrent engine moves during both structure capture and payload copying.
 - `OfflineBoardAcceptanceTest`: existing cancellation, overwrite protection and
   engine replacement checks, plus all four successful chooser flows, actual
   main-window ownership, Chinese filenames and preservation of the live tree.
 
-The final focused headless run passed 173 tests, with no failures, errors or
+The final focused headless run passed 176 tests, with no failures, errors or
 skips, including the detached-payload tests and analysis-engine regressions.
 Windows/Linux desktop acceptance and native filename typing are recorded
 separately by the integration task; programmatic chooser approval is not evidence

@@ -141,6 +141,20 @@ public class GameInfo {
     engineGameSaveSnapshot = original.engineGameSaveSnapshot;
   }
 
+  /** Detached save metadata; unlike setters, this must not call the UI while history is locked. */
+  public GameInfo copyForSave() {
+    GameInfo copy = new GameInfo();
+    copy.playerBlack = playerBlack;
+    copy.playerWhite = playerWhite;
+    copy.date = date == null ? null : new Date(date.getTime());
+    copy.komi = komi;
+    copy.changedKomi = changedKomi;
+    copy.handicap = handicap;
+    copy.result = result;
+    copy.copyEngineGameHistoryFrom(this);
+    return copy;
+  }
+
   public void clearEngineGameHistory() {
     engineGameRecordContext = null;
     engineGameRecord = null;
