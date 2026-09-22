@@ -1443,6 +1443,7 @@ public class Leelaz {
       launchCommands =
           KataGoRuntimeHelper.applyEntryLaunchPolicy(
               launchCommands, engineExecutable, threadPolicyAtStart);
+      rememberKataGoThreadLaunchOverride(launchCommands);
       appliedSearchThreads = selectedThreads;
       openClFp32CompatibilityActive =
           KataGoRuntimeHelper.isOpenClFp32CompatibilityActive(launchCommands, engineExecutable);

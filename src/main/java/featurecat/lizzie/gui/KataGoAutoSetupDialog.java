@@ -43,6 +43,7 @@ import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.LayoutManager;
 import java.awt.Point;
@@ -275,6 +276,9 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JComboBox<Backend> cmbExperimentalBackend = new JComboBox<>(Backend.values());
   private final JFontButton btnInstallExperimentalBackend = new JFontButton();
   private final JFontButton btnOptimizePerformance = new JFontButton();
+  private final JFontButton btnImportMeasuredTuning = new JFontButton();
+  private final JFontButton btnRestoreMeasuredTuning = new JFontButton();
+  private boolean measuredTuningBusy;
   public static final class OpenRequest {
     public final TensorRtRepairContext context;
     public final int sectionIndex;
@@ -806,6 +810,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     cmbExperimentalBackend.setPrototypeDisplayValue(Backend.ROCM_GFX110X);
     cmbExperimentalBackend.setMaximumRowCount(Backend.values().length);
     btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
+    btnImportMeasuredTuning.setText(text("MeasuredTuning.import"));
+    btnRestoreMeasuredTuning.setText(text("MeasuredTuning.restore"));
     btnExperimentalPerformance.setText(text("AutoSetup.experimentalPerformance"));
     btnExperimentalPerformance.setVisible(false);
     setStopAction("AutoSetup.stopDownload");
@@ -950,6 +956,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallExperimentalBackend.addActionListener(e -> startExperimentalBackendInstall());
     cmbExperimentalBackend.addActionListener(e -> updateExperimentalBackendInfo());
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark(false));
+    btnImportMeasuredTuning.addActionListener(e -> MeasuredTuningDialog.importReport(
+        this, measuredTuningEntryId(), this::setMeasuredTuningBusy, this::updateBenchmarkInfo));
+    btnRestoreMeasuredTuning.addActionListener(e -> MeasuredTuningDialog.restore(
+        this, measuredTuningEntryId(), this::setMeasuredTuningBusy, this::updateBenchmarkInfo));
     btnExperimentalPerformance.addActionListener(e -> startPerformanceBenchmark(true));
     btnStopDownload.addActionListener(e -> stopActiveDownload());
     btnClose.addActionListener(e -> closeOrCancelActiveTask());
@@ -1672,9 +1682,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     JPanel lower = new JPanel(new BorderLayout(0, 64));
     lower.setOpaque(false);
     lower.add(explanationStack, BorderLayout.CENTER);
-    lower.add(
-        createActionBar(FlowLayout.RIGHT, btnExperimentalPerformance, btnOptimizePerformance),
-        BorderLayout.SOUTH);
+    JPanel performanceActions = new JPanel(new GridLayout(0, 1, 0, 8));
+    performanceActions.setOpaque(false);
+    performanceActions.add(createActionBar(FlowLayout.RIGHT, btnExperimentalPerformance, btnOptimizePerformance));
+    performanceActions.add(createActionBar(FlowLayout.RIGHT, btnImportMeasuredTuning, btnRestoreMeasuredTuning));
+    lower.add(performanceActions, BorderLayout.SOUTH);
     content.add(lower, BorderLayout.CENTER);
     section.add(content, BorderLayout.CENTER);
     return section;
@@ -3075,6 +3087,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void updateBenchmarkInfo() {
+    updateMeasuredTuningActions();
     EngineData targetEntry =
         featurecat.lizzie.util.EngineThreadPolicy.findSavedEntry(
             snapshot == null ? selectedBenchmarkEntryId : snapshot.savedEntryId);
@@ -3165,6 +3178,29 @@ public class KataGoAutoSetupDialog extends JDialog {
             && canRunBenchmark()
             && activeWorkerThread == null
             && activeDownloadSession == null);
+  }
+
+  private String measuredTuningEntryId() {
+    if (!selectedBenchmarkEntryId.isBlank()) return selectedBenchmarkEntryId;
+    if (snapshot != null && !snapshot.savedEntryId.isBlank()) return snapshot.savedEntryId;
+    if (benchmarkTarget != null && snapshot == benchmarkTarget.snapshot) return benchmarkTarget.entryId;
+    return "";
+  }
+
+  private void setMeasuredTuningBusy(boolean busy) {
+    measuredTuningBusy = busy;
+    updateMeasuredTuningActions();
+  }
+
+  private void updateMeasuredTuningActions() {
+    String entryId = measuredTuningEntryId();
+    boolean enabled = !entryId.isBlank() && !measuredTuningBusy
+        && activeWorkerThread == null && activeDownloadSession == null;
+    btnImportMeasuredTuning.setEnabled(enabled);
+    btnRestoreMeasuredTuning.setEnabled(enabled && featurecat.lizzie.util.MeasuredKataGoTuning.hasProfile(entryId));
+    String hint = entryId.isBlank() ? text("MeasuredTuning.selectEntry") : text("MeasuredTuning.hint");
+    btnImportMeasuredTuning.setToolTipText(hint);
+    btnRestoreMeasuredTuning.setToolTipText(hint);
   }
 
   private void renderBenchmarkReport(

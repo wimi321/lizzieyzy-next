@@ -1738,10 +1738,11 @@ public final class KataGoRuntimeHelper {
     List<String> launch = applyStoredAppleTuningProfile(command, enginePath, entry);
     if (!isAppleSiliconHost())
       launch = applyStoredOfficialBenchmarkGpuSettings(launch, enginePath, entry);
-    return threads > 0
+    launch = threads > 0
         ? KataGoCommandSpec.parse(launch)
             .withForcedOverrides(Map.of("numSearchThreads", String.valueOf(threads)))
         : launch;
+    return MeasuredKataGoTuning.applyLive(launch, entry);
   }
 
   static List<String> applyStoredOfficialBenchmarkGpuSettings(
@@ -5022,6 +5023,8 @@ public final class KataGoRuntimeHelper {
     }
 
     if (wholeGameThroughput && looksLikeKataGoCommand(engineCommand)) {
+      List<String> measured = MeasuredKataGoTuning.applyWholeGame(commandParts, engineCommand);
+      if (measured != commandParts) return buildCommandLine(measured);
       AnalysisThreadProfile profile = resolveWholeGameAnalysisProfile();
       if (!hasAnalysisThreadOverride) {
         appendOverrideConfig(commandParts, "numAnalysisThreads=" + profile.numAnalysisThreads);
