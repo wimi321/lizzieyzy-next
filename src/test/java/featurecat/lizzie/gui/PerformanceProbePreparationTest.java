@@ -14,6 +14,30 @@ import org.junit.jupiter.api.Test;
 
 class PerformanceProbePreparationTest {
   @Test
+  void ordinaryHistoryIsDrainedBeforePositionConfirmationIsCaptured() throws Exception {
+    java.util.ArrayDeque<Runnable> queued = new java.util.ArrayDeque<>();
+    List<String> actions = new java.util.ArrayList<>();
+    CompletableFuture<Void> acknowledged = new CompletableFuture<>();
+    queued.add(() -> actions.add("ordinary-restore"));
+    CompletableFuture<Void> ready =
+        PerformanceProbePreparation.afterOrdinaryHistory(
+            queued::add,
+            () -> {
+              actions.add("confirm-current-lineage");
+              return acknowledged;
+            });
+    assertTrue(actions.isEmpty());
+    queued.remove().run();
+    assertEquals(List.of("ordinary-restore"), actions);
+    assertFalse(ready.isDone());
+    queued.remove().run();
+    assertEquals(List.of("ordinary-restore", "confirm-current-lineage"), actions);
+    assertFalse(ready.isDone());
+    acknowledged.complete(null);
+    ready.get(1, TimeUnit.SECONDS);
+  }
+
+  @Test
   void waitsForProductionRestoreAndStopAcknowledgementBeforeClearingCache() throws Exception {
     CountDownLatch waitingForRestore = new CountDownLatch(1);
     CompletableFuture<Void> restored =

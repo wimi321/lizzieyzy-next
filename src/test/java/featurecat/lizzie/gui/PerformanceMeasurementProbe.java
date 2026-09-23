@@ -238,19 +238,22 @@ public final class PerformanceMeasurementProbe {
         });
     // Loading schedules board synchronization on the next EDT turn; wait for it to settle.
     await(() -> Lizzie.frame.canGoAfterload, 30);
-    CompletableFuture<Void> restored =
-        edt(
-            () -> {
-              verifyFixture(fixture);
-              if (primary.isPondering()) Lizzie.frame.togglePonderMannul();
-              Lizzie.board.goToMoveNumber(Math.max(0, fixture.getJSONArray("moves").length() - 1));
-              clearAnalysis();
-              if (!primary.isPondering()) Lizzie.frame.togglePonderMannul();
-              // canGoAfterload and a raw GTP name/clear_cache ACK do not drain Board's restore
-              // executor. This production future queues an exact current-position restore and only
-              // completes after its engine confirmation, behind any preceding load/navigation work.
-              return Lizzie.board.applyReadBoardSync(() -> {}, () -> true);
-            });
+    PerformanceProbePreparation.ordinaryHistoryRestored(primary).get(30, TimeUnit.SECONDS);
+    edt(
+        () -> {
+          verifyFixture(fixture);
+          if (primary.isPondering()) Lizzie.frame.togglePonderMannul();
+          Lizzie.board.goToMoveNumber(Math.max(0, fixture.getJSONArray("moves").length() - 1));
+          clearAnalysis();
+          return null;
+        });
+    PerformanceProbePreparation.ordinaryHistoryRestored(primary).get(30, TimeUnit.SECONDS);
+    edt(
+        () -> {
+          if (!primary.isPondering()) Lizzie.frame.togglePonderMannul();
+          return null;
+        });
+    CompletableFuture<Void> restored = PerformanceProbePreparation.ordinaryHistoryRestored(primary);
     PerformanceProbePreparation.realtime(
         restored,
         () ->

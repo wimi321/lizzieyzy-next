@@ -1,6 +1,10 @@
 package featurecat.lizzie.gui;
 
+import featurecat.lizzie.analysis.Leelaz;
+import featurecat.lizzie.analysis.PerformanceProbeEngineAccess;
+import featurecat.lizzie.rules.Board;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import javax.swing.SwingUtilities;
 
@@ -17,6 +21,23 @@ final class PerformanceProbePreparation {
   }
 
   private PerformanceProbePreparation() {}
+
+  static CompletableFuture<Void> ordinaryHistoryRestored(Leelaz engine)
+      throws ReflectiveOperationException {
+    // Observe completion of the real queue; do not insert an additional position restore, which
+    // would supersede an earlier ordinary navigation/resume restore captured on the same EDT turn.
+    java.lang.reflect.Field executor = Board.class.getDeclaredField("HISTORY_RESTORE_EXECUTOR");
+    executor.setAccessible(true);
+    return afterOrdinaryHistory(
+        (Executor) executor.get(null), () -> PerformanceProbeEngineAccess.confirmPosition(engine));
+  }
+
+  static CompletableFuture<Void> afterOrdinaryHistory(
+      Executor historyExecutor,
+      java.util.function.Supplier<CompletableFuture<Void>> confirmPosition) {
+    return CompletableFuture.runAsync(() -> {}, historyExecutor)
+        .thenCompose(ignored -> confirmPosition.get());
+  }
 
   static void realtime(
       CompletableFuture<Void> restored, Action armAnalysis, Command acknowledgedCommand)

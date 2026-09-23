@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -12,6 +13,14 @@ public final class PerformanceProbeEngineAccess {
     java.lang.reflect.Field process = Leelaz.class.getDeclaredField("process");
     process.setAccessible(true);
     return (Process) process.get(engine);
+  }
+
+  public static CompletableFuture<Void> confirmPosition(Leelaz engine) {
+    CompletableFuture<Void> confirmed = new CompletableFuture<>();
+    engine.confirmBoardSynchronization(
+        () -> confirmed.complete(null),
+        detail -> confirmed.completeExceptionally(new IllegalStateException(detail)));
+    return confirmed;
   }
 
   public static void barrier(Leelaz engine, String command)
