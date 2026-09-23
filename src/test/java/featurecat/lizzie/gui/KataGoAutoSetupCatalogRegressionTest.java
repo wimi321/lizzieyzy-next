@@ -140,7 +140,17 @@ class KataGoAutoSetupCatalogRegressionTest {
   private static HeadlessRefreshDialog unconstructedDialog() throws Exception {
     Field field = Unsafe.class.getDeclaredField("theUnsafe");
     field.setAccessible(true);
-    return (HeadlessRefreshDialog) ((Unsafe) field.get(null)).allocateInstance(HeadlessRefreshDialog.class);
+    HeadlessRefreshDialog dialog =
+        (HeadlessRefreshDialog) ((Unsafe) field.get(null)).allocateInstance(HeadlessRefreshDialog.class);
+    // Keep actual button instances when another independently tested feature adds completion UI.
+    // Only the top-level native window construction is bypassed by this headless fixture.
+    for (Field button : KataGoAutoSetupDialog.class.getDeclaredFields()) {
+      if (button.getType() == JFontButton.class) {
+        button.setAccessible(true);
+        button.set(dialog, new JFontButton());
+      }
+    }
+    return dialog;
   }
 
   private static void set(Object target, String name, Object value) throws Exception {
