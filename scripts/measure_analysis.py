@@ -230,7 +230,13 @@ def whole_game(engine, fixture, budget):
     deadline = time.perf_counter() + engine.timeout
     while True:
         _, line = engine.receive(deadline)
-        if line and json.loads(line).get('id') == 'cancel':
+        if not line:
+            continue
+        value = json.loads(line)
+        if 'error' in value:
+            raise RuntimeError(value)
+        if (value.get('id') == 'cancel' and value.get('isDuringSearch') is True
+                and value.get('rootInfo', {}).get('visits', 0) > 0):
             break
     cancel_start = time.perf_counter()
     engine.send(json.dumps(dict(id='terminate', action='terminate', terminateId='cancel')))
@@ -241,11 +247,16 @@ def whole_game(engine, fixture, budget):
         if not line:
             continue
         value = json.loads(line)
+        if 'error' in value:
+            raise RuntimeError(value)
         if value.get('id') == 'cancel' and not value.get('isDuringSearch', False):
+            if value.get('turnNumber') not in turns or value['turnNumber'] in cancelled:
+                raise RuntimeError('Unexpected or duplicate cancellation response')
             cancelled.add(value['turnNumber'])
     return {'scene': 'whole-game-analysis', 'seconds': elapsed, 'firstResultSeconds': first,
             'positions': len(turns), 'positionsPerSecond': len(turns) / elapsed,
             'rootVisitsByTurn': complete, 'cancelCompleteSeconds': timestamp - cancel_start,
+            'cancellationSearchConfirmed': True,
             'cancellationMethod': 'json-terminate-all-final-responses'}
 
 

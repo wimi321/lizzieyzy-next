@@ -5,12 +5,16 @@ import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.PerformanceProbeEngineAccess;
 import featurecat.lizzie.rules.BoardHistoryNode;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -48,16 +52,13 @@ public final class PerformanceMeasurementProbe {
 
   private static final class MeasuredAnalysisEngine extends AnalysisEngine {
     private volatile CountDownLatch cacheCleared;
-    private String effectiveCommand;
+    private final Set<String> cancellationIds = ConcurrentHashMap.newKeySet();
+    private volatile boolean cancellationProbe;
+    private volatile boolean cancellationStarted;
+    private volatile long firstResultNanos;
 
     MeasuredAnalysisEngine(int visits) throws java.io.IOException {
       super(false, AnalysisEngine.Workload.WHOLE_GAME, visits);
-    }
-
-    @Override
-    public void startEngine(String command) {
-      effectiveCommand = command;
-      super.startEngine(command);
     }
 
     @Override
@@ -66,9 +67,33 @@ public final class PerformanceMeasurementProbe {
       if (value.optString("id").equals("measurement-clear")
           && value.optString("action").equals("clear_cache")) {
         cacheCleared.countDown();
+      } else if (cancellationProbe && cancellationIds.contains(value.optString("id"))) {
+        if (value.optBoolean("isDuringSearch")
+            && value.optJSONObject("rootInfo") != null
+            && value.getJSONObject("rootInfo").optInt("visits") > 0) cancellationStarted = true;
+        // Only the separate cancellation workload enables intermediate reports. Do not feed
+        // those reports to the production final-result parser or complete a request prematurely.
+        if (!value.optBoolean("isDuringSearch")) super.parseResult(line);
       } else {
+        if (firstResultNanos == 0
+            && value.optJSONObject("rootInfo") != null
+            && value.getJSONObject("rootInfo").optInt("visits") > 0)
+          firstResultNanos = System.nanoTime();
         super.parseResult(line);
       }
+    }
+
+    @Override
+    public boolean sendCommand(String command) {
+      if (cancellationProbe && command.startsWith("{")) {
+        JSONObject request = new JSONObject(command);
+        if (request.optInt("maxVisits") == 1000000000) {
+          cancellationIds.add(request.getString("id"));
+          request.put("reportDuringSearchEvery", 0.1);
+          command = request.toString();
+        }
+      }
+      return super.sendCommand(command);
     }
 
     void clearCache() throws Exception {
@@ -96,6 +121,49 @@ public final class PerformanceMeasurementProbe {
 
   private static double seconds(long start) {
     return (System.nanoTime() - start) / 1e9;
+  }
+
+  private static JSONObject actualLaunch(Process process) throws Exception {
+    if (process == null || !process.isAlive())
+      throw new AssertionError("No live local measurement engine");
+    ProcessHandle.Info info = process.info();
+    String commandLine = info.commandLine().orElse("");
+    String source = "ProcessHandle.Info";
+    JSONArray argv = new JSONArray();
+    if (info.command().isPresent() && info.arguments().isPresent()) {
+      argv.put(info.command().orElseThrow());
+      for (String argument : info.arguments().orElseThrow()) argv.put(argument);
+    }
+    if (commandLine.isBlank() && System.getProperty("os.name").startsWith("Windows")) {
+      // Windows JDKs may expose only the executable. Query this exact owned PID, outside timing.
+      Process query =
+          new ProcessBuilder(
+                  "powershell.exe",
+                  "-NoProfile",
+                  "-NonInteractive",
+                  "-Command",
+                  "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+                      + "(Get-CimInstance Win32_Process -Filter 'ProcessId = "
+                      + process.pid()
+                      + "').CommandLine")
+              .redirectErrorStream(true)
+              .start();
+      if (!query.waitFor(15, TimeUnit.SECONDS)) {
+        query.destroyForcibly();
+        throw new AssertionError("Actual engine command line query timed out");
+      }
+      commandLine =
+          new String(query.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+      if (query.exitValue() != 0) throw new AssertionError("Actual command query failed");
+      source = "Win32_Process.CommandLine";
+    }
+    if ((commandLine.isBlank() && argv.isEmpty()) || !process.isAlive())
+      throw new AssertionError("Actual engine launch arguments unavailable");
+    return new JSONObject()
+        .put("pid", process.pid())
+        .put("effectiveCommand", commandLine.isBlank() ? argv.toString() : commandLine)
+        .put("effectiveCommandArgs", argv)
+        .put("commandEvidenceSource", source);
   }
 
   private static void clearAnalysis() {
@@ -170,16 +238,36 @@ public final class PerformanceMeasurementProbe {
         });
     // Loading schedules board synchronization on the next EDT turn; wait for it to settle.
     await(() -> Lizzie.frame.canGoAfterload, 30);
+    CompletableFuture<Void> restored =
+        edt(
+            () -> {
+              verifyFixture(fixture);
+              if (primary.isPondering()) Lizzie.frame.togglePonderMannul();
+              Lizzie.board.goToMoveNumber(Math.max(0, fixture.getJSONArray("moves").length() - 1));
+              clearAnalysis();
+              if (!primary.isPondering()) Lizzie.frame.togglePonderMannul();
+              // canGoAfterload and a raw GTP name/clear_cache ACK do not drain Board's restore
+              // executor. This production future queues an exact current-position restore and only
+              // completes after its engine confirmation, behind any preceding load/navigation work.
+              return Lizzie.board.applyReadBoardSync(() -> {}, () -> true);
+            });
+    PerformanceProbePreparation.realtime(
+        restored,
+        () ->
+            edt(
+                () -> {
+                  if (!primary.isPondering()) primary.ponder();
+                  if (Lizzie.leelaz != primary || !primary.isPondering())
+                    throw new AssertionError("Ordinary realtime analysis could not be armed");
+                  return null;
+                }),
+        command -> PerformanceProbeEngineAccess.barrier(primary, command));
+    JSONObject launch = actualLaunch(PerformanceProbeEngineAccess.process(primary));
     edt(
         () -> {
-          verifyFixture(fixture);
-          if (primary.isPondering()) Lizzie.frame.togglePonderMannul();
-          Lizzie.board.goToMoveNumber(Math.max(0, fixture.getJSONArray("moves").length() - 1));
           clearAnalysis();
-          if (!primary.isPondering()) Lizzie.frame.togglePonderMannul();
           return null;
         });
-    PerformanceProbeEngineAccess.barrier(primary, "clear_cache");
     startSampling();
     long start = System.nanoTime();
     edt(
@@ -212,7 +300,11 @@ public final class PerformanceMeasurementProbe {
         .put("observedRootVisits", observed)
         .put("visitsPerSecond", observed / elapsed)
         .put("pauseAckSeconds", seconds(pause))
-        .put("effectiveCommand", primary.engineCommand());
+        .put("configuredCommand", primary.engineCommand())
+        .put("launch", launch)
+        .put("effectiveCommand", launch.getString("effectiveCommand"))
+        .put("effectiveCommandArgs", launch.getJSONArray("effectiveCommandArgs"))
+        .put("restorationConfirmedBeforeCacheClear", true);
   }
 
   private static JSONObject wholeGame(
@@ -226,9 +318,13 @@ public final class PerformanceMeasurementProbe {
         });
     Lizzie.config.analysisEngineCommand = command;
     Lizzie.config.analysisReuseCurrentEngine = false;
+    long engineStartup = System.nanoTime();
     MeasuredAnalysisEngine engine = new MeasuredAnalysisEngine(visits);
     Lizzie.frame.analysisEngine = engine;
     await(engine::isLoaded, 120);
+    engine.clearCache();
+    double engineStartupSeconds = seconds(engineStartup);
+    JSONObject launch = actualLaunch(engine.process);
     List<BoardHistoryNode> nodes =
         edt(
             () -> {
@@ -254,6 +350,7 @@ public final class PerformanceMeasurementProbe {
         AtomicBoolean failed = new AtomicBoolean();
         engine.setCompletionCallback(() -> complete.set(true));
         engine.setFailureCallback(() -> failed.set(true));
+        engine.firstResultNanos = 0;
         startSampling();
         long start = System.nanoTime();
         int count = edt(() -> engine.startWholeGameRequest(nodes, visits, true));
@@ -272,20 +369,32 @@ public final class PerformanceMeasurementProbe {
         result =
             new JSONObject()
                 .put("seconds", elapsed)
+                .put("firstResultSeconds", (engine.firstResultNanos - start) / 1e9)
                 .put("positions", count)
                 .put("positionsPerSecond", count / elapsed)
                 .put("observedVisits", observed)
-                .put("effectiveCommand", engine.effectiveCommand);
+                .put("configuredCommand", command)
+                .put("launch", launch)
+                .put("effectiveCommand", launch.getString("effectiveCommand"))
+                .put("effectiveCommandArgs", launch.getJSONArray("effectiveCommandArgs"))
+                .put("engineStartupSeconds", engineStartupSeconds);
       }
       // Cancellation is a separate workload and never substitutes for a budget-complete sample.
-      edt(() -> engine.startWholeGameRequest(nodes, 1000000000, true));
-      Thread.sleep(100);
+      engine.cancellationProbe = true;
+      int cancellationRequests = edt(() -> engine.startWholeGameRequest(nodes, 1000000000, true));
+      if (cancellationRequests != nodes.size())
+        throw new AssertionError("Incomplete cancellation request submission");
+      await(() -> engine.cancellationStarted, 120);
+      Process cancellationProcess = engine.process;
+      if (cancellationProcess == null || !cancellationProcess.isAlive())
+        throw new AssertionError("Cancellation workload engine is not running");
       long cancel = System.nanoTime();
       engine.normalQuit();
-      if (!engine.process.waitFor(10, TimeUnit.SECONDS))
+      if (!cancellationProcess.waitFor(10, TimeUnit.SECONDS))
         throw new AssertionError("Cancellation left engine alive");
       result
           .put("cancelCompleteSeconds", seconds(cancel))
+          .put("cancellationSearchConfirmed", true)
           .put("cancellationMethod", "production-worker-process-exit");
       return result;
     } finally {
@@ -302,9 +411,6 @@ public final class PerformanceMeasurementProbe {
     String command = request.getString("command");
     int visits = request.getInt("visits");
     System.setProperty("lizzie.work.dir", directory.toString());
-    System.setProperty("lizzie.analysis.diagnostics", "true");
-    System.setProperty(
-        "lizzie.analysis.diagnostics.path", directory.resolve("diagnostics.jsonl").toString());
     JSONObject ui =
         new JSONObject()
             .put("autoload-default", realtime)
@@ -400,7 +506,9 @@ public final class PerformanceMeasurementProbe {
       Collections.sort(ordered);
       result
           .put("status", "PASS")
+          .put("measurementContractVersion", 2)
           .put("startupSeconds", startupSeconds)
+          .put("startupScope", realtime ? "application-and-main-engine" : "application-window-only")
           .put("edtSamples", ordered.size())
           .put("edtLatencySeconds", new JSONArray(ordered))
           .put(

@@ -65,7 +65,9 @@ $measurementClasspath = (Join-Path $PWD 'target/test-classes') + ';' + `
 # --app-classpath $measurementClasspath --java "$env:JAVA_HOME\bin\java.exe"
 ```
 
-应用探针额外保存 EDT 事件延迟样本、Java 堆使用量和应用最终命令；整盘取消按生产流程关闭专用引擎。探针仅对其测试清缓存命令的回执作特殊处理，其余分析仍交给生产解析器。引擎侧和应用侧须使用相同 manifest 输入；不能用不同局面的官方 benchmark 来计算应用开销。`--scene realtime` 或 `--scene whole-game` 可单独复测。
+应用探针额外保存 EDT 事件延迟样本、Java 堆使用量和实际子进程最终命令（优先 OS argv，Windows 必要时按本次引擎 PID 读取 CIM command line，绝不以配置中的原始命令代替）。实时测量先等待生产棋盘恢复的确认 Future，再等 stop 和 clear_cache 回执，最后才从实际落子开始计时；只等“载入完成”界面标志或随意插入 GTP 回执不能证明异步恢复队列已清空。修正后的报告标记 `measurementContractVersion: 2`；无此标记的旧应用测量仅保留作诊断，不能作为推荐依据。
+
+整盘单独记录专用引擎启动时间，取消测试必须先观察到该请求的正 visits 搜索中报告，再走生产关闭专用引擎流程并等待真实进程退出。清缓存 ACK 与取消测试的中间报告由测试探针识别，预算测量仍使用生产请求及最终结果解析器。应用进程退出与裸 JSON 引擎的终止回执属于不同取消机制，不直接混算。引擎侧和应用侧须使用相同 manifest 输入；不能用不同局面的官方 benchmark 来计算应用开销。`--scene realtime` 或 `--scene whole-game` 可单独复测；`performance-midgame.json` 提供另一组 80 手中盘 fixture。
 
 运行期间不要并行运行其他引擎、编译或桌面验收。Windows WDDM 的进程显存可能显示 `N/A`；此时总 GPU 显存不能冒充单进程显存，其他桌面程序的占用也应记录为限制。样本失败立即停止，原始失败日志保留；不要混入成功样本，也不要覆盖旧输出目录。
 

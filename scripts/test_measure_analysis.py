@@ -51,14 +51,25 @@ class MeasurementTest(unittest.TestCase):
         engine = RecordedEngine([
             '{"id":"game","turnNumber":1,"rootInfo":{"visits":5000},"isDuringSearch":false}',
             '{"id":"game","turnNumber":0,"rootInfo":{"visits":5000},"isDuringSearch":false}',
-            '{"id":"cancel","turnNumber":0,"isDuringSearch":true}',
+            '{"id":"cancel","turnNumber":0,"isDuringSearch":true,"rootInfo":{"visits":0}}',
+            '{"id":"cancel","turnNumber":0,"isDuringSearch":true,"rootInfo":{"visits":1}}',
             '{"id":"terminate","action":"terminate","terminateId":"cancel"}',
             '{"id":"cancel","turnNumber":0,"isDuringSearch":false}',
             '{"id":"cancel","turnNumber":1,"isDuringSearch":false,"noResults":true}',
         ])
         result = measurement.whole_game(engine, dict(boardSize=19, komi=7.5, rules='tromp-taylor', moves=[['B', 'D4']]), 5000)
         self.assertEqual(2, result['positions'])
+        self.assertTrue(result['cancellationSearchConfirmed'])
         self.assertEqual([], list(engine.lines))
+
+    def test_cancellation_error_is_not_search_start_confirmation(self):
+        engine = RecordedEngine([
+            '{"id":"game","turnNumber":0,"rootInfo":{"visits":5000},"isDuringSearch":false}',
+            '{"id":"cancel","error":"request rejected"}',
+        ])
+        with self.assertRaisesRegex(RuntimeError, 'request rejected'):
+            measurement.whole_game(engine, dict(boardSize=19, komi=7.5, rules='tromp-taylor', moves=[]), 5000)
+        self.assertFalse(any('terminateId' in str(command) for command in engine.sent))
 
     def test_real_subprocess_early_exit_fails_and_resources_close(self):
         import sys
