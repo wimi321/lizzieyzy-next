@@ -114,6 +114,16 @@ class RunLocalCiTest(unittest.TestCase):
                                "scripts/test_run_acceptance.py"):
                     self.assertTrue(any(script in command for command in commands), script)
 
+    def test_measured_analysis_summary_is_tested_on_both_ci_platforms(self):
+        script = "scripts/test_summarize_measured_analysis.py"
+        for profile in ("windows", "portable"):
+            with self.subTest(profile=profile):
+                commands = [step.command for step in run_local_ci.build_steps(
+                    profile, "mvn", "bash", "pwsh", "scripts")]
+                self.assertTrue(any(script in command for command in commands))
+        self.assertIn(script, run_local_ci.PY_COMPILE_FILES)
+        self.assertIn("scripts/summarize_measured_analysis.py", run_local_ci.PY_COMPILE_FILES)
+
     def test_desktop_plan_selects_all_required_classes(self):
         steps = run_local_ci.build_steps("portable", "mvn", None, None, "desktop")
 

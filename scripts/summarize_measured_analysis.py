@@ -132,6 +132,19 @@ def command_details(tokens):
                           if key not in TUNING_KEYS | LOCATION_KEYS}}
 
 
+def effective_tokens(sample, manifest):
+    """Prefer the observed process argv; only fall back when OS argv is unavailable."""
+    tokens = sample.get("effectiveCommandArgs", [])
+    require(isinstance(tokens, list) and all(isinstance(token, str) for token in tokens),
+            "Invalid effectiveCommandArgs")
+    if tokens:
+        return tokens
+    command = sample.get("effectiveCommand")
+    require(isinstance(command, str) and command, "No final effective command was recorded")
+    return (split_windows_command(command) if manifest.get("os", "").startswith("Windows")
+            else shlex.split(command))
+
+
 def telemetry(path):
     """One GPU only: never silently pick a device without a recorded GPU UUID."""
     identity, memories, utilizations, counts, times = None, [], [], [], []
@@ -248,10 +261,9 @@ def export_report(evidence, scene, baseline="baseline", candidate="candidate"):
         raw = read_json(row["directory"] / "app-result.json")
         require(all(sample.get(key) == value for key, value in raw.items()), "App/result evidence mismatch")
         require(raw.get("status") == "PASS", "Raw application probe did not pass")
-        command = sample.get("effectiveCommand")
-        require(isinstance(command, str) and command, "No final effective command was recorded")
-        tokens = (split_windows_command(command) if manifest.get("os", "").startswith("Windows")
-                  else shlex.split(command))
+        require(raw.get("measurementContractVersion") == 2,
+                "Probe measurement contract version 2 is required; legacy restore timing is not certified")
+        tokens = effective_tokens(sample, manifest)
         actual = command_details(tokens)
         original = command_details(read_json(row["directory"] / "command.json"))
         require(actual["mode"] == ("gtp" if scene == "realtime" else "analysis"), "Wrong launch mode")

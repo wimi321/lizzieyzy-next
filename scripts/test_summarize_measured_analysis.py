@@ -50,7 +50,8 @@ class SummaryTest(unittest.TestCase):
                     command = [r"C:\Path with spaces\katago.exe", "gtp" if scene == "realtime" else "analysis",
                                "-model", r"C:\weights\中文.bin.gz", "-config", r"C:\cfg\gtp.cfg",
                                "-override-config", ",".join(f"{key}={value}" for key, value in params.items())]
-                    raw = {"status": "PASS", "seconds": 10.0 if profile == "baseline" else 8.0,
+                    raw = {"status": "PASS", "measurementContractVersion": 2,
+                           "seconds": 10.0 if profile == "baseline" else 8.0,
                            "startupSeconds": 2.0, "effectiveCommand": subprocess.list2cmdline(command),
                            "edtSamples": 20, "edtLatencySeconds": [.001] * 20}
                     if scene == "realtime":
@@ -133,6 +134,30 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual("true", semantics["logToStderr"])
         self.assertFalse((summary.TUNING_KEYS | summary.LOCATION_KEYS) & semantics.keys())
         self.assertEqual([], self.report()["fingerprint"]["configIncludes"])
+
+    def test_actual_process_argv_takes_precedence_over_display_command(self):
+        raw = self.samples[4]
+        actual = summary.split_windows_command(raw["effectiveCommand"])
+        self.mutate_raw("realtime", "effectiveCommandArgs", actual)
+        self.mutate_raw("realtime", "effectiveCommand", "display string is not a command")
+        self.assertEqual(16, self.report()["candidateParameters"]["numSearchThreads"])
+
+    def test_empty_argv_falls_back_to_observed_os_command_line(self):
+        self.mutate_raw("realtime", "effectiveCommandArgs", [])
+        self.assertEqual(16, self.report()["candidateParameters"]["numSearchThreads"])
+
+    def test_malformed_argv_never_falls_back(self):
+        self.mutate_raw("realtime", "effectiveCommandArgs", [None])
+        with self.assertRaisesRegex(ValueError, "Invalid effectiveCommandArgs"):
+            self.report()
+
+    def test_legacy_probe_cannot_export_even_without_invalid_reason(self):
+        self.mutate_raw("realtime", "measurementContractVersion", 1)
+        with self.assertRaisesRegex(ValueError, "contract version 2"):
+            self.report()
+        self.mutate_raw("realtime", "measurementContractVersion", None)
+        with self.assertRaisesRegex(ValueError, "contract version 2"):
+            self.report()
 
     def test_windows_command_round_trip(self):
         tokens = [r"C:\a b\katago.exe", "gtp", "-model", r"C:\中文\model.gz",

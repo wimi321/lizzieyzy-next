@@ -38,8 +38,18 @@ produce a recommendation; it was only used to check the parser's read path.
 The tool reads the actual `manifest.json`, ordered `results.json`, and each
 run's `result.json`, `app-result.json`, `command.json`, and `gpu.jsonl`. The GPU
 file is JSON Lines containing NVIDIA CSV strings, not a standalone CSV file.
-The application probe's final `effectiveCommand`, rather than only the requested
-command, supplies effective tuning values and non-concurrency semantics.
+The application probe's `effectiveCommandArgs` is the argv observed from the
+running OS process, rather than the requested command; this array supplies
+effective tuning values and non-concurrency semantics. If the OS cannot return
+argv (an absent or empty array), the tool falls back to `effectiveCommand`, which
+must be the observed OS command line, not an application-side request string.
+Malformed nonempty arrays do not fall back silently.
+
+Exports require `measurementContractVersion: 2`, the probe contract with
+confirmed fixture restoration and bounded response measurements. Legacy samples
+without this contract remain readable in the summary tables but cannot produce
+import JSON, even if `--invalid-reason` is omitted. This supplements, rather than
+replaces, independent review of the actual probe revision and run logs.
 
 Round 0 is retained in the cold table and excluded from all tuning exports.
 Warm exports require complete, consecutive, alternating 3- or 5-round pairs.

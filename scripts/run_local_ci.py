@@ -146,6 +146,8 @@ PY_COMPILE_FILES = (
     "scripts/summarize_jfr.py",
     "scripts/measure_analysis.py",
     "scripts/test_measure_analysis.py",
+    "scripts/summarize_measured_analysis.py",
+    "scripts/test_summarize_measured_analysis.py",
     "scripts/test_audit_katago_binary_version.py",
     "scripts/test_audit_katago_package_metadata.py",
     "scripts/test_generate_release_notes.py",
@@ -204,6 +206,7 @@ DIRECT_PYTHON_TESTS = (
     "scripts/test_prepare_bundled_jcef.py",
     "scripts/test_prepare_bundled_nvidia_runtime.py",
     "scripts/test_windows_launcher_packaging.py",
+    "scripts/test_summarize_measured_analysis.py",
 )
 
 UNITTEST_MODULES = (
@@ -390,6 +393,7 @@ def windows_steps(maven: str, powershell: str) -> list[Step]:
         Step("Verify bundled JCEF logic", (python, "scripts/test_prepare_bundled_jcef.py")),
         Step("Verify CPU acceptance provisioning", (python, "scripts/test_prepare_cpu_engine_acceptance.py")),
         Step("Verify acceptance runner outcomes", (python, "scripts/test_run_acceptance.py")),
+        Step("Verify measured analysis evidence", (python, "scripts/test_summarize_measured_analysis.py")),
         Step(
             "Verify bundled NVIDIA runtime packaging",
             (python, "scripts/test_prepare_bundled_nvidia_runtime.py"),
