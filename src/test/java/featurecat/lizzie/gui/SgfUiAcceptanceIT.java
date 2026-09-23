@@ -75,6 +75,7 @@ import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
+import javax.swing.JTextField;
 import javax.swing.JTextPane;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
@@ -703,7 +704,7 @@ public final class SgfUiAcceptanceIT {
 
   private static void saveAsViaChooser(Robot robot, Path file, Path result) throws Exception {
     JFileChooser chooser = openSaveChooser(robot);
-    pasteFileName(robot, chooser, file);
+    JTextField filename = pasteFileName(robot, chooser, file);
     press(robot, KeyEvent.VK_ENTER);
     try {
       await(
@@ -712,9 +713,7 @@ public final class SgfUiAcceptanceIT {
           "save chooser approval");
     } catch (AssertionError failure) {
       String state =
-          edt(
-              () ->
-                  "selected=" + chooser.getSelectedFile() + ",field=" + LizzieFrame.text.getText());
+          edt(() -> "selected=" + chooser.getSelectedFile() + ",field=" + filename.getText());
       throw new AssertionError(failure.getMessage() + "; " + state, failure);
     }
     DesktopProbeProcess.phase(result, "file-save-approved");
@@ -757,30 +756,55 @@ public final class SgfUiAcceptanceIT {
     return chooserRef.get();
   }
 
-  private static void pasteFileName(Robot robot, JFileChooser chooser, Path file) throws Exception {
+  private static JTextField pasteFileName(Robot robot, JFileChooser chooser, Path file)
+      throws Exception {
+    AtomicReference<JTextField> filenameRef = new AtomicReference<>();
     await(
         () ->
             edt(
-                () ->
-                    LizzieFrame.text != null
-                        && LizzieFrame.text.isShowing()
-                        && LizzieFrame.text.isEnabled()
-                        && SwingUtilities.isDescendingFrom(LizzieFrame.text, chooser)),
+                () -> {
+                  JTextField filename = saveFileNameField(chooser);
+                  filenameRef.set(filename);
+                  return filename != null;
+                }),
         Deadline.after(Duration.ofSeconds(15)),
         "enabled visible save filename field");
+    JTextField filename = filenameRef.get();
     Toolkit.getDefaultToolkit()
         .getSystemClipboard()
         .setContents(new StringSelection(file.toAbsolutePath().toString()), null);
-    clickComponent(robot, LizzieFrame.text);
+    clickComponent(robot, filename);
     robot.keyPress(KeyEvent.VK_CONTROL);
     press(robot, KeyEvent.VK_A);
     press(robot, KeyEvent.VK_V);
     robot.keyRelease(KeyEvent.VK_CONTROL);
     robot.delay(100);
     await(
-        () -> edt(() -> LizzieFrame.text.getText().equals(file.toAbsolutePath().toString())),
+        () -> edt(() -> filename.getText().equals(file.toAbsolutePath().toString())),
         Deadline.after(Duration.ofSeconds(5)),
         "pasted save filename");
+    return filename;
+  }
+
+  // The standard chooser owns its input; the removed custom save dialog's static field is stale.
+  // Match the visible preset filename instead of assuming a look-and-feel-specific widget name.
+  // Ambiguous or hidden inputs must fail, never silently switch to programmatic file selection.
+  static JTextField saveFileNameField(JFileChooser chooser) {
+    java.io.File selected = chooser.getSelectedFile();
+    if (selected == null) return null;
+    List<JTextField> matching =
+        descendants(chooser).stream()
+            .filter(JTextField.class::isInstance)
+            .map(JTextField.class::cast)
+            .filter(Component::isShowing)
+            .filter(JTextField::isEnabled)
+            .filter(JTextField::isEditable)
+            .filter(
+                field ->
+                    selected.getName().equals(field.getText())
+                        || selected.getAbsolutePath().equals(field.getText()))
+            .toList();
+    return matching.size() == 1 ? matching.get(0) : null;
   }
 
   private static void clickChooserFile(Robot robot, JFileChooser chooser, String fileName)

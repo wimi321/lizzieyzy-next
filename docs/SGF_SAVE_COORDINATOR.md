@@ -61,6 +61,16 @@ Windows/Linux desktop acceptance and native filename typing are recorded
 separately by the integration task; programmatic chooser approval is not evidence
 of real keyboard input.
 
+The first Linux SGF/real-CPU acceptance run on 2026-09-23 passed the real engine
+case, but exposed a stale test dependency: `SgfUiAcceptanceIT` still waited for
+the removed custom save dialog's static `LizzieFrame.text`. Its filename lookup
+now locates the current chooser's visible, enabled, editable preset filename,
+and rejects missing or ambiguous candidates. Robot clicks, clipboard typing,
+Enter approval, overwrite cancellation and semantic round-trip assertions are
+unchanged. `SgfUiFilenameFieldTest` checks the lookup without a desktop; the
+full Linux keyboard flow must still pass separately. No production behavior was
+changed to accommodate the probe.
+
 No throughput improvement is claimed. Disk I/O has moved off the event thread;
 tree capture and serialization remain on it to preserve the existing serializer's
 board, rules and formatting context.
