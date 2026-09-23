@@ -1,6 +1,7 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.util.EngineThreadPolicy;
 import featurecat.lizzie.util.MeasuredKataGoTuning;
 import featurecat.lizzie.util.katago.tuning.KataGoMeasuredReport.Scene;
 import java.awt.Window;
@@ -36,70 +37,80 @@ final class MeasuredTuningDialog {
       return;
     }
     java.nio.file.Path reportPath = chooser.getSelectedFile().toPath();
-    SwingWorker<MeasuredKataGoTuning.Review, Void> worker = new SwingWorker<>() {
-      @Override
-      protected MeasuredKataGoTuning.Review doInBackground() throws Exception {
-        return MeasuredKataGoTuning.review(entryId, reportPath);
-      }
-
-      @Override
-      protected void done() {
-        if (!canDeliver(owner, token)) {
-          operation.finish(token);
-          return;
-        }
-        try {
-          var review = get();
-          var report = review.report();
-          String scene = text(report.scene() == Scene.LIVE ? "live" : "wholeGame");
-          String message =
-              scene
-                  + "\n"
-                  + report.baselineParameters()
-                  + " → "
-                  + report.candidateParameters()
-                  + "\n"
-                  + String.format(
-                      Locale.getDefault(), text("gain"), (report.assess().speedup() - 1) * 100)
-                  + "\n\n"
-                  + text("confirm");
-          if (JOptionPane.showConfirmDialog(
-                  owner,
-                  plainText(message),
-                  text("title"),
-                  JOptionPane.OK_CANCEL_OPTION,
-                  JOptionPane.QUESTION_MESSAGE)
-              == JOptionPane.OK_OPTION && canDeliver(owner, token)) {
-            runWorker(
-                owner,
-                busy,
-                changed,
-                () -> {
-                  MeasuredKataGoTuning.apply(review);
-                  return null;
-                });
+    SwingWorker<MeasuredKataGoTuning.Review, Void> worker =
+        new SwingWorker<>() {
+          @Override
+          protected MeasuredKataGoTuning.Review doInBackground() throws Exception {
+            return MeasuredKataGoTuning.review(entryId, reportPath);
           }
-        } catch (Exception failure) {
-          if (canDeliver(owner, token)) showFailure(owner, failure);
-        } finally {
-          operation.finish(token);
-        }
-      }
-    };
+
+          @Override
+          protected void done() {
+            if (!canDeliver(owner, token)) {
+              operation.finish(token);
+              return;
+            }
+            try {
+              var review = get();
+              var report = review.report();
+              String scene = text(report.scene() == Scene.LIVE ? "live" : "wholeGame");
+              String message =
+                  targetLabel(review.entryName(), review.entryId())
+                      + "\n"
+                      + scene
+                      + "\n"
+                      + report.baselineParameters()
+                      + " → "
+                      + report.candidateParameters()
+                      + "\n"
+                      + String.format(
+                          Locale.getDefault(), text("gain"), (report.assess().speedup() - 1) * 100)
+                      + "\n\n"
+                      + text("confirm");
+              if (JOptionPane.showConfirmDialog(
+                          owner,
+                          plainText(message),
+                          text("title"),
+                          JOptionPane.OK_CANCEL_OPTION,
+                          JOptionPane.QUESTION_MESSAGE)
+                      == JOptionPane.OK_OPTION
+                  && canDeliver(owner, token)) {
+                runWorker(
+                    owner,
+                    busy,
+                    changed,
+                    () -> {
+                      MeasuredKataGoTuning.apply(review);
+                      return null;
+                    });
+              }
+            } catch (Exception failure) {
+              if (canDeliver(owner, token)) showFailure(owner, failure);
+            } finally {
+              operation.finish(token);
+            }
+          }
+        };
     operation.attach(token, worker);
     worker.execute();
   }
 
   void restore(Window owner, String entryId, Consumer<Boolean> busy, Runnable changed) {
     if (!owner.isVisible() || !owner.isDisplayable()) return;
+    EngineData entry = EngineThreadPolicy.findSavedEntry(entryId);
+    if (entry == null) {
+      showFailure(owner, new IllegalStateException(EngineThreadPolicy.message("targetDeleted")));
+      return;
+    }
     long token = operation.begin(busy);
     if (JOptionPane.showConfirmDialog(
-            owner,
-            plainText(text("restoreConfirm")),
-            text("title"),
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.QUESTION_MESSAGE)
-        != JOptionPane.OK_OPTION || !canDeliver(owner, token)) {
+                owner,
+                plainText(targetLabel(entry.name, entryId) + "\n\n" + text("restoreConfirm")),
+                text("title"),
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.QUESTION_MESSAGE)
+            != JOptionPane.OK_OPTION
+        || !canDeliver(owner, token)) {
       operation.finish(token);
       return;
     }
@@ -116,31 +127,35 @@ final class MeasuredTuningDialog {
   private void runWorker(
       Window owner, Consumer<Boolean> busy, Runnable changed, Callable<Void> action) {
     long token = operation.begin(busy);
-    SwingWorker<Void, Void> worker = new SwingWorker<>() {
-      @Override
-      protected Void doInBackground() throws Exception {
-        return action.call();
-      }
+    SwingWorker<Void, Void> worker =
+        new SwingWorker<>() {
+          @Override
+          protected Void doInBackground() throws Exception {
+            return action.call();
+          }
 
-      @Override
-      protected void done() {
-        if (!canDeliver(owner, token)) {
-          operation.finish(token);
-          return;
-        }
-        try {
-          get();
-          changed.run();
-          if (canDeliver(owner, token))
-            JOptionPane.showMessageDialog(
-                owner, plainText(text("saved")), text("title"), JOptionPane.INFORMATION_MESSAGE);
-        } catch (Exception failure) {
-          if (canDeliver(owner, token)) showFailure(owner, failure);
-        } finally {
-          operation.finish(token);
-        }
-      }
-    };
+          @Override
+          protected void done() {
+            if (!canDeliver(owner, token)) {
+              operation.finish(token);
+              return;
+            }
+            try {
+              get();
+              changed.run();
+              if (canDeliver(owner, token))
+                JOptionPane.showMessageDialog(
+                    owner,
+                    plainText(text("saved")),
+                    text("title"),
+                    JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception failure) {
+              if (canDeliver(owner, token)) showFailure(owner, failure);
+            } finally {
+              operation.finish(token);
+            }
+          }
+        };
     operation.attach(token, worker);
     worker.execute();
   }
@@ -161,6 +176,11 @@ final class MeasuredTuningDialog {
     area.setEditable(false);
     area.setOpaque(false);
     return area;
+  }
+
+  static String targetLabel(String entryName, String entryId) {
+    String identity = (entryName == null ? "" : entryName) + " [" + entryId + "]";
+    return String.format(Locale.getDefault(), EngineThreadPolicy.message("target"), identity);
   }
 
   private static String text(String key) {

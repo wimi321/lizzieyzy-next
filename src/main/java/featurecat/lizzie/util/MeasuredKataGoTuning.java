@@ -22,7 +22,8 @@ public final class MeasuredKataGoTuning {
 
   private MeasuredKataGoTuning() {}
 
-  public record Review(String entryId, String command, KataGoMeasuredReport report) {}
+  public record Review(
+      String entryId, String entryName, String command, KataGoMeasuredReport report) {}
 
   @FunctionalInterface
   interface Verification {
@@ -46,7 +47,7 @@ public final class MeasuredKataGoTuning {
     requireSupportedScene(entry, report.scene());
     verification.verify(entry, command, report);
     requireSupportedScene(requireEntry(entryId), report.scene());
-    return new Review(entryId, command, report);
+    return new Review(entryId, entry.name, command, report);
   }
 
   /** Called only after the UI has explicitly confirmed this exact reviewed scene/report. */

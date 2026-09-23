@@ -111,8 +111,11 @@ does not match a daily command that lacks those settings.
 
 Open performance settings from the saved engine entry, then import a report.
 The report is checked on a background worker and displayed with the scene,
-parameter comparison and paired speed improvement. Applying requires a separate
-confirmation; restore removes both accepted scene overlays while retaining any
+saved engine name/identity, parameter comparison and paired speed improvement.
+The selected saved identity is fixed for the operation; later discovery does not
+retarget an accepted report. Import/restore share the setup page's background-task
+gate, so discovery, model changes and benchmarking cannot overlap these actions.
+Applying requires a separate confirmation; restore removes both accepted scene overlays while retaining any
 subsequent manual command edits. The old Apple tuning profile is stored under
 its original key and is not migrated or deleted.
 Closing or hiding the performance window invalidates its pending operation and
@@ -125,10 +128,15 @@ opted-in process, never for individual GTP commands. A launch invoked on the
 event thread cannot apply an unverified overlay and retains the existing policy.
 Cold-start cost of verification must be reported separately from search gains.
 
-Focused headless validation: 188 tests, no failures or errors; 10 existing
+Focused headless validation: 202 tests, no failures or errors; 10 existing
 Linux-only persistence/benchmark cases were skipped on Windows. This includes
 report validation, whole/live separation, atomic settings persistence failure,
 stale-review guards, same-size/timestamp model replacement, recursive config
 includes, explicit search-parameter binding, legacy profile and layout tests.
+The busy-gate regression constructs actual Swing components without starting a
+native window or engine, verifies all conflicting controls remain disabled on
+late callbacks, and checks that already-queued model/setup actions cannot start
+while a measured review is active. Operation tests cover close/hide cancellation
+and rejection of stale worker delivery after reopening.
 Actual measurement artifacts and desktop acceptance are supplied by the
 integration report; the numeric schema example above is not measured evidence.

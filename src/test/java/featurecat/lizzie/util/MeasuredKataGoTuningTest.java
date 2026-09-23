@@ -29,6 +29,8 @@ class MeasuredKataGoTuningTest {
       throws Exception {
     try (Environment env = new Environment()) {
       var live = MeasuredKataGoTuning.review(env.entry.id, env.report(Scene.LIVE), VERIFIED);
+      assertEquals(env.entry.id, live.entryId());
+      assertEquals(env.entry.name, live.entryName());
       assertFalse(MeasuredKataGoTuning.hasProfile(env.entry.id));
       MeasuredKataGoTuning.apply(live, VERIFIED);
       var whole = MeasuredKataGoTuning.review(env.entry.id, env.report(Scene.WHOLE_GAME), VERIFIED);
@@ -68,6 +70,22 @@ class MeasuredKataGoTuningTest {
       assertTrue(
           EngineThreadPolicy.findSavedEntry(env.entry.id).commands.endsWith("numSearchThreads=32"));
       assertThrows(IOException.class, () -> MeasuredKataGoTuning.apply(review, VERIFIED));
+    }
+  }
+
+  @Test
+  void reviewedIdentityAndDisplayedNameDoNotFollowAnotherSelectionOrANameEdit() throws Exception {
+    try (Environment env = new Environment()) {
+      var review = MeasuredKataGoTuning.review(env.entry.id, env.report(Scene.LIVE), VERIFIED);
+      var entries = Utils.getEngineData();
+      entries.get(0).name = "renamed after review";
+      Utils.saveEngineSettings(entries);
+      assertEquals("measured", review.entryName());
+      assertEquals(env.entry.id, review.entryId());
+      MeasuredKataGoTuning.apply(review, VERIFIED);
+      assertTrue(MeasuredKataGoTuning.hasProfile(env.entry.id));
+      assertFalse(MeasuredKataGoTuning.hasProfile(env.other.id));
+      assertEquals("renamed after review", EngineThreadPolicy.findSavedEntry(env.entry.id).name);
     }
   }
 
@@ -205,8 +223,10 @@ class MeasuredKataGoTuningTest {
       AtomicInteger verifications = new AtomicInteger();
       MeasuredKataGoTuning.Verification verification =
           (entry, command, evidence) -> verifications.incrementAndGet();
-      IOException rejected = assertThrows(
-          IOException.class, () -> MeasuredKataGoTuning.review(env.entry.id, report, verification));
+      IOException rejected =
+          assertThrows(
+              IOException.class,
+              () -> MeasuredKataGoTuning.review(env.entry.id, report, verification));
       assertTrue(rejected.getMessage().contains(reuse ? "reusing" : "SSH"));
       assertThrows(IOException.class, () -> MeasuredKataGoTuning.apply(review, verification));
       assertEquals(0, verifications.get());
@@ -220,8 +240,10 @@ class MeasuredKataGoTuningTest {
       EngineData entry = EngineThreadPolicy.findSavedEntry(env.entry.id);
       List<String> original = List.of("katago", "analysis");
       setUnsupportedMode(reuse, true);
-      assertSame(original, MeasuredKataGoTuning.applyOverlay(
-          original, entry, env.analysis, Scene.WHOLE_GAME, verification));
+      assertSame(
+          original,
+          MeasuredKataGoTuning.applyOverlay(
+              original, entry, env.analysis, Scene.WHOLE_GAME, verification));
       assertSame(original, MeasuredKataGoTuning.applyWholeGame(original, env.analysis));
       assertEquals(0, verifications.get());
     }
@@ -235,27 +257,31 @@ class MeasuredKataGoTuningTest {
         Path report = env.report(Scene.WHOLE_GAME);
         MeasuredKataGoTuning.Verification changeDuringVerification =
             (entry, command, evidence) -> setUnsupportedMode(reuse, true);
-        assertThrows(IOException.class,
+        assertThrows(
+            IOException.class,
             () -> MeasuredKataGoTuning.review(env.entry.id, report, changeDuringVerification));
         setUnsupportedMode(reuse, false);
         var review = MeasuredKataGoTuning.review(env.entry.id, report, VERIFIED);
-        assertThrows(IOException.class,
-            () -> MeasuredKataGoTuning.apply(review, changeDuringVerification));
+        assertThrows(
+            IOException.class, () -> MeasuredKataGoTuning.apply(review, changeDuringVerification));
         assertFalse(MeasuredKataGoTuning.hasProfile(env.entry.id));
         setUnsupportedMode(reuse, false);
         MeasuredKataGoTuning.apply(review, VERIFIED);
         EngineData entry = EngineThreadPolicy.findSavedEntry(env.entry.id);
         List<String> original = List.of("katago", "analysis");
-        assertSame(original, MeasuredKataGoTuning.applyOverlay(
-            original, entry, env.analysis, Scene.WHOLE_GAME, changeDuringVerification));
+        assertSame(
+            original,
+            MeasuredKataGoTuning.applyOverlay(
+                original, entry, env.analysis, Scene.WHOLE_GAME, changeDuringVerification));
       }
     }
   }
 
   private static void setUnsupportedMode(boolean reuse, boolean enabled) {
     if (reuse) Lizzie.config.analysisReuseCurrentEngine = enabled;
-    else Lizzie.config.leelazConfig.put(
-        "analysis-engine-ssh-info", new JSONObject().put("useJavaSSH", enabled));
+    else
+      Lizzie.config.leelazConfig.put(
+          "analysis-engine-ssh-info", new JSONObject().put("useJavaSSH", enabled));
   }
 
   private final class Environment implements AutoCloseable {

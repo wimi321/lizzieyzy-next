@@ -553,6 +553,10 @@ public class KataGoAutoSetupDialog extends JDialog {
       SwingUtilities.invokeLater(() -> refreshState(afterRefresh));
       return;
     }
+    if (measuredTuningBusy) {
+      showBackgroundTaskAlreadyRunningNotice();
+      return;
+    }
     if (!selectedBenchmarkEntryId.isBlank()) {
       refreshSelectedBenchmark(afterRefresh);
       return;
@@ -689,12 +693,13 @@ public class KataGoAutoSetupDialog extends JDialog {
       progressPanel.setVisible(false);
       footerPanel.setVisible(false);
       // A saved-entry performance page must remain scoped to that entry, even if discovery fails.
-      sectionNav.setEnabled(selectedBenchmarkEntryId.isBlank());
+      sectionNav.setEnabled(selectedBenchmarkEntryId.isBlank() && !hasActiveBackgroundTask());
       // Missing/unsupported entries skip validation, so completion itself must restore retry.
-      btnRefresh.setEnabled(true);
+      btnRefresh.setEnabled(!hasActiveBackgroundTask());
       btnClose.setEnabled(true);
-      btnRemoteCompute.setEnabled(true);
+      btnRemoteCompute.setEnabled(!hasActiveBackgroundTask());
       setCursor(Cursor.getDefaultCursor());
+      updateMeasuredTuningActions();
     }
     revalidate();
     repaint();
@@ -730,6 +735,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnOptimizePerformance.setEnabled(enabled);
     btnExperimentalPerformance.setEnabled(enabled);
     btnStopDownload.setEnabled(false);
+    if (enabled) updateMeasuredTuningActions();
+    else {
+      btnImportMeasuredTuning.setEnabled(false);
+      btnRestoreMeasuredTuning.setEnabled(false);
+    }
   }
 
   private void cancelStateRefresh() {
@@ -957,10 +967,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallExperimentalBackend.addActionListener(e -> startExperimentalBackendInstall());
     cmbExperimentalBackend.addActionListener(e -> updateExperimentalBackendInfo());
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark(false));
-    btnImportMeasuredTuning.addActionListener(e -> measuredTuningDialog.importReport(
-        this, measuredTuningEntryId(), this::setMeasuredTuningBusy, this::updateBenchmarkInfo));
-    btnRestoreMeasuredTuning.addActionListener(e -> measuredTuningDialog.restore(
-        this, measuredTuningEntryId(), this::setMeasuredTuningBusy, this::updateBenchmarkInfo));
+    btnImportMeasuredTuning.addActionListener(e -> startMeasuredTuningAction(false));
+    btnRestoreMeasuredTuning.addActionListener(e -> startMeasuredTuningAction(true));
     btnExperimentalPerformance.addActionListener(e -> startPerformanceBenchmark(true));
     btnStopDownload.addActionListener(e -> stopActiveDownload());
     btnClose.addActionListener(e -> closeOrCancelActiveTask());
@@ -1195,6 +1203,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void openRemoteComputeCenter() {
+    if (rejectOverlappingBackgroundTask()) return;
     if (Lizzie.frame != null) {
       Lizzie.frame.openRemoteComputeCenter();
       return;
@@ -2428,16 +2437,15 @@ public class KataGoAutoSetupDialog extends JDialog {
       lblHumanSlStatus.setStatus(text("AutoSetup.notDownloaded"), StatusTagTone.GOLD);
       btnDownloadHumanSlModel.setText(text("AutoSetup.downloadOnDemand"));
       btnDownloadHumanSlModel.setVisible(true);
-      btnDownloadHumanSlModel.setEnabled(
-          activeDownloadSession == null && activeWorkerThread == null);
+      btnDownloadHumanSlModel.setEnabled(!hasActiveBackgroundTask());
     }
-    btnImportHumanSlModel.setEnabled(activeDownloadSession == null && activeWorkerThread == null);
+    btnImportHumanSlModel.setEnabled(!hasActiveBackgroundTask());
   }
 
   private void renderQuickAnalysisModel() {
     KataGoAutoSetupHelper.QuickAnalysisModelStatus status =
         snapshot == null ? null : snapshot.quickAnalysisModelStatus;
-    boolean busy = activeDownloadSession != null || activeWorkerThread != null;
+    boolean busy = hasActiveBackgroundTask();
     boolean requiresUpgrade = quickAnalysisModelRequiresKataGo117();
     boolean configured =
         Lizzie.config != null && Lizzie.config.quickAnalysisLightweightModelEnabled;
@@ -2539,6 +2547,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void chooseExistingKataGo() {
+    if (rejectOverlappingBackgroundTask()) return;
     Path initialDirectory =
         snapshot != null && snapshot.enginePath != null
             ? snapshot.enginePath.getParent()
@@ -2614,6 +2623,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void repairAnalysisConfig() {
+    if (rejectOverlappingBackgroundTask()) return;
     btnRepairAnalysisConfig.setEnabled(false);
     new Thread(
             () -> {
@@ -2637,7 +2647,7 @@ public class KataGoAutoSetupDialog extends JDialog {
               } catch (IOException e) {
                 SwingUtilities.invokeLater(
                     () -> {
-                      btnRepairAnalysisConfig.setEnabled(true);
+                      btnRepairAnalysisConfig.setEnabled(!hasActiveBackgroundTask());
                       showLocalSetupError(e);
                     });
               }
@@ -2806,7 +2816,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void updateTensorRtInfo() {
     maybeStartNvidiaGpuDetection();
-    boolean idle = activeDownloadSession == null && activeWorkerThread == null;
+    boolean idle = !hasActiveBackgroundTask();
     KataGoRuntimeHelper.TensorRtInstallStatus status =
         snapshot == null ? null : inspectCurrentTensorRt();
     TensorRtAccelerationView view =
@@ -2965,8 +2975,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void updateTensorRtCacheButton() {
     long cacheBytes = KataGoRuntimeHelper.tensorRtDownloadCacheBytes();
-    btnCleanTensorRtCache.setEnabled(
-        activeDownloadSession == null && activeWorkerThread == null && cacheBytes > 0L);
+    btnCleanTensorRtCache.setEnabled(!hasActiveBackgroundTask() && cacheBytes > 0L);
     btnCleanTensorRtCache.setToolTipText(
         cacheBytes > 0L
             ? String.format(text("AutoSetup.cleanTensorRtCacheTooltip"), formatSize(cacheBytes))
@@ -3004,8 +3013,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       btnInstallExperimentalBackend.getParent().repaint();
     }
     btnInstallExperimentalBackend.setEnabled(
-        activeDownloadSession == null
-            && activeWorkerThread == null
+        !hasActiveBackgroundTask()
             && snapshot.hasConfigs()
             && snapshot.hasWeight()
             && !status.active());
@@ -3173,33 +3181,62 @@ public class KataGoAutoSetupDialog extends JDialog {
       details.add(benchmarkFailureDetail);
     }
     benchmarkPolicyDetails.setText(String.join("\n", details));
-    btnOptimizePerformance.setEnabled(
-        canRunBenchmark() && activeWorkerThread == null && activeDownloadSession == null);
+    btnOptimizePerformance.setEnabled(canRunBenchmark() && !hasActiveBackgroundTask());
     btnExperimentalPerformance.setEnabled(
-        experimentalAvailable
-            && canRunBenchmark()
-            && activeWorkerThread == null
-            && activeDownloadSession == null);
+        experimentalAvailable && canRunBenchmark() && !hasActiveBackgroundTask());
   }
 
   private String measuredTuningEntryId() {
     if (!selectedBenchmarkEntryId.isBlank()) return selectedBenchmarkEntryId;
     if (snapshot != null && !snapshot.savedEntryId.isBlank()) return snapshot.savedEntryId;
-    if (benchmarkTarget != null && snapshot == benchmarkTarget.snapshot) return benchmarkTarget.entryId;
+    if (benchmarkTarget != null && snapshot == benchmarkTarget.snapshot)
+      return benchmarkTarget.entryId;
     return "";
   }
 
   private void setMeasuredTuningBusy(boolean busy) {
     measuredTuningBusy = busy;
-    updateMeasuredTuningActions();
+    if (busy) {
+      setRefreshDependentControlsEnabled(false);
+      sectionNav.setEnabled(false);
+      btnRemoteCompute.setEnabled(false);
+      btnClose.setEnabled(true);
+    } else refreshIdleControls();
+  }
+
+  private void startMeasuredTuningAction(boolean restore) {
+    String entryId = measuredTuningEntryId();
+    if (!measuredTuningActionAvailable(
+        entryId,
+        featurecat.lizzie.util.EngineThreadPolicy.findSavedEntry(entryId) != null,
+        hasActiveBackgroundTask())) {
+      showBackgroundTaskAlreadyRunningNotice();
+      updateMeasuredTuningActions();
+      return;
+    }
+    if (restore)
+      measuredTuningDialog.restore(
+          this, entryId, this::setMeasuredTuningBusy, this::updateBenchmarkInfo);
+    else
+      measuredTuningDialog.importReport(
+          this, entryId, this::setMeasuredTuningBusy, this::updateBenchmarkInfo);
+  }
+
+  static boolean measuredTuningActionAvailable(
+      String entryId, boolean savedEntryExists, boolean busy) {
+    return entryId != null && !entryId.isBlank() && savedEntryExists && !busy;
   }
 
   private void updateMeasuredTuningActions() {
     String entryId = measuredTuningEntryId();
-    boolean enabled = !entryId.isBlank() && !measuredTuningBusy
-        && activeWorkerThread == null && activeDownloadSession == null;
+    boolean enabled =
+        measuredTuningActionAvailable(
+            entryId,
+            featurecat.lizzie.util.EngineThreadPolicy.findSavedEntry(entryId) != null,
+            hasActiveBackgroundTask());
     btnImportMeasuredTuning.setEnabled(enabled);
-    btnRestoreMeasuredTuning.setEnabled(enabled && featurecat.lizzie.util.MeasuredKataGoTuning.hasProfile(entryId));
+    btnRestoreMeasuredTuning.setEnabled(
+        enabled && featurecat.lizzie.util.MeasuredKataGoTuning.hasProfile(entryId));
     String hint = entryId.isBlank() ? text("MeasuredTuning.selectEntry") : text("MeasuredTuning.hint");
     btnImportMeasuredTuning.setToolTipText(hint);
     btnRestoreMeasuredTuning.setToolTipText(hint);
@@ -3380,7 +3417,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                         lblStatus.setToolTipText(e.getMessage());
                         lblStatus.setForeground(WARN_COLOR);
                       }
-                      btnReloadRemoteWeights.setEnabled(true);
+                      btnReloadRemoteWeights.setEnabled(!hasActiveBackgroundTask());
                       btnStopDownload.setEnabled(false);
                     });
               }
@@ -3412,7 +3449,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (!hasActiveBackgroundTask()) {
       renderSetupStatus();
     }
-    btnReloadRemoteWeights.setEnabled(true);
+    btnReloadRemoteWeights.setEnabled(!hasActiveBackgroundTask());
     btnStopDownload.setEnabled(activeDownloadSession != null);
   }
 
@@ -3429,6 +3466,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void useSelectedWeight() {
+    if (rejectOverlappingBackgroundTask()) return;
     if (snapshot == null || snapshot.weightCatalog == null) {
       refreshState(this::useSelectedWeight);
       return;
@@ -3593,6 +3631,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void importCustomWeight() {
+    if (rejectOverlappingBackgroundTask()) return;
     JFileChooser chooser = new JFileChooser();
     chooser.setDialogTitle(text("AutoSetup.importWeightTitle"));
     chooser.setFileFilter(new FileNameExtensionFilter(text("AutoSetup.importWeightFilter"), "gz"));
@@ -3642,6 +3681,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void importHumanSlModel() {
+    if (rejectOverlappingBackgroundTask()) return;
     JFileChooser chooser = new JFileChooser();
     chooser.setDialogTitle(text("AutoSetup.importHumanSlModelTitle"));
     chooser.setFileFilter(
@@ -3689,6 +3729,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void startHumanSlModelDownload() {
+    if (rejectOverlappingBackgroundTask()) return;
     final DownloadSession session = new DownloadSession();
     activeDownloadSession = session;
     setBusy(true, text("AutoSetup.downloadingHumanSlModel"), 0, -1);
@@ -3739,6 +3780,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void startQuickAnalysisModelDownload() {
+    if (rejectOverlappingBackgroundTask()) return;
     if (!canEnableQuickAnalysisModel()) {
       Utils.showMsg(
           quickAnalysisModelRequiresKataGo117()
@@ -3792,6 +3834,11 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void updateQuickAnalysisModelPreference() {
+    if (rejectOverlappingBackgroundTask()) {
+      chkUseQuickAnalysisModel.setSelected(
+          Lizzie.config != null && Lizzie.config.quickAnalysisLightweightModelEnabled);
+      return;
+    }
     boolean enabled = chkUseQuickAnalysisModel.isSelected();
     if (enabled && !canEnableQuickAnalysisModel()) {
       chkUseQuickAnalysisModel.setSelected(false);
@@ -3824,6 +3871,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void startRecommendedWeightDownloadInternal() {
+    if (rejectOverlappingBackgroundTask()) return;
     final RemoteWeightInfo targetInfo = getSelectedRemoteWeight();
     if (targetInfo == null) {
       Utils.showMsg(text("AutoSetup.noRemoteWeights"), this);
@@ -3880,6 +3928,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void startNvidiaRuntimeInstall() {
+    if (rejectOverlappingBackgroundTask()) return;
     if (snapshot == null || !snapshot.hasEngine()) {
       Utils.showMsg(text("AutoSetup.missingEngine"), this);
       return;
@@ -4951,6 +5000,13 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnStopDownload.setEnabled(busy && activeDownloadSession != null);
     btnClose.setEnabled(true);
 
+    if (busy || hasActiveBackgroundTask()) {
+      setRefreshDependentControlsEnabled(false);
+      btnImportMeasuredTuning.setEnabled(false);
+      btnRestoreMeasuredTuning.setEnabled(false);
+      btnStopDownload.setEnabled(activeDownloadSession != null);
+    } else updateMeasuredTuningActions();
+
     progressPanel.setVisible(busy);
     footerPanel.setVisible(busy);
     AccessibilitySupport.announce(progressStatusLabel, previousStatus, statusText);
@@ -5068,9 +5124,16 @@ public class KataGoAutoSetupDialog extends JDialog {
   private boolean hasActiveBackgroundTask() {
     return stateRefreshWorker != null
         || catalogRefreshWorker != null
+        || measuredTuningBusy
         || activeDownloadSession != null
         || activeWorkerThread != null
         || pendingWeightSwitchTimer != null;
+  }
+
+  private boolean rejectOverlappingBackgroundTask() {
+    if (!hasActiveBackgroundTask()) return false;
+    showBackgroundTaskAlreadyRunningNotice();
+    return true;
   }
 
   private void showBackgroundTaskAlreadyRunningNotice() {
@@ -5110,7 +5173,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private boolean canDownloadHumanSlModel() {
-    return !hasHumanSlModel() && activeDownloadSession == null && activeWorkerThread == null;
+    return !hasHumanSlModel() && !hasActiveBackgroundTask();
   }
 
   private boolean isBenchmarkPermilleProgress(
@@ -5133,8 +5196,7 @@ public class KataGoAutoSetupDialog extends JDialog {
         && snapshot.hasEngine()
         && snapshot.hasConfigs()
         && isEngineValidationReady()
-        && activeDownloadSession == null
-        && activeWorkerThread == null;
+        && !hasActiveBackgroundTask();
   }
 
   private boolean isSelectedWeightCompatibleWithEngine(Path weightPath) {
@@ -5891,8 +5953,7 @@ public class KataGoAutoSetupDialog extends JDialog {
         && snapshot != null
         && snapshot.weightCatalog != null
         && !isDownloadedRemoteWeight(info)
-        && activeDownloadSession == null
-        && activeWorkerThread == null;
+        && !hasActiveBackgroundTask();
   }
 
   private boolean isDownloadedRemoteWeight(RemoteWeightInfo info) {
@@ -5958,9 +6019,14 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void refreshIdleControls() {
-    if (activeDownloadSession != null || activeWorkerThread != null) {
+    updateMeasuredTuningActions();
+    if (hasActiveBackgroundTask()) {
+      setRefreshDependentControlsEnabled(false);
+      btnStopDownload.setEnabled(activeDownloadSession != null);
       return;
     }
+    sectionNav.setEnabled(selectedBenchmarkEntryId.isBlank());
+    btnRemoteCompute.setEnabled(true);
     if (!selectedBenchmarkEntryId.isBlank()) {
       btnRefresh.setEnabled(true);
       updateBenchmarkInfo();
