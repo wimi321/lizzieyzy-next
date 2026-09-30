@@ -64,6 +64,26 @@ selection. The before/after first-open screenshots are recorded in `design-qa.md
   Clicked through API Key, Preferences and back to ChatGPT; all displayed correctly.
   No login, model request, credential save or inference request was performed.
 
+## API copy follow-up
+
+New settings no longer populate or silently fall back to an OpenAI
+address. Existing explicit addresses and pre-provider legacy implicit addresses are preserved.
+The service-address example is painted outside the document, hides on focus, and never
+becomes a saved value. Empty addresses fail before saving or starting model discovery.
+Twenty-two focused tests passed, including real focus changes, seven locale layouts and
+legacy/new settings reload. The API screenshot and focused-empty screenshot are updated.
+
+- Final headless Maven `verify` and shaded packaging passed: 4,532 unit-test
+  invocations, zero failures/errors, 95 skipped; seven integration-test invocations,
+  zero failures/errors, six skipped. The 22 focused tests passed without skips.
+- Opened a temporary jpackage preview of the final shaded JAR with a fresh isolated
+  configuration. The API page visibly shows the new labels, empty service address,
+  example hint and compact instructions without a scrollbar. No credentials or
+  requests were submitted.
+- The desktop automation tool did not reliably focus the packaged address field;
+  its click-to-hide check is therefore inconclusive. Focus hide/restore behavior is
+  verified by the native Swing test, not claimed as a passed manual click check.
+
 ## Not yet accepted
 
 - Real eligible ChatGPT account: official authorization, account model catalog, live commentary,

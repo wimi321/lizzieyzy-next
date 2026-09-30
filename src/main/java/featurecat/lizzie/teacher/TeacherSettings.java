@@ -30,7 +30,8 @@ public final class TeacherSettings {
   private Provider provider = Provider.UNSELECTED;
   private ChatGptSessions chatGptSessions;
   private volatile ChatGptSessions.Account chatGptAccount;
-  static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
+  static final String DEFAULT_BASE_URL = "";
+  private static final String LEGACY_BASE_URL = "https://api.openai.com/v1";
   static final String DEFAULT_MODEL = "gpt-4o-mini";
 
   private static final String FILE_NAME = "teacher.properties";
@@ -92,7 +93,15 @@ public final class TeacherSettings {
       }
     }
 
-    baseUrl = validateBaseUrl(properties.getProperty("baseUrl", DEFAULT_BASE_URL));
+    // Only pre-provider settings may have relied on the former implicit OpenAI address.
+    String storedBaseUrl = properties.getProperty("baseUrl");
+    if (storedBaseUrl == null || storedBaseUrl.isBlank()) {
+      storedBaseUrl =
+          Files.isRegularFile(settingsFile) && !properties.containsKey("provider")
+              ? LEGACY_BASE_URL
+              : DEFAULT_BASE_URL;
+    }
+    baseUrl = storedBaseUrl.isBlank() ? "" : validateBaseUrl(storedBaseUrl);
     try {
       provider =
           Provider.valueOf(
@@ -118,7 +127,7 @@ public final class TeacherSettings {
       rememberApiKey = false;
       properties.remove("apiKey");
       writeProperties(sanitizedProperties());
-    } else if (rememberApiKey && credentialStore.isAvailable()) {
+    } else if (rememberApiKey && !baseUrl.isBlank() && credentialStore.isAvailable()) {
       try {
         Optional<String> stored =
             credentialStore.read(CredentialStore.Kind.API_KEY, credentialAccount(baseUrl));
@@ -140,7 +149,7 @@ public final class TeacherSettings {
     String normalizedBaseUrl = validateBaseUrl(requestedBaseUrl);
     String normalizedModel = validateModel(requestedModel);
     char[] suppliedKey = requestedApiKey == null ? new char[0] : requestedApiKey.clone();
-    String oldAccount = credentialAccount(baseUrl);
+    String oldAccount = baseUrl.isBlank() ? null : credentialAccount(baseUrl);
     String newAccount = credentialAccount(normalizedBaseUrl);
 
     try {
@@ -155,7 +164,7 @@ public final class TeacherSettings {
       } else {
         credentialStore.delete(CredentialStore.Kind.API_KEY, newAccount);
       }
-      if (!oldAccount.equals(newAccount)) {
+      if (oldAccount != null && !oldAccount.equals(newAccount)) {
         credentialStore.delete(CredentialStore.Kind.API_KEY, oldAccount);
       }
 
@@ -248,7 +257,9 @@ public final class TeacherSettings {
   }
 
   public synchronized void forgetApiKey() throws IOException {
-    credentialStore.delete(CredentialStore.Kind.API_KEY, credentialAccount(baseUrl));
+    if (!baseUrl.isBlank()) {
+      credentialStore.delete(CredentialStore.Kind.API_KEY, credentialAccount(baseUrl));
+    }
     replaceSessionApiKey(new char[0]);
     rememberApiKey = false;
     loaded = true;
@@ -303,7 +314,9 @@ public final class TeacherSettings {
   static String validateBaseUrl(String value) {
     String candidate = value == null ? "" : value.trim();
     if (candidate.isEmpty()) {
-      candidate = DEFAULT_BASE_URL;
+      throw new IllegalArgumentException(
+          TeacherStrings.get(
+              "Teacher.settings.enterAddress", "Enter the address supplied by your provider."));
     }
     while (candidate.endsWith("/")) {
       candidate = candidate.substring(0, candidate.length() - 1);

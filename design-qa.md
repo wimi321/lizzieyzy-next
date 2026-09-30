@@ -23,6 +23,14 @@ the older commentary-reader report below is retained and is not evidence for thi
 
 ## Findings And Corrections
 
+- User-requested API copy revision: replace technical base-URL terminology with Service
+  address, Access key, Commentary model and Get models, with a provider-supplied-values
+  explanation. The new address field starts empty; its example hides on focus and is not
+  editable content. Existing saved addresses are not erased. API layout screenshots are
+  `docs/screenshots/chatgpt-api-key-zh-CN.png` and
+  `docs/qa/chatgpt-settings/zh-CN-api-focused.png`. The first revision added unnecessary
+  minimum text rows and caused a default scrollbar; removing those empty minimum rows
+  restored all seven locale layouts without relaxing the no-scroll assertions.
 - Reopened P1 after the next user report: the first-open `UNSELECTED` connection card
   contained only a sentence and no illustration. Earlier tests clicked ChatGPT before
   capturing, so the selected-state comparison did not cover the actual onboarding state.

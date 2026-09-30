@@ -119,7 +119,44 @@ class TeacherSettingsTest {
   }
 
   @Test
+  void freshSettingsStayBlankAcrossPreferenceSaveAndReload() throws Exception {
+    Path file = temporaryDirectory.resolve("new.properties");
+    var store = new MemoryCredentialStore(true);
+    var settings = new TeacherSettings(file, store);
+    assertEquals("", settings.load().baseUrl);
+    settings.saveTeachingPreferences("k", 5, 0, 1, 1, 1);
+    assertEquals("", new TeacherSettings(file, store).load().baseUrl);
+    assertThrows(
+        IllegalArgumentException.class, () -> settings.save("  ", "model", new char[0], false));
+    assertFalse(Files.readString(file).contains("openai.com"));
+    settings.forgetApiKey();
+    assertEquals("", settings.snapshot().baseUrl);
+  }
+
+  @Test
+  void explicitlySavedOpenAiAddressIsNotCleared() throws Exception {
+    Path file = temporaryDirectory.resolve("existing.properties");
+    var store = new MemoryCredentialStore(true);
+    var settings = new TeacherSettings(file, store);
+    settings.load();
+    settings.save("https://api.openai.com/v1", "model", new char[0], false);
+    assertEquals("https://api.openai.com/v1", new TeacherSettings(file, store).load().baseUrl);
+  }
+
+  @Test
+  void legacySettingsWithoutAnAddressRetainTheirOriginalEndpoint() throws Exception {
+    Path file = temporaryDirectory.resolve("legacy.properties");
+    Files.writeString(file, "model=legacy-model\n");
+    assertEquals(
+        "https://api.openai.com/v1",
+        new TeacherSettings(file, new MemoryCredentialStore(true)).load().baseUrl);
+  }
+
+  @Test
   void validatesProviderUrlAndModel() {
+    assertThrows(IllegalArgumentException.class, () -> TeacherSettings.validateBaseUrl(""));
+    assertThrows(IllegalArgumentException.class, () -> TeacherSettings.validateBaseUrl(null));
+    assertThrows(IllegalArgumentException.class, () -> TeacherLlmClient.normalizeApiBase(""));
     assertThrows(
         IllegalArgumentException.class,
         () -> TeacherSettings.validateBaseUrl("file:///tmp/provider"));

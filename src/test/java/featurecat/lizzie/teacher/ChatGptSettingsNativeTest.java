@@ -86,7 +86,14 @@ class ChatGptSettingsNativeTest {
                             .filter(c -> "apiBaseUrl".equals(c.getName()))
                             .findFirst()
                             .orElseThrow();
+                assertEquals("", url.getText());
+                assertTrue(((TeacherExampleField) url).isExampleVisible());
+                ((AbstractButton) named(reference[0], "saveSettings")).doClick();
+                assertTrue(reference[0].isShowing());
+                assertEquals(TeacherSettings.Provider.UNSELECTED, settings.snapshot().provider);
+                assertEquals("", settings.snapshot().baseUrl);
                 url.setText("https://example.com/v1");
+                assertFalse(((TeacherExampleField) url).isExampleVisible());
                 button(reference[0], "preferencesPage").doClick();
                 reference[0].validate();
                 assertFalse(button(reference[0], "chatGptProvider").isShowing());
@@ -146,6 +153,58 @@ class ChatGptSettingsNativeTest {
         }
       }
     } finally {
+      Lizzie.resourceBundle = previous;
+    }
+  }
+
+  @Test
+  void addressExampleDisappearsOnFocusWithoutBecomingInput() throws Exception {
+    assumeTrue(
+        Boolean.getBoolean("lizzie.test.chatgptNative") && !GraphicsEnvironment.isHeadless());
+    var previous = Lizzie.resourceBundle;
+    var store = new ChatGptIntegrationTest.MemoryStore();
+    var settings =
+        new TeacherSettings(
+            directory.resolve("focus.properties"),
+            store,
+            new ChatGptSessions(directory.resolve("focus-session"), store, new ChatGptHttp()));
+    TeacherSettingsDialog[] dialog = new TeacherSettingsDialog[1];
+    try {
+      SwingUtilities.invokeAndWait(
+          () -> {
+            Lizzie.resourceBundle =
+                ResourceBundle.getBundle("l10n.DisplayStrings", Locale.SIMPLIFIED_CHINESE);
+            dialog[0] = new TeacherSettingsDialog(null, settings);
+            dialog[0].setModalityType(Dialog.ModalityType.MODELESS);
+            dialog[0].setVisible(true);
+          });
+      await(() -> button(dialog[0], "apiKeyProvider").isEnabled());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            button(dialog[0], "apiKeyProvider").doClick();
+            named(dialog[0], "apiBaseUrl").requestFocusInWindow();
+          });
+      await(() -> named(dialog[0], "apiBaseUrl").hasFocus());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            var address = (TeacherExampleField) named(dialog[0], "apiBaseUrl");
+            assertEquals("", address.getText());
+            assertFalse(address.isExampleVisible());
+            capture(dialog[0], "zh-CN-api-focused");
+            named(dialog[0], "apiSecret").requestFocusInWindow();
+          });
+      await(() -> named(dialog[0], "apiSecret").hasFocus());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            var address = (TeacherExampleField) named(dialog[0], "apiBaseUrl");
+            assertTrue(address.isExampleVisible());
+            address.setText("https://provider.example/v1");
+            assertFalse(address.isExampleVisible());
+            assertEquals("https://provider.example/v1", address.getText());
+            assertEquals("", settings.snapshot().baseUrl);
+          });
+    } finally {
+      if (dialog[0] != null) SwingUtilities.invokeAndWait(dialog[0]::dispose);
       Lizzie.resourceBundle = previous;
     }
   }

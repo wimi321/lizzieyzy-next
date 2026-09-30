@@ -56,7 +56,11 @@ final class TeacherSettingsDialog extends JDialog {
       new JToggleButton(design("preferences", "Commentary preferences"));
   private boolean preferencesVisible;
   private final ChatGptSettingsPanel chatGptPanel;
-  private final JTextField baseUrlField = new JTextField(34);
+  private final JTextField baseUrlField =
+      new TeacherExampleField(
+          TeacherStrings.get(
+              "Teacher.settings.addressExample", "Example: https://api.example.com/v1"),
+          34);
   private final JPasswordField apiKeyField = new JPasswordField(28);
   private final char passwordEchoChar = apiKeyField.getEchoChar();
   private final JComboBox<String> modelBox = new JComboBox<>();
@@ -359,10 +363,16 @@ final class TeacherSettingsDialog extends JDialog {
         api,
         row,
         0,
-        TeacherStrings.get("Teacher.settings.baseUrl", "API base URL"),
+        TeacherStrings.get("Teacher.settings.baseUrl", "Service address"),
         baseUrlField,
         baseUrlField);
-    apiRow(api, row, 1, "API Key", keyRow, apiKeyField);
+    apiRow(
+        api,
+        row,
+        1,
+        TeacherStrings.get("Teacher.settings.keyLabel", "Access key"),
+        keyRow,
+        apiKeyField);
     apiRow(api, row, 2, TeacherStrings.get("Teacher.settings.model", "Model"), modelRow, modelBox);
     row.gridx = 1;
     row.gridy = 3;
@@ -382,12 +392,21 @@ final class TeacherSettingsDialog extends JDialog {
             design(
                 "privacy",
                 "Only selected analysis and questions are sent; the full game is not uploaded."),
-            2),
+            1),
         row);
     row.gridy = 6;
     row.weighty = 1;
     api.add(TeacherSettingsStyle.panel(new BorderLayout()), row);
-    return api;
+    JPanel page = TeacherSettingsStyle.panel(new BorderLayout(0, 8));
+    page.add(
+        TeacherSettingsStyle.note(
+            TeacherStrings.get(
+                "Teacher.settings.apiHint",
+                "Enter the address and key from your provider, then choose a commentary model."),
+            1),
+        BorderLayout.NORTH);
+    page.add(api, BorderLayout.CENTER);
+    return page;
   }
 
   private static void apiRow(
@@ -659,6 +678,7 @@ final class TeacherSettingsDialog extends JDialog {
   }
 
   private void refreshModels() {
+    if (!validateAddressInput()) return;
     char[] key = apiKeyField.getPassword();
     String baseUrl = baseUrlField.getText();
     String selectedModel = selectedModel();
@@ -731,6 +751,8 @@ final class TeacherSettingsDialog extends JDialog {
           ChatGptSettingsPanel.text("choose", "Choose a connection method and finish setup."));
       return;
     }
+    if (!preferencesOnly && provider == TeacherSettings.Provider.API_KEY && !validateAddressInput())
+      return;
     String chatAccount = chatGptPanel.selectedAccountId();
     String chatModel = chatGptPanel.selectedModel();
     char[] key = apiKeyField.getPassword();
@@ -866,6 +888,23 @@ final class TeacherSettingsDialog extends JDialog {
     return message == null || message.isBlank()
         ? TeacherStrings.get("Teacher.error.generic", "The operation failed.")
         : message;
+  }
+
+  private boolean validateAddressInput() {
+    try {
+      TeacherSettings.validateBaseUrl(baseUrlField.getText());
+      return true;
+    } catch (IllegalArgumentException invalid) {
+      status.setText(
+          baseUrlField.getText().isBlank()
+              ? TeacherStrings.get(
+                  "Teacher.settings.enterAddress", "Enter the address supplied by your provider.")
+              : TeacherStrings.get(
+                  "Teacher.settings.invalidAddress",
+                  "Check the service address; use the full HTTPS address supplied by your provider."));
+      baseUrlField.requestFocusInWindow();
+      return false;
+    }
   }
 
   private static final class LoadedValues {
