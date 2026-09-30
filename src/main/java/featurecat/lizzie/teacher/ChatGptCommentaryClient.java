@@ -74,7 +74,6 @@ final class ChatGptCommentaryClient implements CommentaryClient {
       Consumer<String> onText)
       throws IOException, InterruptedException {
     checkCurrent(cancellation);
-    String token = sessions.accessToken(accountId);
     String effort = sessions.reasoningEffort(accountId, model);
     if (!effort.isEmpty()) {
       Model selected =
@@ -85,6 +84,8 @@ final class ChatGptCommentaryClient implements CommentaryClient {
       if (!selected.reasoningEfforts.contains(effort)) throw ChatGptHttp.error("reasoning");
     }
     JSONObject body = requestBody(model, messages, effort);
+    // Capability lookup can refresh a token; use the current credential for inference.
+    String token = sessions.accessToken(accountId);
     checkCurrent(cancellation);
     HttpRequest request =
         HttpRequest.newBuilder(URI.create(sessions.http.api + "/responses"))

@@ -118,6 +118,8 @@ final class TeacherSettingsDialog extends JDialog {
   private boolean saved;
   private long providerGeneration;
   private SwingWorker<?, ?> apiModelWorker;
+  private SwingWorker<?, ?> apiCredentialWorker;
+  private boolean apiCredentialLoaded;
 
   static boolean show(Component parent, TeacherSettings settings) {
     Window owner = parent == null ? null : SwingUtilities.getWindowAncestor(parent);
@@ -134,6 +136,12 @@ final class TeacherSettingsDialog extends JDialog {
         Dialog.ModalityType.APPLICATION_MODAL);
     this.settings = settings;
     chatGptPanel = new ChatGptSettingsPanel(settings.chatGpt());
+    chatGptPanel.addPropertyChangeListener(
+        "connectionReady",
+        event -> {
+          if (Boolean.TRUE.equals(event.getNewValue())
+              && ChatGptText.isKnownError(status.getText())) status.setText(" ");
+        });
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     setContentPane(buildContent());
     loadValues();
@@ -657,6 +665,10 @@ final class TeacherSettingsDialog extends JDialog {
         try {
           LoadedValues loaded = get();
           TeacherSettings.Snapshot snapshot = loaded.snapshot;
+          apiCredentialLoaded =
+              snapshot.provider != TeacherSettings.Provider.CHATGPT
+                  || !snapshot.rememberApiKey
+                  || !loaded.apiKey.isEmpty();
           chatGptTab.setSelected(snapshot.provider == TeacherSettings.Provider.CHATGPT);
           apiTab.setSelected(snapshot.provider == TeacherSettings.Provider.API_KEY);
           chooseProvider(snapshot.provider);
@@ -814,6 +826,11 @@ final class TeacherSettingsDialog extends JDialog {
           settings.chatGpt().model(chatAccount, chatModel, chatEffort);
           settings.chatGpt().select(chatAccount);
           settings.refreshChatGptAccount();
+          ChatGptSessions.Account current = settings.chatGptAccount();
+          if (current != null && current.credentialsUnavailable)
+            throw ChatGptHttp.error("credentialsUnavailable");
+          if (current == null || !current.signedIn) throw ChatGptHttp.error("loginRequired");
+          if (!current.authorized) throw ChatGptHttp.error("permission");
         }
         settings.selectProvider(provider);
         return settings.snapshot();
@@ -874,6 +891,9 @@ final class TeacherSettingsDialog extends JDialog {
   private void chooseProvider(TeacherSettings.Provider provider) {
     providerGeneration++;
     if (apiModelWorker != null) apiModelWorker.cancel(true);
+    if (apiCredentialWorker != null) apiCredentialWorker.cancel(true);
+    apiKeyField.setEnabled(true);
+    saveButton.setEnabled(true);
     refreshModels.setEnabled(true);
     chatGptPanel.suspend();
     ((CardLayout) providers.getLayout()).show(providers, provider.name());
@@ -883,12 +903,60 @@ final class TeacherSettingsDialog extends JDialog {
         provider == TeacherSettings.Provider.UNSELECTED
             ? ChatGptSettingsPanel.text("choose", "Choose a connection method and finish setup.")
             : " ");
+    if (provider == TeacherSettings.Provider.API_KEY
+        && !apiCredentialLoaded
+        && settings.snapshot().provider == TeacherSettings.Provider.CHATGPT
+        && settings.snapshot().rememberApiKey
+        && apiKeyField.getPassword().length == 0) restoreApiCredential();
+  }
+
+  private void restoreApiCredential() {
+    long request = providerGeneration;
+    String savedAddress = settings.snapshot().baseUrl;
+    apiKeyField.setEnabled(false);
+    saveButton.setEnabled(false);
+    refreshModels.setEnabled(false);
+    status.setText(
+        TeacherStrings.get("Teacher.status.loadingSettings", "Loading secure settings..."));
+    apiCredentialWorker =
+        new SwingWorker<char[], Void>() {
+          @Override
+          protected char[] doInBackground() throws Exception {
+            settings.restoreRememberedApiKey();
+            return settings.apiKey().orElse("").toCharArray();
+          }
+
+          @Override
+          protected void done() {
+            char[] key = null;
+            try {
+              key = get();
+              if (!isDisplayable() || request != providerGeneration) return;
+              apiCredentialLoaded = true;
+              if (savedAddress.equals(baseUrlField.getText())
+                  && apiKeyField.getPassword().length == 0) apiKeyField.setText(new String(key));
+              status.setText(" ");
+            } catch (Exception failure) {
+              if (isDisplayable() && request == providerGeneration)
+                status.setText(localError(failure));
+            } finally {
+              if (key != null) Arrays.fill(key, '\0');
+              if (isDisplayable() && request == providerGeneration) {
+                apiKeyField.setEnabled(true);
+                saveButton.setEnabled(true);
+                refreshModels.setEnabled(true);
+              }
+            }
+          }
+        };
+    apiCredentialWorker.execute();
   }
 
   @Override
   public void dispose() {
     providerGeneration++;
     if (apiModelWorker != null) apiModelWorker.cancel(true);
+    if (apiCredentialWorker != null) apiCredentialWorker.cancel(true);
     if (chatGptPanel != null) chatGptPanel.suspend();
     super.dispose();
   }

@@ -21,6 +21,8 @@ final class ChatGptText {
             "incomplete",
             "busy",
             "storage",
+            "credentialsUnavailable",
+            "modelRemoved",
             "limit",
             "browser")
         .stream()

@@ -25,13 +25,17 @@ final class ChatGptSettingsPanel extends JPanel {
   private final JComboBox<Effort> reasoning = new JComboBox<>();
   private final JTextArea reasoningHint = note("");
   private final java.util.Map<String, String> draftEfforts = new java.util.HashMap<>();
+  private final java.util.Map<String, String> draftModels = new java.util.HashMap<>();
   private boolean updatingEffort;
+  private boolean updatingModels;
   private final JButton connect = button("connect", "Continue with ChatGPT");
   private final JButton add = button("add", "Add account");
   private final JButton logout = button("logout", "Sign out");
   private final JButton refresh = button("refresh", "Refresh models");
   private final JButton cancel = button("cancel", "Cancel sign-in");
+  private final JButton retry = button("retry", "Retry");
   private final JTextArea status = note("");
+  private Runnable retryAction = this::reload;
   private final JPanel welcome = new JPanel();
   private final JPanel fields = new JPanel();
   private final JPanel modelFields = TeacherSettingsStyle.panel(new BorderLayout(0, 5));
@@ -145,11 +149,15 @@ final class ChatGptSettingsPanel extends JPanel {
     row.gridy++;
     content.add(fields, row);
 
-    for (JButton button : List.of(connect, add, logout, refresh, cancel, usage)) {
+    for (JButton button : List.of(connect, add, logout, refresh, cancel, usage, retry)) {
       TeacherSettingsStyle.button(button, button == connect);
     }
     connect.setName("chatGptConnect");
     usage.setName("chatGptUsage");
+    retry.setName("chatGptRetry");
+    retry.setBorder(BorderFactory.createEmptyBorder(2, 12, 2, 12));
+    retry.setVisible(false);
+    retry.addActionListener(event -> retryAction.run());
     connect.setPreferredSize(
         new java.awt.Dimension(Math.max(270, connect.getPreferredSize().width), 44));
     signInRow.add(connect);
@@ -166,7 +174,10 @@ final class ChatGptSettingsPanel extends JPanel {
     row.gridy++;
     content.add(planNotice, row);
     row.gridy++;
-    content.add(status, row);
+    JPanel statusRow = TeacherSettingsStyle.panel(new BorderLayout(8, 0));
+    statusRow.add(status, BorderLayout.CENTER);
+    statusRow.add(retry, BorderLayout.LINE_END);
+    content.add(statusRow, row);
     row.gridy++;
     row.weighty = 1;
     content.add(TeacherSettingsStyle.panel(new BorderLayout()), row);
@@ -227,7 +238,12 @@ final class ChatGptSettingsPanel extends JPanel {
               ignored -> reload());
         });
     refresh.addActionListener(event -> refreshModels());
-    models.addActionListener(event -> updateReasoning());
+    models.addActionListener(
+        event -> {
+          updateReasoning();
+          if (!updatingModels && selected() != null && !selectedModel().isEmpty())
+            draftModels.put(selected().id, selectedModel());
+        });
     reasoning.addActionListener(
         event -> {
           if (!updatingEffort && selected() != null && !selectedModel().isEmpty())
@@ -254,12 +270,13 @@ final class ChatGptSettingsPanel extends JPanel {
   private void showAccount() {
     ChatGptSessions.Account account = selected();
     boolean signedIn = account != null && account.signedIn;
+    boolean unavailable = account != null && account.credentialsUnavailable;
     welcome.setVisible(!signedIn && accounts.getItemCount() == 0);
     fields.setVisible(accounts.getItemCount() > 0);
     modelFields.setVisible(signedIn && account.authorized);
     actions.setVisible(signedIn);
-    planNotice.setVisible(!signedIn || !account.authorized);
-    connect.setVisible(!signedIn || !account.authorized);
+    planNotice.setVisible(!unavailable && (!signedIn || !account.authorized));
+    connect.setVisible(!unavailable && (!signedIn || !account.authorized));
     signInRow.setVisible(connect.isVisible());
     alignWelcomeActions(welcome.isVisible());
     revalidate();
@@ -271,6 +288,8 @@ final class ChatGptSettingsPanel extends JPanel {
     models.setEnabled(signedIn && account.authorized);
     updateReasoning();
     updateStatus();
+    retryAction = this::reload;
+    retry.setVisible(unavailable);
     if (signedIn && account.authorized && !account.welcomed) {
       JOptionPane.showMessageDialog(
           this,
@@ -293,19 +312,22 @@ final class ChatGptSettingsPanel extends JPanel {
   private void updateStatus() {
     ChatGptSessions.Account account = selected();
     boolean signedIn = account != null && account.signedIn;
-    status.setVisible(signedIn);
+    boolean unavailable = account != null && account.credentialsUnavailable;
+    status.setVisible(signedIn || unavailable);
     status.setText(
-        !signedIn
-            ? text("notConnected", "Connect ChatGPT to use your plan.")
-            : !account.authorized
-                ? text(
-                    "error.permission",
-                    "Authorize ChatGPT plan usage before generating commentary.")
-                : account.sessionOnly
+        unavailable
+            ? ChatGptHttp.error("credentialsUnavailable").getMessage()
+            : !signedIn
+                ? text("notConnected", "Connect ChatGPT to use your plan.")
+                : !account.authorized
                     ? text(
-                        "sessionOnly",
-                        "Connected for this session only. Secure storage is unavailable.")
-                    : text("usingPlan", "Using ChatGPT plan"));
+                        "error.permission",
+                        "Authorize ChatGPT plan usage before generating commentary.")
+                    : account.sessionOnly
+                        ? text(
+                            "sessionOnly",
+                            "Connected for this session only. Secure storage is unavailable.")
+                        : text("usingPlan", "Using ChatGPT plan"));
   }
 
   private void alignWelcomeActions(boolean empty) {
@@ -347,21 +369,31 @@ final class ChatGptSettingsPanel extends JPanel {
   private void refreshModels() {
     ChatGptSessions.Account account = selected();
     if (account == null || !account.signedIn || !account.authorized) return;
+    String chosen = draftModels.getOrDefault(account.id, account.model);
     work(
         () -> new ChatGptCommentaryClient(sessions, account.id, account.model).models(),
         available -> {
-          models.removeAllItems();
-          for (ChatGptCommentaryClient.Model model : available) {
-            models.addItem(model);
-            if (account.model.equals(model.slug)) models.setSelectedItem(model);
+          boolean found = chosen.isEmpty();
+          updatingModels = true;
+          try {
+            models.removeAllItems();
+            for (ChatGptCommentaryClient.Model model : available) {
+              models.addItem(model);
+              if (chosen.equals(model.slug)) {
+                models.setSelectedItem(model);
+                found = true;
+              }
+            }
+            if (!found) models.setSelectedItem(null);
+          } finally {
+            updatingModels = false;
           }
-          status.setText(
-              account.sessionOnly
-                  ? text(
-                      "sessionOnly",
-                      "Connected for this session only. Secure storage is unavailable.")
-                  : text("usingPlan", "Using ChatGPT plan"));
-        });
+          if (found) draftModels.put(account.id, selectedModel());
+          updateStatus();
+          if (!found) status.setText(ChatGptHttp.error("modelRemoved").getMessage());
+          firePropertyChange("connectionReady", false, found);
+        },
+        this::refreshModels);
   }
 
   String selectedAccountId() {
@@ -453,6 +485,11 @@ final class ChatGptSettingsPanel extends JPanel {
   }
 
   private <T> void work(Callable<T> operation, java.util.function.Consumer<T> completed) {
+    work(operation, completed, this::reload);
+  }
+
+  private <T> void work(
+      Callable<T> operation, java.util.function.Consumer<T> completed, Runnable recovery) {
     if (worker != null && !worker.isDone()) worker.cancel(true);
     long request = ++generation;
     connect.setEnabled(false);
@@ -462,6 +499,9 @@ final class ChatGptSettingsPanel extends JPanel {
     models.setEnabled(false);
     reasoning.setEnabled(false);
     accounts.setEnabled(false);
+    usage.setEnabled(false);
+    retry.setVisible(false);
+    retry.setEnabled(false);
     status.setText(text("working", "Connecting..."));
     status.setVisible(true);
     worker =
@@ -476,6 +516,8 @@ final class ChatGptSettingsPanel extends JPanel {
             if (generation != request || !isDisplayable()) return;
             add.setEnabled(true);
             accounts.setEnabled(true);
+            usage.setEnabled(true);
+            retry.setEnabled(true);
             ChatGptSessions.Account account = selected();
             connect.setEnabled(account == null || !account.signedIn || !account.authorized);
             logout.setEnabled(account != null && account.signedIn);
@@ -486,11 +528,24 @@ final class ChatGptSettingsPanel extends JPanel {
               completed.accept(get());
             } catch (Exception failure) {
               cancel.setVisible(false);
-              connect.setEnabled(true);
-              connect.setVisible(true);
-              signInRow.setVisible(true);
               Throwable root = failure;
               while (root.getCause() != null) root = root.getCause();
+              if (root instanceof ChatGptApiException api && api.refreshRevoked()) {
+                reload();
+                return;
+              }
+              boolean authorize =
+                  root instanceof ChatGptApiException api
+                      && (api.status == 401 || api.status == 403);
+              boolean canSignIn =
+                  account == null
+                      || (!account.signedIn && !account.credentialsUnavailable)
+                      || authorize;
+              connect.setEnabled(canSignIn);
+              connect.setVisible(canSignIn);
+              signInRow.setVisible(canSignIn);
+              retryAction = recovery;
+              retry.setVisible(!canSignIn);
               // Network/library exceptions may include URLs. Only display known localized errors.
               String message = root.getMessage();
               status.setText(
@@ -499,6 +554,8 @@ final class ChatGptSettingsPanel extends JPanel {
                       : text(
                           "error.network",
                           "Could not connect to ChatGPT. Check your network and retry."));
+              revalidate();
+              repaint();
             }
           }
         };

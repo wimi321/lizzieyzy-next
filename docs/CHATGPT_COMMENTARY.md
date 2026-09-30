@@ -13,6 +13,12 @@ ChatGPT 登录通过系统浏览器完成，软件不收集密码；登录并授
 KataGo 仍负责棋局计算，ChatGPT 只根据分析证据讲解；套餐资格和共享额度以 OpenAI 为准。
 额度不足时点击 **管理用量**。安全存储不可用时只保持本次会话，关闭后需要重新登录。
 
+钥匙串保存的是登录凭据，不是 ChatGPT 密码。正常打开设置、调整模型和保存偏好
+不应反复要求系统密码；使用 ChatGPT 时，也不会顺带读取尚未打开的 API Key 凭据。
+若已保存的登录信息暂时无法读取，页面会显示原因和 **重试**，而不是误报退出登录。
+请检查系统安全存储的锁定状态及当前应用的访问权限；不会因此删除已保存的凭据。
+网络或模型列表故障同样可以原地重试，尚未保存的模型及思考深度不会被重置。
+
 本机 Swing 窗口截图（未登录，不包含真实账号）：
 
 | ChatGPT 登录 | API Key |
@@ -52,6 +58,14 @@ the default, not a guessed list based on the model name.
 With **API Key**, the existing server URL, key, model discovery and secure-storage options
 remain available. API-key billing is separate. A failed ChatGPT request never falls back to
 an API key, changes the model, or repeats paid inference automatically.
+While ChatGPT is selected, a saved inactive API key is restored only when the API Key tab is
+explicitly opened. Merely opening ChatGPT settings or saving teaching preferences does not
+read that other secret or rewrite the ChatGPT token set.
+
+A temporarily unreadable secure store is not treated as a revoked login. Its existing record
+is retained and the page offers **Retry** after the system lock/access issue is resolved. A
+model-list/network failure retains the selected model and thinking depth without presenting
+another login button. If that model was removed from the catalog, choose a replacement explicitly.
 
 KataGo still calculates the position. The selected analysis evidence and question are sent
 to the selected commentary provider. Only completed commentary may be written into SGF;
@@ -128,6 +142,9 @@ The legacy CLI compatibility test is separately opt-in (`-Dlizzie.test.legacyKey
 because authorizing a legacy writer's entry may legitimately require macOS interaction.
 Do not mark real authorization/inference or Windows acceptance passed without corresponding
 evidence. This feature does not submit an app to OpenAI's directory or publish a release.
+
+See the [October 1 user-flow regression report](qa/chatgpt-ux-20261001.md) for current screenshots,
+reproduced failures, recovery checks and platform limits.
 
 ## Official references
 

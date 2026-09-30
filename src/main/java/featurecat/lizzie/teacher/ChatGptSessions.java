@@ -299,13 +299,15 @@ final class ChatGptSessions {
     return locked(
         () -> {
           JSONObject tokens;
+          boolean readable = true;
           try {
             tokens = readTokens(id);
           } catch (IOException absent) {
             tokens = new JSONObject();
+            readable = false;
           }
-          boolean revoked = tokens.optString("refresh_token").isEmpty();
-          if (!revoked) {
+          boolean revoked = readable && tokens.optString("refresh_token").isEmpty();
+          if (!tokens.optString("refresh_token").isEmpty()) {
             for (int attempt = 0; attempt < 2 && !revoked; attempt++) {
               try {
                 if (attempt > 0) Thread.sleep(500);
@@ -395,11 +397,15 @@ final class ChatGptSessions {
       if (tokens == null) throw ChatGptHttp.error("loginRequired");
       return tokens;
     }
+    java.util.Optional<String> stored;
     try {
-      return new JSONObject(
-          store
-              .read(CredentialStore.Kind.CHATGPT_SESSION, key(id))
-              .orElseThrow(() -> ChatGptHttp.error("loginRequired")));
+      stored = store.read(CredentialStore.Kind.CHATGPT_SESSION, key(id));
+    } catch (IOException unavailable) {
+      // A locked or temporarily inaccessible vault is not a revoked or missing login.
+      throw new CredentialsUnavailable();
+    }
+    try {
+      return new JSONObject(stored.orElseThrow(() -> ChatGptHttp.error("loginRequired")));
     } catch (RuntimeException malformed) {
       throw ChatGptHttp.error("loginRequired");
     }
@@ -422,10 +428,14 @@ final class ChatGptSessions {
   private Account account(String id) throws IOException {
     JSONObject record = entry(id);
     boolean signedIn;
+    boolean credentialsUnavailable = false;
     try {
       JSONObject tokens = readTokens(id);
       signedIn =
           !tokens.optString("access_token").isBlank() || !tokens.optString("id_token").isBlank();
+    } catch (CredentialsUnavailable unavailable) {
+      signedIn = false;
+      credentialsUnavailable = true;
     } catch (IOException absent) {
       signedIn = false;
     }
@@ -437,7 +447,8 @@ final class ChatGptSessions {
             signedIn,
             record.optBoolean("authorized"),
             record.optBoolean("sessionOnly"),
-            record.optBoolean("welcomed"));
+            record.optBoolean("welcomed"),
+            credentialsUnavailable);
     JSONObject efforts = record.optJSONObject("reasoningByModel");
     if (efforts != null)
       for (String key : efforts.keySet()) {
@@ -538,6 +549,7 @@ final class ChatGptSessions {
     final boolean authorized;
     final boolean sessionOnly;
     final boolean welcomed;
+    final boolean credentialsUnavailable;
     final java.util.Map<String, String> reasoningByModel = new java.util.HashMap<>();
 
     Account(
@@ -547,7 +559,8 @@ final class ChatGptSessions {
         boolean signedIn,
         boolean authorized,
         boolean sessionOnly,
-        boolean welcomed) {
+        boolean welcomed,
+        boolean credentialsUnavailable) {
       this.id = id;
       this.email = email;
       this.model = model;
@@ -555,11 +568,18 @@ final class ChatGptSessions {
       this.authorized = authorized;
       this.sessionOnly = sessionOnly;
       this.welcomed = welcomed;
+      this.credentialsUnavailable = credentialsUnavailable;
     }
 
     @Override
     public String toString() {
       return email + " (" + id.substring(0, 8) + ")";
+    }
+  }
+
+  static final class CredentialsUnavailable extends IOException {
+    CredentialsUnavailable() {
+      super(ChatGptHttp.error("credentialsUnavailable").getMessage());
     }
   }
 }

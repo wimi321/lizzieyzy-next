@@ -59,6 +59,7 @@ class ChatGptIntegrationTest {
   AtomicInteger refreshCalls = new AtomicInteger();
   AtomicInteger responseCalls = new AtomicInteger();
   volatile JSONObject lastResponseBody;
+  volatile String lastResponseAuthorization;
   String modelList =
       "{\"models\":[{\"slug\":\"hidden\",\"visibility\":\"hide\"},{\"slug\":\"m2\",\"display_name\":\"Model Two\",\"visibility\":\"list\"},{\"slug\":\"m1\",\"visibility\":\"list\"}]}";
 
@@ -126,6 +127,7 @@ class ChatGptIntegrationTest {
         "/v1/responses",
         x -> {
           responseCalls.incrementAndGet();
+          lastResponseAuthorization = x.getRequestHeaders().getFirst("Authorization");
           JSONObject body =
               new JSONObject(new String(x.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
           lastResponseBody = body;
@@ -206,6 +208,61 @@ class ChatGptIntegrationTest {
     assertFalse(disk.contains("private-refresh"));
     assertFalse(disk.contains("id_token"));
     assertEquals(1, tokenCalls.get());
+  }
+
+  @Test
+  void temporarilyUnavailableCredentialsDoNotEraseOrReauthorizeTheSavedAccount() throws Exception {
+    var account = login(null);
+    String disk = Files.readString(directory.resolve("accounts.json"));
+    var credentials = Map.copyOf(store.values);
+    int writes = store.writes;
+    store.failRead = true;
+    var reopened = new ChatGptSessions(directory, store, http);
+    for (int i = 0; i < 5; i++) {
+      var blocked = reopened.active();
+      assertFalse(blocked.signedIn);
+      assertTrue(blocked.credentialsUnavailable);
+      assertFalse(blocked.sessionOnly);
+      assertEquals(account.id, blocked.id);
+      var failure =
+          assertThrows(
+              ChatGptSessions.CredentialsUnavailable.class, () -> reopened.accessToken(account.id));
+      assertTrue(ChatGptText.isKnownError(failure.getMessage()));
+      assertNull(failure.getCause(), "OS errors must not expose credential details");
+    }
+    assertEquals(disk, Files.readString(directory.resolve("accounts.json")));
+    assertEquals(credentials, store.values);
+    assertEquals(writes, store.writes);
+    store.failRead = false;
+    assertTrue(reopened.active().signedIn);
+    assertFalse(reopened.active().credentialsUnavailable);
+    assertEquals("private-access", reopened.accessToken(account.id));
+    assertEquals(1, tokenCalls.get());
+    assertEquals(writes, store.writes);
+    store.values.clear();
+    assertFalse(reopened.active().signedIn);
+    assertFalse(
+        reopened.active().credentialsUnavailable, "Missing credentials need login, not unlock");
+  }
+
+  @Test
+  void chatGptPreferencesDoNotReadTheInactiveApiCredential() throws Exception {
+    Path file = directory.resolve("teacher.properties");
+    var first = new TeacherSettings(file, store, sessions);
+    first.load();
+    first.save("https://provider.example/v1", "api-model", "api-canary".toCharArray(), true);
+    first.selectProvider(TeacherSettings.Provider.CHATGPT);
+    int reads = store.apiReads;
+    var second = new TeacherSettings(file, store, sessions);
+    assertFalse(second.load().hasApiKey);
+    second.saveTeachingPreferences("k", 5, 0, 1, 1, 1);
+    assertEquals(reads, store.apiReads);
+    second.restoreRememberedApiKey();
+    assertEquals("api-canary", second.apiKey().orElseThrow());
+    assertEquals(reads + 1, store.apiReads);
+    second.restoreRememberedApiKey();
+    assertEquals(reads + 1, store.apiReads);
+    assertEquals(TeacherSettings.Provider.CHATGPT, second.snapshot().provider);
   }
 
   @Test
@@ -558,6 +615,40 @@ class ChatGptIntegrationTest {
   }
 
   @Test
+  void inferenceUsesTheCredentialRotatedDuringModelLookup() throws Exception {
+    var account = login(null);
+    sessions.model(account.id, "m2", "high");
+    server.removeContext("/v1/models");
+    server.createContext(
+        "/v1/models",
+        exchange -> {
+          // Another manager can commit a refreshed token while this request is in flight.
+          store.values.replaceAll(
+              (key, value) ->
+                  new JSONObject(value).put("access_token", "rotated-access").toString());
+          reply(exchange, 200, reasoningCatalog());
+        });
+    new ChatGptCommentaryClient(sessions, account.id, "m2")
+        .stream(
+            List.of(new TeacherLlmClient.Message("system", "Explain this Go move")),
+            new TeacherLlmClient.Cancellation(),
+            ignored -> {});
+    assertEquals("Bearer rotated-access", lastResponseAuthorization);
+    assertEquals(1, responseCalls.get());
+  }
+
+  @Test
+  void unreadableCredentialSignOutDoesNotClaimConfirmedRemoteRevocation() throws Exception {
+    var account = login(null);
+    store.failRead = true;
+    assertFalse(sessions.signOut(account.id));
+    assertTrue(store.values.isEmpty());
+    store.failRead = false;
+    assertFalse(new ChatGptSessions(directory, store, http).active().signedIn);
+    assertEquals(1, tokenCalls.get());
+  }
+
+  @Test
   void reasoningUsesServerCapabilitiesAndPreservesPerAccountModelPreferences() throws Exception {
     var account = login(null);
     modelList = reasoningCatalog();
@@ -675,6 +766,15 @@ class ChatGptIntegrationTest {
     settings.selectProvider(TeacherSettings.Provider.CHATGPT);
     var reopened = new TeacherSettings(directory.resolve("teacher.properties"), store);
     assertEquals(TeacherSettings.Provider.CHATGPT, reopened.load().provider);
+    assertTrue(reopened.apiKey().isEmpty(), "Inactive provider secrets stay in secure storage");
+    assertEquals(
+        "api-only-secret",
+        store
+            .read(
+                CredentialStore.Kind.API_KEY,
+                TeacherSettings.credentialAccount("https://provider.example/v1"))
+            .orElseThrow());
+    reopened.restoreRememberedApiKey();
     assertEquals("api-only-secret", reopened.apiKey().orElseThrow());
     assertEquals("custom-model", reopened.snapshot().model);
   }
@@ -848,6 +948,9 @@ class ChatGptIntegrationTest {
   static final class MemoryStore implements CredentialStore {
     final Map<String, String> values = new ConcurrentHashMap<>();
     boolean available = true, failWrite, failDelete, truncate;
+    volatile boolean failRead;
+    int writes;
+    volatile int apiReads;
 
     public String backendName() {
       return "test";
@@ -857,11 +960,14 @@ class ChatGptIntegrationTest {
       return available;
     }
 
-    public Optional<String> read(Kind kind, String account) {
+    public Optional<String> read(Kind kind, String account) throws IOException {
+      if (kind == Kind.API_KEY) apiReads++;
+      if (failRead) throw new IOException("private OS vault diagnostic");
       return Optional.ofNullable(values.get(kind + account));
     }
 
     public void write(Kind kind, String account, String secret) throws IOException {
+      writes++;
       if (!available || failWrite) throw new IOException("test unavailable");
       values.put(
           kind + account, truncate ? secret.substring(0, Math.min(128, secret.length())) : secret);

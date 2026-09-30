@@ -286,15 +286,63 @@ class ChatGptSettingsNativeTest {
             assertButtonsFit(dialog[0], "signed-in");
             capture(dialog[0], "zh-CN-signed-in");
             assertNoDefaultScroll(dialog[0]);
+            models.setSelectedIndex(1);
+            ((AbstractButton) named(dialog[0], "chatGptRefresh")).doClick();
+          });
+      await(() -> named(dialog[0], "chatGptRefresh").isEnabled());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            var models = (javax.swing.JComboBox<?>) named(dialog[0], "chatGptModels");
+            assertEquals(
+                1, models.getSelectedIndex(), "Refreshing must preserve an unsaved choice");
             fixture.modelList = "{}";
             ((AbstractButton) named(dialog[0], "chatGptRefresh")).doClick();
           });
-      await(() -> named(dialog[0], "chatGptConnect").isShowing());
+      await(() -> named(dialog[0], "chatGptRefresh").isEnabled());
       SwingUtilities.invokeAndWait(
           () -> {
             assertFalse(
+                named(dialog[0], "chatGptConnect").isShowing(), "A model error is not a logout");
+            assertFalse(
                 ((javax.swing.JTextArea) named(dialog[0], "chatGptStatus")).getText().isBlank());
+            assertTrue(named(dialog[0], "chatGptRetry").isShowing());
+            assertNoDefaultScroll(dialog[0]);
             capture(dialog[0], "zh-CN-model-error");
+            fixture.modelList = ChatGptIntegrationTest.reasoningCatalog();
+            ((AbstractButton) named(dialog[0], "chatGptRetry")).doClick();
+          });
+      await(() -> named(dialog[0], "chatGptRefresh").isEnabled());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            assertFalse(named(dialog[0], "chatGptRetry").isShowing());
+            var models = (javax.swing.JComboBox<?>) named(dialog[0], "chatGptModels");
+            assertEquals(1, models.getSelectedIndex());
+            models.setSelectedIndex(0);
+            assertEquals(
+                1,
+                ((javax.swing.JComboBox<?>) named(dialog[0], "chatGptReasoning"))
+                    .getSelectedIndex());
+            models.setSelectedIndex(1);
+            fixture.modelList = "{\"models\":[{\"slug\":\"m2\",\"visibility\":\"list\"}]}";
+            ((AbstractButton) named(dialog[0], "chatGptRefresh")).doClick();
+          });
+      await(() -> named(dialog[0], "chatGptRefresh").isEnabled());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            assertNull(
+                ((javax.swing.JComboBox<?>) named(dialog[0], "chatGptModels")).getSelectedItem());
+            assertFalse(named(dialog[0], "chatGptConnect").isShowing());
+            assertEquals(
+                ChatGptHttp.error("modelRemoved").getMessage(),
+                ((javax.swing.JTextArea) named(dialog[0], "chatGptStatus")).getText());
+            capture(dialog[0], "zh-CN-model-removed");
+            ((AbstractButton) named(dialog[0], "chatGptRefresh")).doClick();
+          });
+      await(() -> named(dialog[0], "chatGptRefresh").isEnabled());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            assertNull(
+                ((javax.swing.JComboBox<?>) named(dialog[0], "chatGptModels")).getSelectedItem());
             ((AbstractButton) named(dialog[0], "chatGptLogout")).doClick();
           });
       await(() -> !named(dialog[0], "chatGptLogout").isShowing());
@@ -307,6 +355,111 @@ class ChatGptSettingsNativeTest {
       assertFalse(fixture.sessions.active().signedIn);
     } finally {
       if (dialog[0] != null) SwingUtilities.invokeAndWait(dialog[0]::dispose);
+      fixture.server.stop(0);
+      Lizzie.resourceBundle = previous;
+    }
+  }
+
+  @Test
+  void lockedCredentialsRecoverWithoutBrowserLoginOrWritesInEveryLocale() throws Exception {
+    assumeTrue(
+        Boolean.getBoolean("lizzie.test.chatgptNative") && !GraphicsEnvironment.isHeadless());
+    var previous = Lizzie.resourceBundle;
+    var fixture = new ChatGptIntegrationTest();
+    fixture.directory = directory.resolve("locked-session");
+    fixture.setup();
+    try {
+      var account = fixture.login(null);
+      fixture.sessions.model(account.id, "m2", "high");
+      fixture.sessions.welcomed(account.id);
+      fixture.modelList = ChatGptIntegrationTest.reasoningCatalog();
+      int writes = fixture.store.writes;
+      for (String locale : List.of("zh-CN", "zh-TW", "zh-HK", "en-US", "ja-JP", "ko", "th-TH")) {
+        fixture.store.failRead = true;
+        var restarted = new ChatGptSessions(fixture.directory, fixture.store, fixture.http);
+        var settings =
+            new TeacherSettings(
+                directory.resolve(locale + "-locked.properties"), fixture.store, restarted);
+        settings.load();
+        settings.selectProvider(TeacherSettings.Provider.CHATGPT);
+        TeacherSettingsDialog[] dialog = new TeacherSettingsDialog[1];
+        try {
+          SwingUtilities.invokeAndWait(
+              () -> {
+                Lizzie.resourceBundle =
+                    ResourceBundle.getBundle("l10n.DisplayStrings", Locale.forLanguageTag(locale));
+                dialog[0] = new TeacherSettingsDialog(null, settings);
+                dialog[0].setModalityType(Dialog.ModalityType.MODELESS);
+                dialog[0].setVisible(true);
+              });
+          await(() -> named(dialog[0], "chatGptRetry").isShowing());
+          SwingUtilities.invokeAndWait(
+              () -> {
+                assertFalse(named(dialog[0], "chatGptConnect").isShowing());
+                assertFalse(named(dialog[0], "chatGptModels").isShowing());
+                assertEquals(
+                    ChatGptHttp.error("credentialsUnavailable").getMessage(),
+                    ((javax.swing.JTextArea) named(dialog[0], "chatGptStatus")).getText());
+                assertButtonsFit(dialog[0], locale + " locked");
+                assertNoDefaultScroll(dialog[0]);
+                capture(dialog[0], locale + "-locked");
+                ((AbstractButton) named(dialog[0], "chatGptRetry")).doClick();
+              });
+          await(() -> named(dialog[0], "chatGptRetry").isShowing());
+          SwingUtilities.invokeAndWait(
+              () -> {
+                assertFalse(named(dialog[0], "chatGptConnect").isShowing());
+                fixture.store.failRead = false;
+                ((AbstractButton) named(dialog[0], "chatGptRetry")).doClick();
+              });
+          await(() -> named(dialog[0], "chatGptReasoning").isEnabled());
+          if (locale.equals("zh-CN")) {
+            fixture.store.failRead = true;
+            SwingUtilities.invokeAndWait(
+                () -> ((AbstractButton) named(dialog[0], "saveSettings")).doClick());
+            await(() -> named(dialog[0], "chatGptRetry").isShowing());
+            SwingUtilities.invokeAndWait(
+                () -> {
+                  assertTrue(
+                      dialog[0].isShowing(),
+                      "Failed credential check must not close the form as saved");
+                  assertTrue(named(dialog[0], "saveSettings").isEnabled());
+                  assertFalse(named(dialog[0], "chatGptConnect").isShowing());
+                  fixture.store.failRead = false;
+                  ((AbstractButton) named(dialog[0], "chatGptRetry")).doClick();
+                });
+            await(() -> named(dialog[0], "chatGptReasoning").isEnabled());
+          }
+          SwingUtilities.invokeAndWait(
+              () -> {
+                assertFalse(named(dialog[0], "chatGptConnect").isShowing());
+                assertFalse(named(dialog[0], "chatGptRetry").isShowing());
+                assertTrue(
+                    ((javax.swing.JTextArea) named(dialog[0], "settingsStatus"))
+                        .getText()
+                        .isBlank(),
+                    "Successful recovery must clear the old save error");
+                assertEquals(
+                    2,
+                    ((javax.swing.JComboBox<?>) named(dialog[0], "chatGptReasoning"))
+                        .getSelectedIndex());
+                assertNoDefaultScroll(dialog[0]);
+                capture(dialog[0], locale + "-recovered");
+                ((AbstractButton) named(dialog[0], "saveSettings")).doClick();
+              });
+          await(() -> !dialog[0].isShowing());
+          assertTrue(restarted.active().signedIn);
+          assertEquals("high", restarted.reasoningEffort(account.id, "m2"));
+          assertEquals(
+              writes,
+              fixture.store.writes,
+              "Opening, retrying and saving preferences must not rewrite tokens");
+          assertEquals(1, fixture.tokenCalls.get(), "Recovery must reuse the existing login");
+        } finally {
+          if (dialog[0] != null) SwingUtilities.invokeAndWait(dialog[0]::dispose);
+        }
+      }
+    } finally {
       fixture.server.stop(0);
       Lizzie.resourceBundle = previous;
     }
@@ -374,6 +527,57 @@ class ChatGptSettingsNativeTest {
     } finally {
       fixture.server.stop(0);
       Lizzie.resourceBundle = previous;
+    }
+  }
+
+  @Test
+  void inactiveApiKeyIsReadOnlyWhenItsTabIsExplicitlyOpened() throws Exception {
+    assumeTrue(
+        Boolean.getBoolean("lizzie.test.chatgptNative") && !GraphicsEnvironment.isHeadless());
+    var fixture = new ChatGptIntegrationTest();
+    fixture.directory = directory.resolve("provider-isolation");
+    fixture.setup();
+    TeacherSettingsDialog[] dialog = new TeacherSettingsDialog[1];
+    try {
+      var account = fixture.login(null);
+      fixture.sessions.welcomed(account.id);
+      Path file = directory.resolve("provider.properties");
+      var initial = new TeacherSettings(file, fixture.store, fixture.sessions);
+      initial.load();
+      initial.save("https://provider.example/v1", "api-model", "api-canary".toCharArray(), true);
+      initial.selectProvider(TeacherSettings.Provider.CHATGPT);
+      var settings = new TeacherSettings(file, fixture.store, fixture.sessions);
+      int reads = fixture.store.apiReads;
+      SwingUtilities.invokeAndWait(
+          () -> {
+            dialog[0] = new TeacherSettingsDialog(null, settings);
+            dialog[0].setModalityType(Dialog.ModalityType.MODELESS);
+            dialog[0].setVisible(true);
+          });
+      await(
+          () ->
+              named(dialog[0], "chatGptModels").isShowing()
+                  && named(dialog[0], "chatGptModels").isEnabled());
+      assertEquals(reads, fixture.store.apiReads);
+      SwingUtilities.invokeAndWait(() -> button(dialog[0], "apiKeyProvider").doClick());
+      await(() -> named(dialog[0], "apiSecret").isEnabled());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            var key = (javax.swing.JPasswordField) named(dialog[0], "apiSecret");
+            assertArrayEquals("api-canary".toCharArray(), key.getPassword());
+            key.setText("");
+            button(dialog[0], "chatGptProvider").doClick();
+            button(dialog[0], "apiKeyProvider").doClick();
+            assertEquals(
+                0, key.getPassword().length, "A cleared draft must not be silently refilled");
+            assertNoDefaultScroll(dialog[0]);
+          });
+      assertEquals(reads + 1, fixture.store.apiReads);
+      assertEquals(TeacherSettings.Provider.CHATGPT, settings.snapshot().provider);
+      assertTrue(fixture.sessions.active().signedIn);
+    } finally {
+      if (dialog[0] != null) SwingUtilities.invokeAndWait(dialog[0]::dispose);
+      fixture.server.stop(0);
     }
   }
 

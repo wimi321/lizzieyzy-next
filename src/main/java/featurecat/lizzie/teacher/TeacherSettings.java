@@ -65,6 +65,8 @@ public final class TeacherSettings {
   /** 0=少讲 1=适中 2=详细。 */
   private int variationIndex = 1;
 
+  private boolean apiKeyRestoreAttempted;
+
   public static TeacherSettings createDefault() {
     Path workDirectory = Config.resolvedWorkDirPath();
     CredentialStore store =
@@ -128,17 +130,33 @@ public final class TeacherSettings {
       rememberApiKey = false;
       properties.remove("apiKey");
       writeProperties(sanitizedProperties());
-    } else if (rememberApiKey && !baseUrl.isBlank() && credentialStore.isAvailable()) {
+    } else if (provider != Provider.CHATGPT) {
       try {
-        Optional<String> stored =
-            credentialStore.read(CredentialStore.Kind.API_KEY, credentialAccount(baseUrl));
-        replaceSessionApiKey(stored.orElse("").toCharArray());
+        restoreRememberedApiKey();
       } catch (IOException e) {
         replaceSessionApiKey(new char[0]);
       }
     }
     loaded = true;
     return snapshot();
+  }
+
+  /** Only restore inactive-provider credentials when the user explicitly opens that provider. */
+  synchronized void restoreRememberedApiKey() throws IOException {
+    if (apiKeyRestoreAttempted || sessionApiKey.length > 0 || !rememberApiKey || baseUrl.isBlank())
+      return;
+    apiKeyRestoreAttempted = true;
+    if (!credentialStore.isAvailable()) return;
+    try {
+      Optional<String> stored =
+          credentialStore.read(CredentialStore.Kind.API_KEY, credentialAccount(baseUrl));
+      replaceSessionApiKey(stored.orElse("").toCharArray());
+    } catch (IOException unavailable) {
+      throw new IOException(
+          TeacherStrings.get(
+              "Teacher.settings.storageUnavailable",
+              "System credential storage is unavailable; the key will be session-only."));
+    }
   }
 
   public synchronized Snapshot save(
