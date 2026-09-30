@@ -2,6 +2,15 @@
 
 ## 中文使用说明
 
+首次打开时，点击 **连接 AI** 完成连接。之后选择 **下一手 / 区间 / 整局**，
+再点击 **开始解说**；选择模式本身不会发送请求或消耗额度。
+只有区间模式显示起止手数。尚无分析时，先在棋盘上开启分析，看到推荐落点后再解说。
+
+追问针对窗口正在展示的解说；在棋盘上浏览其他手数，不会把追问结果写到另一手。
+想讲新局面时，回到 **下一手** 并点击 **开始解说**。取消设置、停止或网络失败会保留
+尚未完成的追问，便于修改后重试。切换到另一盘棋会结束旧请求并清空旧问题。
+解说加入棋谱评论后，仍需保存棋谱文件；中途断流的半截结果不会写入棋谱。
+
 打开 **AI 解说 → 设置 → 连接服务**，在并列的 **ChatGPT 登录 / API Key** 中自行选择。
 ChatGPT 登录通过系统浏览器完成，软件不收集密码；登录并授权后选择模型并保存。
 模型旁的 **思考深度** 只展示当前账号目录中该模型支持的档位，默认使用模型默认设置。
@@ -32,6 +41,17 @@ KataGo 仍负责棋局计算，ChatGPT 只根据分析证据讲解；套餐资�
 ![独立讲解偏好页](qa/chatgpt-settings/zh-CN-preferences.png)
 
 ## Choosing a connection
+
+First use offers **Connect AI**. Once connected, select **Next move / Range / Whole game**
+and press **Start commentary**. Changing modes alone never sends a request. Range controls
+appear only in Range mode. Analyze the board first if KataGo evidence is missing.
+
+Follow-up questions stay attached to the displayed commentary, including commentary loaded
+from an SGF. Browsing another move does not change its evidence or write-back node. Start a
+new Next move explanation to discuss the current board position. Cancelling setup, stopping,
+or a failed response keeps the unfinished question. A new game cancels and discards old context.
+Adding commentary to game comments is not a disk save; save the game file to retain it.
+Partial/malformed streams and token-limit endings are not treated as successful commentary.
 
 Open **AI commentary > Settings**. **ChatGPT login** and **API Key** are equal alternatives.
 New installations ask you to choose; existing API-key configurations stay selected. Switching
@@ -145,6 +165,8 @@ evidence. This feature does not submit an app to OpenAI's directory or publish a
 
 See the [October 1 user-flow regression report](qa/chatgpt-ux-20261001.md) for current screenshots,
 reproduced failures, recovery checks and platform limits.
+See the [commentary-flow audit](qa/commentary-flow-20261001.md) for generation, follow-up,
+cancellation, SGF write-back and novice-user improvements.
 
 ## Official references
 

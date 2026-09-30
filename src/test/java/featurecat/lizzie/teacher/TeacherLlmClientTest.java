@@ -53,6 +53,149 @@ class TeacherLlmClientTest {
   }
 
   @Test
+  void incompleteStreamIsNotASuccessfulCommentary() throws Exception {
+    server.createContext(
+        "/v1/chat/completions",
+        exchange ->
+            respondSse(
+                exchange,
+                "data: {\"choices\":[{\"delta\":{\"content\":\"partial explanation\"}}]}\n\n"));
+    server.start();
+    StringBuilder partial = new StringBuilder();
+    assertThrows(
+        IOException.class,
+        () ->
+            new TeacherLlmClient(baseUrl, "secret", "model")
+                .stream(
+                    List.of(new TeacherLlmClient.Message("user", "Explain")),
+                    new TeacherLlmClient.Cancellation(),
+                    partial::append));
+    assertEquals("partial explanation", partial.toString());
+  }
+
+  @Test
+  void stoppedChatCompletionCanFinishAtEofButTruncatedReasonsCannot() throws Exception {
+    java.util.concurrent.atomic.AtomicReference<String> reason =
+        new java.util.concurrent.atomic.AtomicReference<>("stop");
+    server.createContext(
+        "/v1/chat/completions",
+        exchange ->
+            respondSse(
+                exchange,
+                "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":\""
+                    + reason.get()
+                    + "\"}]}\n\n"));
+    server.start();
+    var client = new TeacherLlmClient(baseUrl, "secret", "model");
+    var messages = List.of(new TeacherLlmClient.Message("user", "Explain"));
+    assertEquals(
+        "answer", client.stream(messages, new TeacherLlmClient.Cancellation(), text -> {}));
+    for (String value : List.of("length", "content_filter", "tool_calls")) {
+      reason.set(value);
+      assertThrows(
+          IOException.class,
+          () -> client.stream(messages, new TeacherLlmClient.Cancellation(), text -> {}),
+          value);
+    }
+  }
+
+  @Test
+  void responseCompletionMustBeExplicitAndSuccessful() throws Exception {
+    java.util.concurrent.atomic.AtomicReference<String> ending =
+        new java.util.concurrent.atomic.AtomicReference<>(
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n");
+    server.createContext("/v1/chat/completions", exchange -> respond(exchange, 404, "not found"));
+    server.createContext(
+        "/v1/responses",
+        exchange ->
+            respondSse(
+                exchange,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n\n"
+                    + ending.get()));
+    server.start();
+    var client = new TeacherLlmClient(baseUrl, "secret", "model");
+    var messages = List.of(new TeacherLlmClient.Message("user", "Explain"));
+    assertEquals(
+        "answer", client.stream(messages, new TeacherLlmClient.Cancellation(), text -> {}));
+    for (String type : List.of("response.incomplete", "response.failed", "error")) {
+      ending.set("data: {\"type\":\"" + type + "\"}\n\ndata: [DONE]\n\n");
+      assertThrows(
+          IOException.class,
+          () -> client.stream(messages, new TeacherLlmClient.Cancellation(), text -> {}),
+          type);
+    }
+    for (String invalid :
+        List.of(
+            "",
+            "data: {broken\n\ndata: [DONE]\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"incomplete\"}}\n\n")) {
+      ending.set(invalid);
+      assertThrows(
+          IOException.class,
+          () -> client.stream(messages, new TeacherLlmClient.Cancellation(), text -> {}));
+    }
+  }
+
+  @Test
+  void streamingErrorRedactsTheActualKeyEvenWithoutAStandardPrefix() throws Exception {
+    server.createContext(
+        "/v1/chat/completions",
+        exchange ->
+            respondSse(
+                exchange,
+                "data: {\"error\":{\"message\":\"Rejected custom-credential-value\"}}\n\n"));
+    server.start();
+    var error =
+        assertThrows(
+            IOException.class,
+            () ->
+                new TeacherLlmClient(baseUrl, "custom-credential-value", "model")
+                    .stream(
+                        List.of(new TeacherLlmClient.Message("user", "Explain")),
+                        new TeacherLlmClient.Cancellation(),
+                        text -> {}));
+    assertFalse(error.getMessage().contains("custom-credential-value"));
+  }
+
+  @Test
+  void explicitStopCompletesWithoutWaitingForTheServerToClose() throws Exception {
+    CountDownLatch release = new CountDownLatch(1);
+    server.createContext(
+        "/v1/chat/completions",
+        exchange -> {
+          exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+          exchange.sendResponseHeaders(200, 0);
+          try (var output = exchange.getResponseBody()) {
+            output.write(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}]}\n\n"
+                    .getBytes(StandardCharsets.UTF_8));
+            output.flush();
+            try {
+              release.await(4, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+              Thread.currentThread().interrupt();
+            }
+          }
+        });
+    server.start();
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      var result =
+          executor.submit(
+              () ->
+                  new TeacherLlmClient(baseUrl, "secret", "model")
+                      .stream(
+                          List.of(new TeacherLlmClient.Message("user", "Explain")),
+                          new TeacherLlmClient.Cancellation(),
+                          text -> {}));
+      assertEquals("answer", result.get(2, TimeUnit.SECONDS));
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
   void listsModelsWithoutSendingACompletionProbe() throws Exception {
     AtomicInteger modelCalls = new AtomicInteger();
     server.createContext(

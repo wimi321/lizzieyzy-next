@@ -55,7 +55,7 @@ final class TeacherDialogView extends JPanel {
   }
 
   private final JEditorPane output = new JEditorPane();
-  private final JLabel status = new ClippedLabel(" ");
+  private final JTextArea status = wrappingText(" ");
   private final JLabel modelStatus = new ClippedLabel(" ", SwingConstants.RIGHT);
   private final JPanel chatGptUsage = transparent(new BorderLayout(8, 0));
   private final JButton manageChatGptUsage =
@@ -67,6 +67,10 @@ final class TeacherDialogView extends JPanel {
   private final JToggleButton explainWhole =
       new JToggleButton(TeacherStrings.get("Teacher.mode.whole", "Whole game"));
   private final JButton stop = new JButton(TeacherStrings.get("Teacher.action.stop", "Stop"));
+  private final JButton start =
+      new JButton(TeacherStrings.get("Teacher.action.start", "Start commentary"));
+  private final JPanel rangeControls = transparent(new GridBagLayout());
+  private Mode mode = Mode.NEXT;
   private final JButton settingsButton =
       new JButton(TeacherStrings.get("Teacher.action.settings", "Settings"));
   private final JButton ask = new JButton(TeacherStrings.get("Teacher.action.ask", "Ask"));
@@ -241,7 +245,7 @@ final class TeacherDialogView extends JPanel {
     TeacherDialogStyle.styleSpinner(rangeStart);
     TeacherDialogStyle.styleSpinner(rangeEnd);
 
-    JPanel range = transparent(new GridBagLayout());
+    JPanel range = rangeControls;
     GridBagConstraints constraints = new GridBagConstraints();
     constraints.gridy = 0;
     constraints.insets = new Insets(0, 0, 0, 6);
@@ -259,9 +263,14 @@ final class TeacherDialogView extends JPanel {
             "Teacher.action.stop.description", "Cancel the active network request."));
     stop.getAccessibleContext().setAccessibleDescription(stop.getToolTipText());
 
+    TeacherDialogStyle.stylePrimary(start);
+    start.getAccessibleContext().setAccessibleDescription(start.getText());
+    start.setName("startCommentary");
+    JPanel actions = transparent(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0));
+    actions.add(start);
+    actions.add(stop);
     JPanel right = transparent(new BorderLayout(10, 0));
-    right.add(range, BorderLayout.CENTER);
-    right.add(stop, BorderLayout.EAST);
+    right.add(actions, BorderLayout.CENTER);
 
     JPanel context = transparent(new BorderLayout(12, 0));
     context.setBorder(
@@ -270,6 +279,7 @@ final class TeacherDialogView extends JPanel {
             BorderFactory.createEmptyBorder(10, 14, 10, 12)));
     context.add(currentMove, BorderLayout.CENTER);
     context.add(right, BorderLayout.EAST);
+    context.add(range, BorderLayout.SOUTH);
     return context;
   }
 
@@ -389,6 +399,7 @@ final class TeacherDialogView extends JPanel {
   }
 
   private JPanel buildStatusArea() {
+    status.setRows(2);
     progressBar.setIndeterminate(true);
     progressBar.setVisible(false);
     progressBar.setPreferredSize(new Dimension(10, 3));
@@ -419,7 +430,7 @@ final class TeacherDialogView extends JPanel {
             BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherDialogStyle.border()),
             BorderFactory.createEmptyBorder(8, 13, 8, 13)));
     row.add(statusLeft, BorderLayout.CENTER);
-    row.add(modelStatus, BorderLayout.EAST);
+    row.add(modelStatus, BorderLayout.SOUTH);
 
     JPanel area = transparent(new BorderLayout());
     area.add(progressBar, BorderLayout.NORTH);
@@ -495,6 +506,8 @@ final class TeacherDialogView extends JPanel {
   }
 
   void selectMode(Mode mode) {
+    this.mode = mode;
+    rangeControls.setVisible(mode == Mode.RANGE);
     switch (mode) {
       case RANGE:
         explainRange.setSelected(true);
@@ -507,6 +520,27 @@ final class TeacherDialogView extends JPanel {
         explainNext.setSelected(true);
         break;
     }
+    revalidate();
+    repaint();
+  }
+
+  Mode mode() {
+    return mode;
+  }
+
+  JButton start() {
+    return start;
+  }
+
+  void setCommentaryMove(int moveNumber) {
+    setCommentaryScope(
+        TeacherStrings.format(
+            "Teacher.position.commentary", "Explaining the position after move {0}", moveNumber));
+  }
+
+  void setCommentaryScope(String text) {
+    currentMove.setText(text);
+    currentMove.setToolTipText(currentMove.getText());
   }
 
   void showEmpty() {
@@ -559,7 +593,8 @@ final class TeacherDialogView extends JPanel {
     status.setToolTipText(next);
     setEmptyDetail(
         tone == StatusTone.NEUTRAL
-            ? TeacherStrings.get("Teacher.empty.ready", "Current position evidence is ready.")
+            ? TeacherStrings.get(
+                "Teacher.empty.guide", "Choose what to explain, then click Start commentary.")
             : next);
     statusDot.setTone(tone == null ? StatusTone.NEUTRAL : tone);
     status
@@ -583,7 +618,7 @@ final class TeacherDialogView extends JPanel {
     return output;
   }
 
-  JLabel status() {
+  JTextArea status() {
     return status;
   }
 
