@@ -25,7 +25,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** Small OpenAI-compatible client with streaming and Responses API fallback. */
-public final class TeacherLlmClient {
+public final class TeacherLlmClient implements CommentaryClient {
   private static final int MAX_ERROR_BODY_BYTES = 4096;
   private static final int MAX_PROMPT_CHARACTERS = 250_000;
 
@@ -388,7 +388,7 @@ public final class TeacherLlmClient {
       return cancelled.get();
     }
 
-    private void attach(InputStream stream) throws IOException {
+    void attach(InputStream stream) throws IOException {
       activeStream = stream;
       if (cancelled.get()) {
         stream.close();
@@ -396,7 +396,7 @@ public final class TeacherLlmClient {
       }
     }
 
-    private void detach(InputStream stream) {
+    void detach(InputStream stream) {
       if (activeStream == stream) {
         activeStream = null;
       }

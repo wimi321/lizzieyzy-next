@@ -159,6 +159,37 @@ class TeacherDialogViewTest {
         });
   }
 
+  @Test
+  void chatGptPlanUsageHasVisibleActionWithoutHidingTheComposer() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          java.util.ResourceBundle previous = featurecat.lizzie.Lizzie.resourceBundle;
+          try {
+            for (String tag : new String[] {"zh-CN", "zh-TW", "en-US", "ja-JP", "ko", "th-TH"}) {
+              featurecat.lizzie.Lizzie.resourceBundle =
+                  java.util.ResourceBundle.getBundle(
+                      "l10n.DisplayStrings", java.util.Locale.forLanguageTag(tag));
+              TeacherDialogView view = new TeacherDialogView();
+              view.setChatGptUsageVisible(true);
+              view.setSize(760, 540);
+              layoutTree(view);
+              var button = view.manageChatGptUsage();
+              assertAccessible(button);
+              assertTrue(
+                  button.getWidth() - button.getInsets().left - button.getInsets().right
+                      >= button.getFontMetrics(button.getFont()).stringWidth(button.getText()),
+                  tag);
+              var composer = find(view, "teacherComposer");
+              assertNotNull(composer);
+              assertFalse(overlaps(boundsIn(view, button), boundsIn(view, composer)), tag);
+              assertTrue(boundsIn(view, button).y + button.getHeight() <= view.getHeight(), tag);
+            }
+          } finally {
+            featurecat.lizzie.Lizzie.resourceBundle = previous;
+          }
+        });
+  }
+
   private static void assertAccessible(JComponent component) {
     assertAccessibleName(component);
     assertNotNull(component.getAccessibleContext().getAccessibleDescription());

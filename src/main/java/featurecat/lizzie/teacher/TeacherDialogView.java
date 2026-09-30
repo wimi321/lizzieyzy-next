@@ -57,6 +57,9 @@ final class TeacherDialogView extends JPanel {
   private final JEditorPane output = new JEditorPane();
   private final JLabel status = new ClippedLabel(" ");
   private final JLabel modelStatus = new ClippedLabel(" ", SwingConstants.RIGHT);
+  private final JPanel chatGptUsage = transparent(new BorderLayout(8, 0));
+  private final JButton manageChatGptUsage =
+      new JButton(ChatGptSettingsPanel.text("usage", "Manage usage"));
   private final JToggleButton explainNext =
       new JToggleButton(TeacherStrings.get("Teacher.mode.next", "Next move"));
   private final JToggleButton explainRange =
@@ -421,7 +424,26 @@ final class TeacherDialogView extends JPanel {
     JPanel area = transparent(new BorderLayout());
     area.add(progressBar, BorderLayout.NORTH);
     area.add(row, BorderLayout.CENTER);
+    chatGptUsage.setBorder(BorderFactory.createEmptyBorder(0, 13, 8, 13));
+    chatGptUsage.add(
+        new JLabel(ChatGptSettingsPanel.text("usingPlan", "Using ChatGPT plan")),
+        BorderLayout.CENTER);
+    TeacherDialogStyle.styleSecondary(manageChatGptUsage);
+    manageChatGptUsage
+        .getAccessibleContext()
+        .setAccessibleDescription(manageChatGptUsage.getText());
+    chatGptUsage.add(manageChatGptUsage, BorderLayout.LINE_END);
+    chatGptUsage.setVisible(false);
+    area.add(chatGptUsage, BorderLayout.SOUTH);
     return area;
+  }
+
+  void setChatGptUsageVisible(boolean visible) {
+    chatGptUsage.setVisible(visible);
+  }
+
+  JButton manageChatGptUsage() {
+    return manageChatGptUsage;
   }
 
   private JPanel buildComposer() {

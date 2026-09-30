@@ -32,6 +32,10 @@ public final class TeacherDialog extends JDialog {
   private final TeacherRequestController requests = new TeacherRequestController();
   private final ConcurrentLinkedQueue<String> pendingText = new ConcurrentLinkedQueue<>();
   private final Timer textFlushTimer;
+  private final Timer gameGuardTimer;
+  private Object requestGame;
+  private Object displayedGame;
+  private long uiGeneration;
 
   private final TeacherDialogView view = new TeacherDialogView();
   private final JEditorPane output = view.output();
@@ -91,12 +95,31 @@ public final class TeacherDialog extends JDialog {
 
     textFlushTimer = new Timer(140, event -> flushPendingText());
     textFlushTimer.setRepeats(false);
+    gameGuardTimer =
+        new Timer(
+            200,
+            event -> {
+              if (displayedGame != currentGame()) {
+                stopRequest();
+                uiGeneration++;
+                lastEvidenceContext = List.of();
+                lastEvidencePositions = List.of();
+                requestPositions = List.of();
+                requestTarget = null;
+                pendingText.clear();
+                refreshFromBoard();
+                updateControlState();
+              }
+            });
+    gameGuardTimer.start();
 
     addWindowListener(
         new WindowAdapter() {
           @Override
           public void windowClosed(WindowEvent event) {
             requests.close();
+            uiGeneration++;
+            gameGuardTimer.stop();
             textFlushTimer.stop();
             if (activeDialog == TeacherDialog.this) {
               activeDialog = null;
@@ -109,6 +132,30 @@ public final class TeacherDialog extends JDialog {
   }
 
   private void bindActions() {
+    view.manageChatGptUsage()
+        .addActionListener(
+            event -> {
+              new SwingWorker<Void, Void>() {
+                @Override
+                protected Void doInBackground() throws Exception {
+                  ChatGptSettingsPanel.browse(
+                      java.net.URI.create("https://chatgpt.com/settings/usage"));
+                  return null;
+                }
+
+                @Override
+                protected void done() {
+                  try {
+                    get();
+                  } catch (Exception failed) {
+                    setStatus(
+                        ChatGptSettingsPanel.text(
+                            "error.browser", "Open ChatGPT usage settings in your browser."),
+                        TeacherDialogView.StatusTone.WARNING);
+                  }
+                }
+              }.execute();
+            });
     explainNext.addActionListener(
         event -> {
           view.selectMode(TeacherDialogView.Mode.NEXT);
@@ -127,15 +174,17 @@ public final class TeacherDialog extends JDialog {
     stop.addActionListener(event -> stopRequest());
     settingsButton.addActionListener(
         event -> {
-          if (TeacherSettingsDialog.show(this, settings)) {
-            refreshSettingsStatus();
-          }
+          stopRequest();
+          TeacherSettingsDialog.show(this, settings);
+          refreshSettingsStatus();
         });
     ask.addActionListener(event -> askFollowUp());
     followUp.addActionListener(event -> askFollowUp());
   }
 
   private void refreshFromBoard() {
+    if (requestRunning && requestGame != currentGame()) stopRequest();
+    displayedGame = currentGame();
     if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
       if (!requests.isRunning()) {
         clearOutputForEmptyState();
@@ -196,20 +245,34 @@ public final class TeacherDialog extends JDialog {
     new SwingWorker<TeacherSettings.Snapshot, Void>() {
       @Override
       protected TeacherSettings.Snapshot doInBackground() throws Exception {
-        return settings.load();
+        TeacherSettings.Snapshot snapshot = settings.load();
+        if (snapshot.provider == TeacherSettings.Provider.CHATGPT) settings.refreshChatGptAccount();
+        return snapshot;
       }
 
       @Override
       protected void done() {
+        if (!isDisplayable()) return;
         settingsLoaded = true;
         try {
           TeacherSettings.Snapshot snapshot = get();
           settingsUsable = true;
+          view.setChatGptUsageVisible(
+              snapshot.provider == TeacherSettings.Provider.CHATGPT
+                  && settings.chatGptAccount() != null
+                  && settings.chatGptAccount().signedIn
+                  && settings.chatGptAccount().authorized);
           view.setModelStatus(
-              snapshot.hasApiKey
-                  ? TeacherStrings.format("Teacher.status.modelReady", "Model: {0}", snapshot.model)
-                  : TeacherStrings.get(
-                      "Teacher.status.needsKey", "Configure an API key before use"));
+              snapshot.provider == TeacherSettings.Provider.CHATGPT
+                  ? chatGptStatus()
+                  : snapshot.provider == TeacherSettings.Provider.UNSELECTED
+                      ? ChatGptSettingsPanel.text(
+                          "choose", "Choose a connection method and finish setup.")
+                      : snapshot.hasApiKey
+                          ? TeacherStrings.format(
+                              "Teacher.status.modelReady", "Model: {0}", snapshot.model)
+                          : TeacherStrings.get(
+                              "Teacher.status.needsKey", "Configure an API key before use"));
         } catch (Exception error) {
           settingsUsable = false;
           view.setModelStatus(localError(error));
@@ -313,6 +376,12 @@ public final class TeacherDialog extends JDialog {
   }
 
   private void askFollowUp() {
+    if (displayedGame != currentGame()) {
+      stopRequest();
+      lastEvidenceContext = List.of();
+      lastEvidencePositions = List.of();
+      refreshFromBoard();
+    }
     String question = followUp.getText().trim();
     if (question.isEmpty()) {
       return;
@@ -356,13 +425,23 @@ public final class TeacherDialog extends JDialog {
 
   private void startRequest(
       List<TeacherLlmClient.Message> messages, BoardHistoryNode targetNode, String runningStatus) {
+    Object evidenceGame = currentGame();
     messages = appendKnowledge(messages, targetNode);
-    TeacherLlmClient client = configuredClient();
+    CommentaryClient client = configuredClient();
     if (client == null) {
       return;
     }
+    if (evidenceGame != currentGame()) {
+      refreshFromBoard();
+      return;
+    }
     TeacherSettings.Snapshot snapshot = settings.snapshot();
-    requestModel = snapshot.model;
+    requestModel =
+        snapshot.provider == TeacherSettings.Provider.CHATGPT
+            ? settings.chatGptAccount().model
+            : snapshot.model;
+    requestGame = currentGame();
+    long currentGeneration = ++uiGeneration;
     requestTarget = targetNode;
     requestPositions = List.copyOf(lastEvidencePositions);
     pendingText.clear();
@@ -377,22 +456,34 @@ public final class TeacherDialog extends JDialog {
         new TeacherRequestController.Listener() {
           @Override
           public void onText(String text) {
-            queuePendingText(text);
+            SwingUtilities.invokeLater(
+                () -> {
+                  if (acceptCallback(currentGeneration)) queuePendingText(text);
+                });
           }
 
           @Override
           public void onComplete(String fullText) {
-            SwingUtilities.invokeLater(() -> completeRequest(fullText));
+            SwingUtilities.invokeLater(
+                () -> {
+                  if (acceptCallback(currentGeneration)) completeRequest(fullText);
+                });
           }
 
           @Override
           public void onFailure(Throwable error) {
-            SwingUtilities.invokeLater(() -> failRequest(error));
+            SwingUtilities.invokeLater(
+                () -> {
+                  if (acceptCallback(currentGeneration)) failRequest(error);
+                });
           }
 
           @Override
           public void onCancelled() {
-            SwingUtilities.invokeLater(() -> cancelledRequest());
+            SwingUtilities.invokeLater(
+                () -> {
+                  if (acceptCallback(currentGeneration)) cancelledRequest();
+                });
           }
         });
   }
@@ -419,14 +510,28 @@ public final class TeacherDialog extends JDialog {
     return out;
   }
 
-  private TeacherLlmClient configuredClient() {
+  private CommentaryClient configuredClient() {
     try {
       TeacherSettings.Snapshot snapshot = settings.load();
-      if (!snapshot.hasApiKey) {
+      if (snapshot.provider == TeacherSettings.Provider.UNSELECTED
+          || (snapshot.provider == TeacherSettings.Provider.API_KEY && !snapshot.hasApiKey)
+          || (snapshot.provider == TeacherSettings.Provider.CHATGPT
+              && (settings.chatGptAccount() == null
+                  || !settings.chatGptAccount().signedIn
+                  || !settings.chatGptAccount().authorized
+                  || settings.chatGptAccount().model.isBlank()))) {
         if (!TeacherSettingsDialog.show(this, settings)) {
           return null;
         }
         snapshot = settings.snapshot();
+      }
+      view.setChatGptUsageVisible(snapshot.provider == TeacherSettings.Provider.CHATGPT);
+      if (snapshot.provider == TeacherSettings.Provider.CHATGPT) {
+        ChatGptSessions.Account account = settings.chatGptAccount();
+        if (account == null || !account.signedIn || !account.authorized || account.model.isBlank())
+          return null;
+        view.setModelStatus(chatGptStatus());
+        return new ChatGptCommentaryClient(settings.chatGpt(), account.id, account.model);
       }
       Optional<String> apiKey = settings.apiKey();
       if (apiKey.isEmpty()) {
@@ -440,6 +545,23 @@ public final class TeacherDialog extends JDialog {
       setStatus(localError(error));
       return null;
     }
+  }
+
+  private String chatGptStatus() {
+    ChatGptSessions.Account account = settings.chatGptAccount();
+    return account != null && account.signedIn && account.authorized
+        ? ChatGptSettingsPanel.text("usingPlan", "Using ChatGPT plan") + " · " + account.model
+        : ChatGptSettingsPanel.text("notConnected", "Connect ChatGPT to use your plan.");
+  }
+
+  private Object currentGame() {
+    return Lizzie.board == null || Lizzie.board.getHistory() == null
+        ? null
+        : Lizzie.board.getHistory().getStart();
+  }
+
+  private boolean acceptCallback(long generation) {
+    return isDisplayable() && uiGeneration == generation && requestGame == currentGame();
   }
 
   private void completeRequest(String fullText) {
@@ -551,9 +673,10 @@ public final class TeacherDialog extends JDialog {
   }
 
   private void stopRequest() {
-    if (!requests.isRunning()) {
+    if (!requestRunning) {
       return;
     }
+    uiGeneration++;
     requests.cancel();
     cancelledRequest();
   }

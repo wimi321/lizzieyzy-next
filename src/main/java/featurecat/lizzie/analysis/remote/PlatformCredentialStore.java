@@ -185,6 +185,9 @@ public final class PlatformCredentialStore {
     }
 
     private static String service(Kind kind) {
+      if (kind == Kind.CHATGPT_SESSION) {
+        return "cn.lizzieyzy.next.ai-commentary.chatgpt-session";
+      }
       return kind == Kind.API_KEY
           ? AI_COMMENTARY_KEYCHAIN_SERVICE
           : ZHIZI_KEYCHAIN_SERVICE_PREFIX + kind.id();
@@ -243,8 +246,8 @@ public final class PlatformCredentialStore {
       command.add("secret-tool");
       command.add("store");
       command.add(
-          kind == Kind.API_KEY
-              ? "--label=LizzieYzy Next AI Commentary API Key"
+          kind == Kind.API_KEY || kind == Kind.CHATGPT_SESSION
+              ? "--label=LizzieYzy Next AI Commentary " + kind.id()
               : "--label=LizzieYzy Next Zhizi " + kind.id());
       command.addAll(secretAttributes(kind, account));
       CommandResult result = run(command, secret + System.lineSeparator());

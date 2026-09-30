@@ -21,6 +21,15 @@ import java.util.Properties;
 
 /** Persists non-secret AI commentary preferences and keeps the API key in native storage. */
 public final class TeacherSettings {
+  enum Provider {
+    UNSELECTED,
+    CHATGPT,
+    API_KEY
+  }
+
+  private Provider provider = Provider.UNSELECTED;
+  private ChatGptSessions chatGptSessions;
+  private volatile ChatGptSessions.Account chatGptAccount;
   static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
   static final String DEFAULT_MODEL = "gpt-4o-mini";
 
@@ -67,6 +76,11 @@ public final class TeacherSettings {
     this.credentialStore = credentialStore;
   }
 
+  TeacherSettings(Path settingsFile, CredentialStore credentialStore, ChatGptSessions sessions) {
+    this(settingsFile, credentialStore);
+    chatGptSessions = sessions;
+  }
+
   public synchronized Snapshot load() throws IOException {
     if (loaded) {
       return snapshot();
@@ -79,6 +93,14 @@ public final class TeacherSettings {
     }
 
     baseUrl = validateBaseUrl(properties.getProperty("baseUrl", DEFAULT_BASE_URL));
+    try {
+      provider =
+          Provider.valueOf(
+              properties.getProperty(
+                  "provider", Files.isRegularFile(settingsFile) ? "API_KEY" : "UNSELECTED"));
+    } catch (IllegalArgumentException invalid) {
+      provider = Provider.UNSELECTED;
+    }
     model = validateModel(properties.getProperty("model", DEFAULT_MODEL));
     rememberApiKey = Boolean.parseBoolean(properties.getProperty("rememberApiKey", "false"));
     rankMode = "d".equals(properties.getProperty("teacher.rankMode", "k")) ? "d" : "k";
@@ -166,7 +188,27 @@ public final class TeacherSettings {
         styleIndex,
         densityIndex,
         paceIndex,
-        variationIndex);
+        variationIndex,
+        provider);
+  }
+
+  synchronized ChatGptSessions chatGpt() {
+    if (chatGptSessions == null) chatGptSessions = ChatGptSessions.createDefault();
+    return chatGptSessions;
+  }
+
+  void refreshChatGptAccount() throws IOException {
+    chatGptAccount = chatGpt().active();
+  }
+
+  ChatGptSessions.Account chatGptAccount() {
+    return chatGptAccount;
+  }
+
+  synchronized void selectProvider(Provider requested) throws IOException {
+    load();
+    provider = requested;
+    writeProperties(sanitizedProperties());
   }
 
   /** 保存讲解设置（等级/风格/术语密度/节奏/变化细节），不触碰 LLM 凭据。 */
@@ -215,6 +257,7 @@ public final class TeacherSettings {
 
   private Properties sanitizedProperties() {
     Properties properties = new Properties();
+    properties.setProperty("provider", provider.name());
     properties.setProperty("baseUrl", baseUrl);
     properties.setProperty("model", model);
     properties.setProperty("rememberApiKey", Boolean.toString(rememberApiKey));
@@ -316,6 +359,7 @@ public final class TeacherSettings {
   }
 
   public static final class Snapshot {
+    final Provider provider;
     public final String baseUrl;
     public final String model;
     public final boolean rememberApiKey;
@@ -342,6 +386,37 @@ public final class TeacherSettings {
         int densityIndex,
         int paceIndex,
         int variationIndex) {
+      this(
+          baseUrl,
+          model,
+          rememberApiKey,
+          hasApiKey,
+          secureStorageAvailable,
+          secureStorageBackend,
+          rankMode,
+          rankNum,
+          styleIndex,
+          densityIndex,
+          paceIndex,
+          variationIndex,
+          Provider.API_KEY);
+    }
+
+    Snapshot(
+        String baseUrl,
+        String model,
+        boolean rememberApiKey,
+        boolean hasApiKey,
+        boolean secureStorageAvailable,
+        String secureStorageBackend,
+        String rankMode,
+        int rankNum,
+        int styleIndex,
+        int densityIndex,
+        int paceIndex,
+        int variationIndex,
+        Provider provider) {
+      this.provider = provider;
       this.baseUrl = baseUrl;
       this.model = model;
       this.rememberApiKey = rememberApiKey;
