@@ -17,6 +17,7 @@ final class ChatGptText {
             "timeout",
             "denied",
             "models",
+            "reasoning",
             "incomplete",
             "busy",
             "storage",

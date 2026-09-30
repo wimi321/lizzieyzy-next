@@ -107,12 +107,52 @@ legacy/new settings reload. The API screenshot and focused-empty screenshot are 
   zero failures/errors, six skipped. Markdown links, line endings and diff
   whitespace checks also passed.
 
+## Real-account follow-up and thinking depth
+
+- The user completed official sign-in; the real account catalog returned five visible models.
+  This exposed a real macOS persistence defect: the `security` CLI password prompt truncated
+  synthetic inputs of 1,024/4,096/12,000 bytes to 128 bytes. Exact verification correctly
+  rejected the truncated credential and kept the authorized session in memory only.
+- Replaced that prompt path with length-delimited Security/CoreFoundation calls through the
+  existing JNA dependency. Real Keychain canary tests round-trip 32/128/129/1,024/4,096/12,000/
+  65,536 characters plus Unicode, newline and trailing-space suffixes. Tests use unique account
+  identifiers, remove only their own entries, and do not read real credentials.
+- Thinking depth is next to the ChatGPT model. Options come from the account catalog's
+  `supported_reasoning_levels`, never a model-name guess. Defaults omit `reasoning`; explicit
+  choices are remembered per account/model and revalidated before a Responses request.
+- Fake-service tests verify outgoing `reasoning.effort`, missing/malformed/duplicate capability
+  metadata, independent model/account preferences, restart, removed support and no silent fallback.
+- The first native layout test caught a scrollbar introduced by stacked selectors. The compact
+  two-column revision passed all four native tests, including seven locale variants and saving
+  the selected effort through the real form. These tests use a fake account, not the user's data.
+- After user reauthorization and saving, a new process of the same packaged application
+  recovered the login (`sessionOnly=false`), fetched five live models, and restored the selected
+  `gpt-6-astra` / `high` preference. One synthetic Go-evidence request reached official
+  `response.completed` and returned 76 characters. This verifies transport/completion, not
+  playing strength or a full-game explanation. No password, token, account email or authorization
+  URL is included in these evidence artifacts.
+- A system-JDK acceptance process triggered repeated Keychain prompts because it was a different
+  executable from the app that saved the grant. That process was stopped. Subsequent real-account
+  checks used the same packaged executable; no Keychain ACL was weakened.
+- Background ChatGPT reads now suppress authorization UI in a serialized native scope and restore
+  the prior process policy even on failure. A foreign-writer synthetic canary was refused three
+  times in under five seconds, with no prompt; the interaction policy was unchanged afterward.
+  Unit tests cover nested scopes, disabled policy and failure to inspect/disable interaction.
+- Final focused run: 72 test invocations, 70 passed, zero failures/errors, two skipped (Windows
+  DPAPI and separately gated legacy-CLI authorization). All four native UI tests passed across
+  seven locale variants. The final pass also caught and removed a two-pixel default-window
+  overflow introduced by grouping the model/effort controls. Signed-out fields are hidden.
+- Final clean JDK 21 headless `verify`, including shaded packaging: 4,542 unit-test invocations,
+  zero failures/errors, 99 skipped; seven integration-test invocations, zero failures/errors,
+  six skipped. Line endings, Markdown links and diff whitespace checks pass. An isolated
+  configuration/log scan found no plaintext access, refresh or identity tokens.
+
 ## Not yet accepted
 
-- Real eligible ChatGPT account: official authorization, account model catalog, live commentary,
-  restart persistence, refresh and sign-out/revocation. An isolated native login window was
-  opened; no successful user authorization has been recorded. Fake service tests are not a
-  substitute for this gate.
+- Real eligible ChatGPT account: automatic refresh at token expiry, sign-out/revocation and
+  full-game commentary remain unverified. Official sign-in, live catalog, repaired persistence,
+  restart and one synthetic commentary request passed. The final no-prompt read change is covered
+  with native canaries; the real-account preview was not re-signed to avoid another trust change.
 - Windows native UI at 100/125/150/200% DPI, Windows DPAPI for this new credential kind, and
   Linux Secret Service. No Windows machine or UU connection was used.
 - Whole-application native desktop acceptance: the broad non-headless macOS run encountered
@@ -121,6 +161,6 @@ legacy/new settings reload. The API screenshot and focused-empty screenshot are 
   passes. The relevant commentary native suite was run separately. Headless verification
   correctly skips tests that require platform-specific desktops/hardware.
 
-Keep the PR in draft until the real-account gate has evidence. Do not advertise unlimited
-usage or publish a release from these results. For repeatable commands and isolated live-test
+Keep the PR in draft while outstanding platform/real-account gates remain. Do not advertise
+unlimited usage or publish a release from these results. For repeatable commands and isolated live-test
 entry points, see [ChatGPT commentary](../CHATGPT_COMMENTARY.md).

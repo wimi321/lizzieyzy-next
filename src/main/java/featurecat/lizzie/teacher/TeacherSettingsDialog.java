@@ -784,6 +784,7 @@ final class TeacherSettingsDialog extends JDialog {
     }
     String chatAccount = chatGptPanel.selectedAccountId();
     String chatModel = chatGptPanel.selectedModel();
+    String chatEffort = chatGptPanel.selectedReasoningEffort();
     char[] key = apiKeyField.getPassword();
     String requestedBaseUrl = baseUrlField.getText();
     String requestedModel = selectedModel();
@@ -810,7 +811,7 @@ final class TeacherSettingsDialog extends JDialog {
         if (provider == TeacherSettings.Provider.API_KEY) {
           settings.save(requestedBaseUrl, requestedModel, key, requestedRemember);
         } else {
-          settings.chatGpt().model(chatAccount, chatModel);
+          settings.chatGpt().model(chatAccount, chatModel, chatEffort);
           settings.chatGpt().select(chatAccount);
           settings.refreshChatGptAccount();
         }

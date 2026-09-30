@@ -183,10 +183,33 @@ final class ChatGptSessions {
   }
 
   void model(String id, String model) throws IOException {
+    model(id, model, "");
+  }
+
+  String reasoningEffort(String id, String model) throws IOException {
+    return locked(
+        () -> {
+          JSONObject values = entry(id).optJSONObject("reasoningByModel");
+          return values == null ? "" : values.optString(model);
+        });
+  }
+
+  void model(String id, String model, String effort) throws IOException {
+    if (model == null
+        || model.isBlank()
+        || effort == null
+        || (!effort.isEmpty() && !ChatGptCommentaryClient.validEffort(effort)))
+      throw ChatGptHttp.error("reasoning");
     locked(
         () -> {
-          entry(id).put("model", model);
+          JSONObject record = entry(id);
+          record.put("model", model);
+          JSONObject values = record.optJSONObject("reasoningByModel");
+          if (values == null) values = new JSONObject();
+          values.put(model, effort);
+          record.put("reasoningByModel", values);
           persist();
+          invalidateRequests();
           return null;
         });
   }
@@ -406,14 +429,22 @@ final class ChatGptSessions {
     } catch (IOException absent) {
       signedIn = false;
     }
-    return new Account(
-        id,
-        record.getString("email"),
-        record.optString("model"),
-        signedIn,
-        record.optBoolean("authorized"),
-        record.optBoolean("sessionOnly"),
-        record.optBoolean("welcomed"));
+    Account result =
+        new Account(
+            id,
+            record.getString("email"),
+            record.optString("model"),
+            signedIn,
+            record.optBoolean("authorized"),
+            record.optBoolean("sessionOnly"),
+            record.optBoolean("welcomed"));
+    JSONObject efforts = record.optJSONObject("reasoningByModel");
+    if (efforts != null)
+      for (String key : efforts.keySet()) {
+        String effort = efforts.optString(key);
+        if (ChatGptCommentaryClient.validEffort(effort)) result.reasoningByModel.put(key, effort);
+      }
+    return result;
   }
 
   private static boolean authorized(JSONObject tokens) {
@@ -507,6 +538,7 @@ final class ChatGptSessions {
     final boolean authorized;
     final boolean sessionOnly;
     final boolean welcomed;
+    final java.util.Map<String, String> reasoningByModel = new java.util.HashMap<>();
 
     Account(
         String id,

@@ -36,6 +36,15 @@ public final class ChatGptLiveAcceptanceCli {
         var models = client.models();
         System.out.println(
             "MODEL_CATALOG_OK count=" + models.size() + " sessionOnly=" + account.sessionOnly);
+        for (var model : models) {
+          System.out.println(
+              "MODEL_CAPABILITY slug=" + model.slug + " reasoning=" + model.reasoningEfforts);
+        }
+        System.out.println(
+            "SELECTED_MODEL="
+                + account.model
+                + " reasoning="
+                + sessions.reasoningEffort(account.id, account.model));
         if (args[0].equals("generate")) {
           String explanation =
               client.stream(

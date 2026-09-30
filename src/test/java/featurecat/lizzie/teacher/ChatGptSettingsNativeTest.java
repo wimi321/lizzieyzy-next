@@ -248,6 +248,8 @@ class ChatGptSettingsNativeTest {
     TeacherSettingsDialog[] dialog = new TeacherSettingsDialog[1];
     try {
       var account = fixture.login(null);
+      fixture.modelList = ChatGptIntegrationTest.reasoningCatalog();
+      fixture.sessions.model(account.id, "m2", "high");
       fixture.sessions.welcomed(account.id);
       var settings =
           new TeacherSettings(
@@ -269,6 +271,18 @@ class ChatGptSettingsNativeTest {
             dialog[0].validate();
             assertTrue(named(dialog[0], "chatGptUsage").isShowing());
             assertFalse(named(dialog[0], "chatGptConnect").isShowing());
+            var efforts = (javax.swing.JComboBox<?>) named(dialog[0], "chatGptReasoning");
+            var models = (javax.swing.JComboBox<?>) named(dialog[0], "chatGptModels");
+            assertTrue(efforts.isShowing());
+            assertTrue(efforts.isEnabled());
+            assertEquals(5, efforts.getItemCount());
+            assertEquals("深入", efforts.getSelectedItem().toString());
+            efforts.setSelectedIndex(1);
+            models.setSelectedIndex(1);
+            assertFalse(efforts.isEnabled());
+            assertEquals(1, efforts.getItemCount());
+            models.setSelectedIndex(0);
+            assertEquals("较浅", efforts.getSelectedItem().toString());
             assertButtonsFit(dialog[0], "signed-in");
             capture(dialog[0], "zh-CN-signed-in");
             assertNoDefaultScroll(dialog[0]);
@@ -284,9 +298,80 @@ class ChatGptSettingsNativeTest {
             ((AbstractButton) named(dialog[0], "chatGptLogout")).doClick();
           });
       await(() -> !named(dialog[0], "chatGptLogout").isShowing());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            assertFalse(named(dialog[0], "chatGptModels").isShowing());
+            assertFalse(named(dialog[0], "chatGptReasoning").isShowing());
+            assertNoDefaultScroll(dialog[0]);
+          });
       assertFalse(fixture.sessions.active().signedIn);
     } finally {
       if (dialog[0] != null) SwingUtilities.invokeAndWait(dialog[0]::dispose);
+      fixture.server.stop(0);
+      Lizzie.resourceBundle = previous;
+    }
+  }
+
+  @Test
+  void thinkingDepthFitsAllLocalesAndSavesThroughTheRealForm() throws Exception {
+    assumeTrue(
+        Boolean.getBoolean("lizzie.test.chatgptNative") && !GraphicsEnvironment.isHeadless());
+    var previous = Lizzie.resourceBundle;
+    var fixture = new ChatGptIntegrationTest();
+    fixture.directory = directory.resolve("reasoning-locales");
+    fixture.setup();
+    try {
+      var account = fixture.login(null);
+      fixture.sessions.welcomed(account.id);
+      fixture.modelList = ChatGptIntegrationTest.reasoningCatalog();
+      for (String locale : List.of("zh-CN", "zh-TW", "zh-HK", "en-US", "ja-JP", "ko", "th-TH")) {
+        fixture.sessions.model(account.id, "m2", "high");
+        var settings =
+            new TeacherSettings(
+                directory.resolve(locale + "-depth.properties"), fixture.store, fixture.sessions);
+        settings.load();
+        settings.selectProvider(TeacherSettings.Provider.CHATGPT);
+        TeacherSettingsDialog[] dialog = new TeacherSettingsDialog[1];
+        try {
+          SwingUtilities.invokeAndWait(
+              () -> {
+                Lizzie.resourceBundle =
+                    ResourceBundle.getBundle("l10n.DisplayStrings", Locale.forLanguageTag(locale));
+                dialog[0] = new TeacherSettingsDialog(null, settings);
+                dialog[0].setModalityType(Dialog.ModalityType.MODELESS);
+                dialog[0].setVisible(true);
+              });
+          await(
+              () ->
+                  named(dialog[0], "chatGptReasoning").isEnabled()
+                      && ((javax.swing.JComboBox<?>) named(dialog[0], "chatGptReasoning"))
+                              .getItemCount()
+                          == 5);
+          SwingUtilities.invokeAndWait(
+              () -> {
+                var efforts = (javax.swing.JComboBox<?>) named(dialog[0], "chatGptReasoning");
+                assertEquals(2, efforts.getSelectedIndex());
+                assertButtonsFit(dialog[0], locale);
+                assertNoDefaultScroll(dialog[0]);
+                assertNotNull(efforts.getAccessibleContext().getAccessibleName());
+                assertTrue(
+                    efforts.getWidth()
+                        > efforts
+                                .getFontMetrics(efforts.getFont())
+                                .stringWidth(efforts.getSelectedItem().toString())
+                            + 30);
+                capture(dialog[0], locale + "-thinking-depth");
+                efforts.setSelectedIndex(1);
+                ((AbstractButton) named(dialog[0], "saveSettings")).doClick();
+              });
+          await(() -> !dialog[0].isShowing());
+          var restarted = new ChatGptSessions(fixture.directory, fixture.store, fixture.http);
+          assertEquals("low", restarted.reasoningEffort(account.id, "m2"));
+        } finally {
+          if (dialog[0] != null) SwingUtilities.invokeAndWait(dialog[0]::dispose);
+        }
+      }
+    } finally {
       fixture.server.stop(0);
       Lizzie.resourceBundle = previous;
     }

@@ -58,6 +58,7 @@ class ChatGptIntegrationTest {
   AtomicInteger tokenCalls = new AtomicInteger();
   AtomicInteger refreshCalls = new AtomicInteger();
   AtomicInteger responseCalls = new AtomicInteger();
+  volatile JSONObject lastResponseBody;
   String modelList =
       "{\"models\":[{\"slug\":\"hidden\",\"visibility\":\"hide\"},{\"slug\":\"m2\",\"display_name\":\"Model Two\",\"visibility\":\"list\"},{\"slug\":\"m1\",\"visibility\":\"list\"}]}";
 
@@ -127,6 +128,7 @@ class ChatGptIntegrationTest {
           responseCalls.incrementAndGet();
           JSONObject body =
               new JSONObject(new String(x.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+          lastResponseBody = body;
           assertFalse(body.getBoolean("store"));
           assertTrue(body.getBoolean("stream"));
           assertEquals("developer", body.getJSONArray("input").getJSONObject(0).getString("role"));
@@ -257,6 +259,22 @@ class ChatGptIntegrationTest {
     store.failWrite = true;
     var account = login(null);
     assertTrue(account.sessionOnly);
+    assertFalse(Files.readString(directory.resolve("accounts.json")).contains("private-access"));
+  }
+
+  @Test
+  void truncatedStoreNeverClaimsPersistenceAndReauthorizationRepairsIt() throws Exception {
+    store.truncate = true;
+    var account = login(null);
+    assertTrue(account.sessionOnly);
+    assertEquals("private-access", sessions.accessToken(account.id));
+    assertFalse(new ChatGptSessions(directory, store, http).active().signedIn);
+    store.truncate = false;
+    var repaired = login(account.id);
+    assertFalse(repaired.sessionOnly);
+    var restarted = new ChatGptSessions(directory, store, http);
+    assertTrue(restarted.active().signedIn);
+    assertEquals("private-access", restarted.accessToken(account.id));
     assertFalse(Files.readString(directory.resolve("accounts.json")).contains("private-access"));
   }
 
@@ -529,6 +547,73 @@ class ChatGptIntegrationTest {
     assertEquals(0, responseCalls.get());
   }
 
+  static String reasoningCatalog() {
+    return """
+        {"models":[
+          {"slug":"m2","display_name":"Model Two","visibility":"list",
+           "supported_reasoning_levels":[{"effort":"low"},{"effort":"high"},{"effort":"high"},
+              {"effort":"ultra"},{"effort":"future-depth"},{"effort":"<html>bad"},null,5,{}]},
+          {"slug":"m1","visibility":"list"}]}
+        """;
+  }
+
+  @Test
+  void reasoningUsesServerCapabilitiesAndPreservesPerAccountModelPreferences() throws Exception {
+    var account = login(null);
+    modelList = reasoningCatalog();
+    var models = new ChatGptCommentaryClient(sessions, account.id, "m2").models();
+    assertEquals(List.of("low", "high", "ultra", "future-depth"), models.get(0).reasoningEfforts);
+    assertTrue(models.get(1).reasoningEfforts.isEmpty());
+    sessions.model(account.id, "m2", "high");
+    sessions.model(account.id, "m1", "");
+    var restarted = new ChatGptSessions(directory, store, http);
+    assertEquals("high", restarted.reasoningEffort(account.id, "m2"));
+    assertEquals("", restarted.reasoningEffort(account.id, "m1"));
+    assertEquals("high", restarted.active().reasoningByModel.get("m2"));
+    subject = "subject-two";
+    var other = login(null);
+    assertEquals("", sessions.reasoningEffort(other.id, "m2"));
+    sessions.model(other.id, "m2", "low");
+    assertEquals("high", sessions.reasoningEffort(account.id, "m2"));
+    assertEquals("low", sessions.reasoningEffort(other.id, "m2"));
+  }
+
+  @Test
+  void reasoningIsSentAndRemovedCapabilitiesCannotSilentlyChangeTheRequest() throws Exception {
+    var account = login(null);
+    modelList = reasoningCatalog();
+    sessions.model(account.id, "m2", "high");
+    var client = new ChatGptCommentaryClient(sessions, account.id, "m2");
+    var messages = List.of(new TeacherLlmClient.Message("system", "Explain the supplied evidence"));
+    assertEquals(
+        "Go explanation",
+        client.stream(messages, new TeacherLlmClient.Cancellation(), ignored -> {}));
+    assertEquals("high", lastResponseBody.getJSONObject("reasoning").getString("effort"));
+    modelList = "{\"models\":[{\"slug\":\"m2\",\"visibility\":\"list\"}]}";
+    assertThrows(
+        IOException.class,
+        () -> client.stream(messages, new TeacherLlmClient.Cancellation(), ignored -> {}));
+    assertEquals(1, responseCalls.get());
+    assertEquals("high", sessions.reasoningEffort(account.id, "m2"));
+    sessions.model(account.id, "m2", "");
+    new ChatGptCommentaryClient(sessions, account.id, "m2")
+        .stream(messages, new TeacherLlmClient.Cancellation(), ignored -> {});
+    assertFalse(lastResponseBody.has("reasoning"));
+  }
+
+  @Test
+  void invalidReasoningCannotBePersistedOrPlacedInRequests() throws Exception {
+    var account = login(null);
+    var messages = List.of(new TeacherLlmClient.Message("user", "Explain"));
+    for (String value : new String[] {"HIGH", " high", "<html>high", "a".repeat(33), null}) {
+      assertThrows(IOException.class, () -> sessions.model(account.id, "m2", value));
+      assertThrows(
+          IOException.class, () -> ChatGptCommentaryClient.requestBody("m2", messages, value));
+    }
+    assertFalse(ChatGptCommentaryClient.requestBody("m2", messages).has("reasoning"));
+    assertEquals("", sessions.reasoningEffort(account.id, "m2"));
+  }
+
   @Test
   void responsesRequestUsesPlanContractAndCompletesExactlyOnce() throws Exception {
     var account = login(null);
@@ -762,7 +847,7 @@ class ChatGptIntegrationTest {
 
   static final class MemoryStore implements CredentialStore {
     final Map<String, String> values = new ConcurrentHashMap<>();
-    boolean available = true, failWrite, failDelete;
+    boolean available = true, failWrite, failDelete, truncate;
 
     public String backendName() {
       return "test";
@@ -778,7 +863,8 @@ class ChatGptIntegrationTest {
 
     public void write(Kind kind, String account, String secret) throws IOException {
       if (!available || failWrite) throw new IOException("test unavailable");
-      values.put(kind + account, secret);
+      values.put(
+          kind + account, truncate ? secret.substring(0, Math.min(128, secret.length())) : secret);
     }
 
     public void delete(Kind kind, String account) throws IOException {

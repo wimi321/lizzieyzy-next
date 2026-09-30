@@ -48,7 +48,7 @@ final class ChatGptCommentaryClient implements CommentaryClient {
           || slug.length() > 160
           || slug.chars().anyMatch(Character::isISOControl)
           || !seen.add(slug)) continue;
-      result.add(new Model(slug, item.optString("display_name", slug)));
+      result.add(new Model(slug, item.optString("display_name", slug), item));
     }
     if (result.isEmpty()) throw ChatGptHttp.error("models");
     return List.copyOf(result);
@@ -75,7 +75,16 @@ final class ChatGptCommentaryClient implements CommentaryClient {
       throws IOException, InterruptedException {
     checkCurrent(cancellation);
     String token = sessions.accessToken(accountId);
-    JSONObject body = requestBody(model, messages);
+    String effort = sessions.reasoningEffort(accountId, model);
+    if (!effort.isEmpty()) {
+      Model selected =
+          models().stream()
+              .filter(item -> item.slug.equals(model))
+              .findFirst()
+              .orElseThrow(() -> ChatGptHttp.error("models"));
+      if (!selected.reasoningEfforts.contains(effort)) throw ChatGptHttp.error("reasoning");
+    }
+    JSONObject body = requestBody(model, messages, effort);
     checkCurrent(cancellation);
     HttpRequest request =
         HttpRequest.newBuilder(URI.create(sessions.http.api + "/responses"))
@@ -134,6 +143,13 @@ final class ChatGptCommentaryClient implements CommentaryClient {
 
   static JSONObject requestBody(String model, List<TeacherLlmClient.Message> messages)
       throws IOException {
+    return requestBody(model, messages, "");
+  }
+
+  static JSONObject requestBody(
+      String model, List<TeacherLlmClient.Message> messages, String effort) throws IOException {
+    if (effort == null || (!effort.isEmpty() && !validEffort(effort)))
+      throw ChatGptHttp.error("reasoning");
     if (model == null || model.isBlank() || messages == null || messages.isEmpty())
       throw ChatGptHttp.error("models");
     JSONArray input = new JSONArray();
@@ -148,11 +164,18 @@ final class ChatGptCommentaryClient implements CommentaryClient {
       input.put(new JSONObject().put("role", role).put("content", message.content));
     }
     if (input.isEmpty()) throw ChatGptHttp.error("protocol");
-    return new JSONObject()
-        .put("model", model)
-        .put("input", input)
-        .put("store", false)
-        .put("stream", true);
+    JSONObject body =
+        new JSONObject()
+            .put("model", model)
+            .put("input", input)
+            .put("store", false)
+            .put("stream", true);
+    if (!effort.isEmpty()) body.put("reasoning", new JSONObject().put("effort", effort));
+    return body;
+  }
+
+  static boolean validEffort(String effort) {
+    return effort != null && effort.matches("[a-z][a-z0-9_-]{0,31}");
   }
 
   static String readStream(
@@ -212,10 +235,25 @@ final class ChatGptCommentaryClient implements CommentaryClient {
   static final class Model {
     final String slug;
     final String name;
+    final List<String> reasoningEfforts;
 
     Model(String slug, String name) {
+      this(slug, name, new JSONObject());
+    }
+
+    Model(String slug, String name, JSONObject metadata) {
       this.slug = slug;
       this.name = name;
+      List<String> efforts = new ArrayList<>();
+      JSONArray levels = metadata.optJSONArray("supported_reasoning_levels");
+      if (levels != null) {
+        for (int i = 0; i < levels.length(); i++) {
+          JSONObject level = levels.optJSONObject(i);
+          String value = level == null ? "" : level.optString("effort");
+          if (validEffort(value) && !efforts.contains(value)) efforts.add(value);
+        }
+      }
+      reasoningEfforts = List.copyOf(efforts);
     }
 
     @Override

@@ -22,6 +22,10 @@ final class ChatGptSettingsPanel extends JPanel {
   private final ChatGptSessions sessions;
   private final JComboBox<ChatGptSessions.Account> accounts = new JComboBox<>();
   private final JComboBox<ChatGptCommentaryClient.Model> models = new JComboBox<>();
+  private final JComboBox<Effort> reasoning = new JComboBox<>();
+  private final JTextArea reasoningHint = note("");
+  private final java.util.Map<String, String> draftEfforts = new java.util.HashMap<>();
+  private boolean updatingEffort;
   private final JButton connect = button("connect", "Continue with ChatGPT");
   private final JButton add = button("add", "Add account");
   private final JButton logout = button("logout", "Sign out");
@@ -30,6 +34,7 @@ final class ChatGptSettingsPanel extends JPanel {
   private final JTextArea status = note("");
   private final JPanel welcome = new JPanel();
   private final JPanel fields = new JPanel();
+  private final JPanel modelFields = TeacherSettingsStyle.panel(new BorderLayout(0, 5));
   private final JPanel actions = new JPanel();
   private final JPanel privacy = TeacherSettingsStyle.panel(new BorderLayout(10, 0));
   private final JButton usage = button("usage", "Manage usage");
@@ -58,7 +63,7 @@ final class ChatGptSettingsPanel extends JPanel {
     row.gridy = 0;
     row.weightx = 1;
     row.fill = GridBagConstraints.HORIZONTAL;
-    row.insets = new Insets(3, 0, 3, 0);
+    row.insets = new Insets(2, 0, 2, 0);
 
     welcome.setLayout(new BorderLayout(36, 0));
     welcome.setOpaque(false);
@@ -103,13 +108,40 @@ final class ChatGptSettingsPanel extends JPanel {
     fields.add(accounts, fieldRow);
     JLabel modelLabel = TeacherSettingsStyle.label(text("model", "ChatGPT model"), 15, true);
     modelLabel.setLabelFor(models);
-    fieldRow.gridy++;
-    fields.add(modelLabel, fieldRow);
     JPanel modelRow = TeacherSettingsStyle.panel(new BorderLayout(8, 0));
     modelRow.add(models, BorderLayout.CENTER);
     modelRow.add(refresh, BorderLayout.LINE_END);
+    JLabel effortLabel = TeacherSettingsStyle.label(text("reasoning", "Thinking depth"), 15, true);
+    effortLabel.setLabelFor(reasoning);
+    TeacherSettingsStyle.input(reasoning);
+    reasoning.setName("chatGptReasoning");
+    reasoning.setEnabled(false);
+    reasoning.getAccessibleContext().setAccessibleName(effortLabel.getText());
+    JPanel selectors = TeacherSettingsStyle.panel(new GridBagLayout());
+    GridBagConstraints selector = new GridBagConstraints();
+    selector.fill = GridBagConstraints.HORIZONTAL;
+    selector.weightx = 0.68;
+    selector.gridx = 0;
+    selector.gridy = 0;
+    selector.insets = new Insets(0, 0, 5, 12);
+    selectors.add(modelLabel, selector);
+    selector.gridy = 1;
+    selector.insets = new Insets(0, 0, 0, 12);
+    modelRow.setMinimumSize(new java.awt.Dimension(0, modelRow.getPreferredSize().height));
+    selectors.add(modelRow, selector);
+    selector.gridx = 1;
+    selector.gridy = 0;
+    selector.weightx = 0.32;
+    selector.insets = new Insets(0, 0, 5, 0);
+    selectors.add(effortLabel, selector);
+    selector.gridy = 1;
+    selector.insets = new Insets(0, 0, 0, 0);
+    reasoning.setPreferredSize(new java.awt.Dimension(180, reasoning.getPreferredSize().height));
+    selectors.add(reasoning, selector);
+    modelFields.add(selectors, BorderLayout.NORTH);
+    modelFields.add(reasoningHint, BorderLayout.SOUTH);
     fieldRow.gridy++;
-    fields.add(modelRow, fieldRow);
+    fields.add(modelFields, fieldRow);
     row.gridy++;
     content.add(fields, row);
 
@@ -195,6 +227,12 @@ final class ChatGptSettingsPanel extends JPanel {
               ignored -> reload());
         });
     refresh.addActionListener(event -> refreshModels());
+    models.addActionListener(event -> updateReasoning());
+    reasoning.addActionListener(
+        event -> {
+          if (!updatingEffort && selected() != null && !selectedModel().isEmpty())
+            draftEfforts.put(selected().id + ":" + selectedModel(), selectedReasoningEffort());
+        });
   }
 
   void reload() {
@@ -218,6 +256,7 @@ final class ChatGptSettingsPanel extends JPanel {
     boolean signedIn = account != null && account.signedIn;
     welcome.setVisible(!signedIn && accounts.getItemCount() == 0);
     fields.setVisible(accounts.getItemCount() > 0);
+    modelFields.setVisible(signedIn && account.authorized);
     actions.setVisible(signedIn);
     planNotice.setVisible(!signedIn || !account.authorized);
     connect.setVisible(!signedIn || !account.authorized);
@@ -230,6 +269,7 @@ final class ChatGptSettingsPanel extends JPanel {
     refresh.setEnabled(signedIn && account.authorized);
     models.removeAllItems();
     models.setEnabled(signedIn && account.authorized);
+    updateReasoning();
     updateStatus();
     if (signedIn && account.authorized && !account.welcomed) {
       JOptionPane.showMessageDialog(
@@ -274,7 +314,7 @@ final class ChatGptSettingsPanel extends JPanel {
     privacy.setBorder(
         BorderFactory.createCompoundBorder(
             BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherSettingsStyle.border()),
-            BorderFactory.createEmptyBorder(14, 0, empty ? 26 : 0, 0)));
+            BorderFactory.createEmptyBorder(empty ? 14 : 6, 0, empty ? 26 : 0, 0)));
   }
 
   private void signIn(String id) {
@@ -333,6 +373,57 @@ final class ChatGptSettingsPanel extends JPanel {
     return model == null ? "" : model.slug;
   }
 
+  String selectedReasoningEffort() {
+    Effort effort = (Effort) reasoning.getSelectedItem();
+    return effort == null ? "" : effort.value;
+  }
+
+  private void updateReasoning() {
+    updatingEffort = true;
+    try {
+      reasoning.removeAllItems();
+      reasoning.addItem(new Effort(""));
+      ChatGptCommentaryClient.Model model =
+          (ChatGptCommentaryClient.Model) models.getSelectedItem();
+      ChatGptSessions.Account account = selected();
+      String saved =
+          account == null || model == null
+              ? ""
+              : draftEfforts.getOrDefault(
+                  account.id + ":" + model.slug,
+                  account.reasoningByModel.getOrDefault(model.slug, ""));
+      if (model != null)
+        for (String value : model.reasoningEfforts) {
+          Effort effort = new Effort(value);
+          reasoning.addItem(effort);
+          if (value.equals(saved)) reasoning.setSelectedItem(effort);
+        }
+      boolean supported = model != null && !model.reasoningEfforts.isEmpty();
+      reasoning.setEnabled(models.isEnabled() && supported);
+      String hint =
+          supported
+              ? text(
+                  "reasoning.hint",
+                  "Deeper thinking may take longer and use more of your plan allowance.")
+              : text(
+                  "reasoning.unavailable",
+                  "This model does not advertise adjustable thinking depth; its default is used.");
+      reasoningHint.setText(hint);
+      reasoning.getAccessibleContext().setAccessibleDescription(hint);
+    } finally {
+      updatingEffort = false;
+    }
+  }
+
+  private record Effort(String value) {
+    @Override
+    public String toString() {
+      return text(
+          "reasoning." + (value.isEmpty() ? "default" : value),
+          value.isEmpty() ? "Model default" : value);
+    }
+  }
+
   boolean isReady() {
     ChatGptSessions.Account account = selected();
     return (worker == null || worker.isDone())
@@ -369,6 +460,7 @@ final class ChatGptSettingsPanel extends JPanel {
     logout.setEnabled(false);
     refresh.setEnabled(false);
     models.setEnabled(false);
+    reasoning.setEnabled(false);
     accounts.setEnabled(false);
     status.setText(text("working", "Connecting..."));
     status.setVisible(true);
@@ -389,6 +481,7 @@ final class ChatGptSettingsPanel extends JPanel {
             logout.setEnabled(account != null && account.signedIn);
             refresh.setEnabled(account != null && account.signedIn && account.authorized);
             models.setEnabled(refresh.isEnabled());
+            updateReasoning();
             try {
               completed.accept(get());
             } catch (Exception failure) {

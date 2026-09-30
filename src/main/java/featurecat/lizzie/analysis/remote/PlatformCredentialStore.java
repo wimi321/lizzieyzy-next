@@ -88,8 +88,6 @@ public final class PlatformCredentialStore {
   }
 
   private static final class MacKeychainStore extends CommandCredentialStore {
-    private volatile Boolean available;
-
     MacKeychainStore(CredentialCommandRunner runner) {
       super(runner);
     }
@@ -101,19 +99,7 @@ public final class PlatformCredentialStore {
 
     @Override
     public boolean isAvailable() {
-      Boolean cached = available;
-      if (cached != null) {
-        return cached;
-      }
-      boolean detected;
-      try {
-        detected =
-            run(List.of("/usr/bin/security", "help", "find-generic-password"), "").exitCode == 0;
-      } catch (IOException e) {
-        detected = false;
-      }
-      available = detected;
-      return detected;
+      return MacKeychainNative.available();
     }
 
     @Override
@@ -121,24 +107,14 @@ public final class PlatformCredentialStore {
       if (!isAvailable()) {
         return Optional.empty();
       }
-      CommandResult result =
-          run(
-              List.of(
-                  "/usr/bin/security",
-                  "find-generic-password",
-                  "-a",
-                  account(account),
-                  "-s",
-                  service(kind),
-                  "-w"),
-              "");
-      if (result.exitCode == 0) {
-        return nonEmptySecret(result.output);
+      try {
+        if (kind == Kind.CHATGPT_SESSION) {
+          return MacKeychainNative.readWithoutPrompt(service(kind), account(account));
+        }
+        return MacKeychainNative.read(service(kind), account(account));
+      } catch (LinkageError | RuntimeException unavailable) {
+        throw failure("read");
       }
-      if (result.exitCode == 44) {
-        return Optional.empty();
-      }
-      throw failure("read");
     }
 
     @Override
@@ -146,20 +122,9 @@ public final class PlatformCredentialStore {
       if (!isAvailable() || secret == null || secret.isEmpty()) {
         throw failure("write");
       }
-      // Keeping -w last makes the security tool read the password from stdin instead of argv.
-      CommandResult result =
-          run(
-              List.of(
-                  "/usr/bin/security",
-                  "add-generic-password",
-                  "-U",
-                  "-a",
-                  account(account),
-                  "-s",
-                  service(kind),
-                  "-w"),
-              secret + System.lineSeparator() + secret + System.lineSeparator());
-      if (result.exitCode != 0) {
+      try {
+        MacKeychainNative.write(service(kind), account(account), secret);
+      } catch (LinkageError | RuntimeException unavailable) {
         throw failure("write");
       }
     }
@@ -169,17 +134,9 @@ public final class PlatformCredentialStore {
       if (!isAvailable()) {
         return;
       }
-      CommandResult result =
-          run(
-              List.of(
-                  "/usr/bin/security",
-                  "delete-generic-password",
-                  "-a",
-                  account(account),
-                  "-s",
-                  service(kind)),
-              "");
-      if (result.exitCode != 0 && result.exitCode != 44) {
+      try {
+        MacKeychainNative.delete(service(kind), account(account));
+      } catch (LinkageError | RuntimeException unavailable) {
         throw failure("delete");
       }
     }

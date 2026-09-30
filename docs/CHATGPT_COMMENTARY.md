@@ -4,6 +4,11 @@
 
 打开 **AI 解说 → 设置 → 连接服务**，在并列的 **ChatGPT 登录 / API Key** 中自行选择。
 ChatGPT 登录通过系统浏览器完成，软件不收集密码；登录并授权后选择模型并保存。
+模型旁的 **思考深度** 只展示当前账号目录中该模型支持的档位，默认使用模型默认设置。
+思考越深入，通常等待越久，也可能消耗更多套餐额度；每个账号与模型分别记住选择。
+
+![模型与思考深度（测试账号）](qa/chatgpt-settings/zh-CN-thinking-depth.png)
+
 两种方式分别保留配置，切换不会清除另一种方式的凭据，也不会自动切换计费方式。
 KataGo 仍负责棋局计算，ChatGPT 只根据分析证据讲解；套餐资格和共享额度以 OpenAI 为准。
 额度不足时点击 **管理用量**。安全存储不可用时只保持本次会话，关闭后需要重新登录。
@@ -37,6 +42,13 @@ own usage settings. Availability depends on your account, workspace, region and 
 this is not unlimited free inference. An app-specific limit does not necessarily mean your
 entire ChatGPT plan is exhausted.
 
+**Thinking depth**, next to the model, lists only efforts advertised by that model in the
+account catalog. **Model default** omits the parameter. Deeper thinking may take longer and
+use more plan allowance. Choices are remembered independently per account and model. Explicit
+efforts are revalidated before inference; a removed option asks you to refresh and choose again,
+rather than silently substituting a different level. Missing capability metadata leaves only
+the default, not a guessed list based on the model name.
+
 With **API Key**, the existing server URL, key, model discovery and secure-storage options
 remain available. API-key billing is separate. A failed ChatGPT request never falls back to
 an API key, changes the model, or repeats paid inference automatically.
@@ -56,6 +68,13 @@ an interrupted stream remains visibly incomplete.
 - Store each rotating access/refresh/identity token set together in macOS Keychain, Windows
   user DPAPI, or Linux Secret Service. Never fall back to plaintext or Base64 files. If secure
   persistence fails, disclose session-only operation.
+- macOS uses length-delimited Security framework calls, not the `security` CLI password
+  prompt (which truncates long inputs). A full read-back is required before reporting persistence.
+- Background ChatGPT credential reads never trigger Keychain authorization dialogs. If the
+  keychain is locked or the executable is not trusted, the read fails without deleting the
+  saved grant. Explicit sign-in/save may still require normal macOS authorization. File-based
+  Keychain access uses a scoped, serialized interaction policy restored after every read;
+  no ACLs, keychain passwords or system security settings are changed.
 - Serialize refresh with an OS file lock and reload the token set while holding that lock.
   A temporary network error preserves credentials; confirmed revoked refresh tokens are
   tombstoned and removed. Signing out retains only registration metadata for reauthorization.
@@ -101,7 +120,12 @@ and `logout` modes, taking a dedicated temporary directory. It uses a separate r
 opens normal browser login, and prints only status flags/counts. `generate` performs one
 real request using explicitly synthetic candidate evidence, not a playing-strength test.
 It must never be run automatically by CI. The account owner completes login themselves.
-Run `check` in a new JVM to verify secure restart, and `logout` before removing its directory.
+Run `check` in a new process of the **same packaged/signed application** to verify secure restart,
+and `logout` before removing its directory. Do not read a real account's entry using a different
+system JDK or repeatedly re-sign a preview: macOS evaluates executable trust separately.
+Native canary tests (`-Dlizzie.test.nativeKeychain=true`) use only unique synthetic entries.
+The legacy CLI compatibility test is separately opt-in (`-Dlizzie.test.legacyKeychain=true`)
+because authorizing a legacy writer's entry may legitimately require macOS interaction.
 Do not mark real authorization/inference or Windows acceptance passed without corresponding
 evidence. This feature does not submit an app to OpenAI's directory or publish a release.
 
@@ -110,6 +134,7 @@ evidence. This feature does not submit an app to OpenAI's directory or publish a
 - [Sign-in contract](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
 - [Profiles and sessions](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)
 - [Models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)
+- [Model reasoning metadata](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs)
 - [Errors and recovery](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery)
 - [UI/UX guidelines](https://developers.openai.com/siwc/ui-ux-guidelines)
 - [Preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)
