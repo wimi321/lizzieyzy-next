@@ -10,3 +10,7 @@ Swing scales these assets to the control size; no build-time npm dependency is r
 
 These are interface illustrations, not OpenAI logos. Text and controls remain native
 Swing components and are not baked into screenshots.
+
+`browser-globe.png` is an AI-generated transparent illustration recreated from the selected
+settings reference on 2026-09-30, not a Lucide icon or OpenAI logo. Its 344 x 280 raster is
+displayed at 86 x 70 logical pixels with the original aspect ratio preserved.

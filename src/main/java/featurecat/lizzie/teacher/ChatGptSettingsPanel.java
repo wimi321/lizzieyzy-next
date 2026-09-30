@@ -31,6 +31,7 @@ final class ChatGptSettingsPanel extends JPanel {
   private final JPanel welcome = new JPanel();
   private final JPanel fields = new JPanel();
   private final JPanel actions = new JPanel();
+  private final JPanel privacy = TeacherSettingsStyle.panel(new BorderLayout(10, 0));
   private final JButton usage = button("usage", "Manage usage");
   private final JPanel signInRow =
       TeacherSettingsStyle.panel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
@@ -39,7 +40,7 @@ final class ChatGptSettingsPanel extends JPanel {
           TeacherSettingsStyle.text(
               "planNotice",
               "An eligible ChatGPT plan is required. Commentary uses shared plan limits, not unlimited usage."),
-          3);
+          2);
   private boolean updating;
   private long generation;
   private ChatGptSignIn attempt;
@@ -62,7 +63,7 @@ final class ChatGptSettingsPanel extends JPanel {
     welcome.setLayout(new BorderLayout(36, 0));
     welcome.setOpaque(false);
     welcome.setBorder(BorderFactory.createEmptyBorder(14, 20, 6, 0));
-    JLabel icon = new JLabel(TeacherSettingsStyle.icon("app-window", 86));
+    JLabel icon = new JLabel(TeacherSettingsStyle.icon("browser-globe", 86));
     icon.setVerticalAlignment(javax.swing.SwingConstants.TOP);
     welcome.add(icon, BorderLayout.WEST);
     JPanel intro = TeacherSettingsStyle.panel(new BorderLayout(0, 10));
@@ -70,12 +71,13 @@ final class ChatGptSettingsPanel extends JPanel {
         TeacherSettingsStyle.label(
             TeacherSettingsStyle.text("chatTitle", "Use your ChatGPT account"), 21, true),
         BorderLayout.NORTH);
-    intro.add(
+    JTextArea loginHint =
         TeacherSettingsStyle.note(
             TeacherSettingsStyle.text(
                 "chatHint", "Sign in in your browser. No password is collected."),
-            1),
-        BorderLayout.CENTER);
+            1);
+    loginHint.setFont(TeacherSettingsStyle.font(15, false));
+    intro.add(loginHint, BorderLayout.CENTER);
     welcome.add(intro, BorderLayout.CENTER);
     content.add(welcome, row);
 
@@ -136,11 +138,6 @@ final class ChatGptSettingsPanel extends JPanel {
     row.weighty = 1;
     content.add(TeacherSettingsStyle.panel(new BorderLayout()), row);
     add(content, BorderLayout.CENTER);
-    JPanel privacy = TeacherSettingsStyle.panel(new BorderLayout(10, 0));
-    privacy.setBorder(
-        BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherDialogStyle.border()),
-            BorderFactory.createEmptyBorder(14, 0, 0, 0)));
     privacy.add(new JLabel(TeacherSettingsStyle.icon("lock-keyhole", 22)), BorderLayout.WEST);
     privacy.add(
         TeacherSettingsStyle.note(
@@ -273,6 +270,10 @@ final class ChatGptSettingsPanel extends JPanel {
   private void alignWelcomeActions(boolean empty) {
     signInRow.setBorder(BorderFactory.createEmptyBorder(0, empty ? 142 : 0, 4, 0));
     planNotice.setBorder(BorderFactory.createEmptyBorder(0, empty ? 142 : 0, 0, 0));
+    privacy.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(14, 0, empty ? 26 : 0, 0)));
   }
 
   private void signIn(String id) {

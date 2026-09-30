@@ -67,8 +67,8 @@ class ChatGptSettingsNativeTest {
           SwingUtilities.invokeAndWait(
               () -> {
                 assertButtonsFit(reference[0], locale);
-                assertNoDefaultScroll(reference[0]);
                 capture(reference[0], locale + "-chatgpt");
+                assertNoDefaultScroll(reference[0]);
                 button(reference[0], "apiKeyProvider").doClick();
                 reference[0].validate();
                 assertButtonsFit(reference[0], locale);
@@ -88,12 +88,18 @@ class ChatGptSettingsNativeTest {
                     children(reference[0]).stream()
                         .anyMatch(c -> "stylePreference".equals(c.getName()) && c.isShowing()));
                 assertButtonsFit(reference[0], locale);
+              });
+          Thread.sleep(100);
+          SwingUtilities.invokeAndWait(
+              () -> {
                 capture(reference[0], locale + "-preferences");
                 assertNoDefaultScroll(reference[0]);
                 button(reference[0], "connectionPage").doClick();
                 reference[0].validate();
                 assertTrue(button(reference[0], "apiKeyProvider").isSelected());
-                assertEquals("https://example.com/v1", url.getText());
+                assertEquals(
+                    "https://example.com/v1",
+                    ((javax.swing.JTextField) named(reference[0], "apiBaseUrl")).getText());
                 assertFalse(
                     children(reference[0]).stream()
                         .anyMatch(c -> "stylePreference".equals(c.getName()) && c.isShowing()));
@@ -223,6 +229,9 @@ class ChatGptSettingsNativeTest {
 
   private static void assertButtonsFit(Container root, String locale) {
     for (Component child : children(root)) {
+      if (child instanceof javax.swing.JTextArea && child.isShowing()) {
+        assertFalse(child.getFont().isBold(), locale + ": helper text must not be bold");
+      }
       if (child instanceof AbstractButton button
           && button.isShowing()
           && button.getText() != null
@@ -239,7 +248,12 @@ class ChatGptSettingsNativeTest {
   private static void assertNoDefaultScroll(Container root) {
     for (Component child : children(root)) {
       if (child instanceof javax.swing.JScrollPane scroll && scroll.isShowing()) {
-        assertFalse(scroll.getVerticalScrollBar().isVisible(), "Default window should not scroll");
+        assertFalse(
+            scroll.getVerticalScrollBar().isVisible(),
+            "Default window should not scroll: viewport="
+                + scroll.getViewport().getExtentSize()
+                + ", content="
+                + scroll.getViewport().getView().getPreferredSize());
         assertFalse(scroll.getHorizontalScrollBar().isVisible());
       }
     }
@@ -254,6 +268,9 @@ class ChatGptSettingsNativeTest {
       BufferedImage image =
           new BufferedImage(content.getWidth(), content.getHeight(), BufferedImage.TYPE_INT_RGB);
       var graphics = image.createGraphics();
+      graphics.setRenderingHint(
+          java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
+          java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
       content.paintAll(graphics);
       graphics.dispose();
       ImageIO.write(image, "png", Path.of(output, name + ".png").toFile());

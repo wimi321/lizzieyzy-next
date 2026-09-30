@@ -23,6 +23,16 @@ the older commentary-reader report below is retained and is not evidence for thi
 
 ## Findings And Corrections
 
+- Second fidelity pass, after user feedback: the earlier pass accepted too much typography
+  and spacing drift. Reopened these as P2: inherited gray/green text, uniformly heavy
+  navigation, compressed preference rows, excessive login whitespace and the missing globe.
+  The final captures now use explicit regular/bold font roles, slate text and jade accents,
+  a 210 px rail, 220 px fields, corrected provider-tab padding and a recreated browser/globe.
+  The screenshot paths above have been refreshed with the post-fix evidence.
+- Font metrics initially introduced vertical overflow, including a one-pixel overflow in
+  the Chinese preferences page. After adjusting header/page/section margins, the complete
+  seven-locale native suite passes without a default scrollbar. Small-window scrolling
+  and persistent footer controls remain intact; the test assertion was not relaxed.
 - Resolved P1: the initial native form inherited beige input surfaces and hidden-card
   preferred heights, adding blank space and default scrollbars. Visible-card sizing,
   width-tracking pages and explicit theme-aware control rendering now preserve the design.
@@ -37,16 +47,18 @@ the older commentary-reader report below is retained and is not evidence for thi
 
 ## Fidelity Surfaces
 
-- Typography: native system CJK fallback, 28 px window heading, 26 px page heading,
+- Typography: available PingFang SC, Microsoft YaHei UI or Noto Sans CJK SC with native
+  fallback; 32 px window/page headings,
   16 px labels and 14 px wrapping explanations preserve hierarchy. System glyph weight
   differs slightly from the generated reference; no font is embedded or simulated.
-- Layout: tinted 208 px minimum rail, equal provider tabs, consistent field alignment,
+- Layout: tinted 210 px minimum rail, equal provider tabs, consistent 220 px field alignment,
   thin row separators and persistent footer. Default 880 x 650 has no page scrollbar;
   the 740 x 530 minimum uses safe content scrolling without hiding footer actions.
-- Colors: white content, pale teal rail, jade selected state/action, muted helper text
+- Colors: white content, pale teal rail, jade selected state/action, slate helper text
   and neutral dividers. The mock's subtle gradient is intentionally a flat native surface.
-- Assets: licensed Lucide raster icons match the restrained outlined direction. The
-  browser illustration omits the mock's decorative globe; this is a non-brand P3 detail.
+- Assets: licensed Lucide control icons plus a transparent generated browser/globe
+  illustration based on the selected source. Its 86 x 70 logical aspect ratio is preserved.
+  It is neither an OpenAI logo nor a rasterized form; all text remains native and editable.
 - Copy: connection credentials and teaching controls never share a page. Preferences
   explicitly apply to both providers. Save preferences deliberately replaces the mock's
   ambiguous Save settings label, and successful preference saves keep the editor open.
@@ -67,7 +79,9 @@ remain unverified. This result is limited to the local settings redesign, not an
 that the complete authentication feature or every platform has passed release acceptance.
 
 No remaining actionable P0/P1/P2 design findings in the compared local states.
-P3 follow-up: refine system-font optical weight and the library browser illustration if desired.
+P3 follow-up: system-font glyph shapes and the flat native surface differ slightly from the
+generated mock's optical weight and subtle background texture. The native title bar, visible
+keyboard focus, user's actual rank and precise Save preferences label are intentional.
 
 final result: passed
 

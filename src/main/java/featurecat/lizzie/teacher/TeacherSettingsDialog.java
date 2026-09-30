@@ -156,11 +156,13 @@ final class TeacherSettingsDialog extends JDialog {
     JPanel content = new JPanel(new BorderLayout());
     content.setBackground(TeacherSettingsStyle.surface());
     JPanel header = TeacherSettingsStyle.panel(new BorderLayout(0, 6));
+    header.setOpaque(true);
+    header.setBackground(TeacherSettingsStyle.fieldSurface());
     header.setBorder(
         BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, TeacherDialogStyle.border()),
-            BorderFactory.createEmptyBorder(18, 24, 16, 24)));
-    header.add(TeacherSettingsStyle.label(getTitle(), 28, true), BorderLayout.NORTH);
+            BorderFactory.createMatteBorder(0, 0, 1, 0, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(13, 24, 9, 24)));
+    header.add(TeacherSettingsStyle.label(getTitle(), 32, true), BorderLayout.NORTH);
     header.add(
         TeacherSettingsStyle.note(design("subtitle", "Make every review easier to understand"), 1),
         BorderLayout.CENTER);
@@ -179,8 +181,8 @@ final class TeacherSettingsDialog extends JDialog {
     rail.setBackground(TeacherSettingsStyle.railSurface());
     rail.setBorder(
         BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 0, 1, TeacherDialogStyle.border()),
-            BorderFactory.createEmptyBorder(22, 10, 12, 10)));
+            BorderFactory.createMatteBorder(0, 0, 0, 1, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(26, 10, 12, 10)));
     GridBagConstraints nav = new GridBagConstraints();
     nav.gridx = 0;
     nav.gridy = 0;
@@ -193,7 +195,7 @@ final class TeacherSettingsDialog extends JDialog {
     nav.gridy++;
     nav.weighty = 1;
     rail.add(TeacherSettingsStyle.panel(new BorderLayout()), nav);
-    rail.setPreferredSize(new Dimension(Math.max(208, rail.getPreferredSize().width), 100));
+    rail.setPreferredSize(new Dimension(Math.max(210, rail.getPreferredSize().width), 100));
     content.add(rail, BorderLayout.WEST);
 
     pages.setOpaque(false);
@@ -226,16 +228,18 @@ final class TeacherSettingsDialog extends JDialog {
                     + saveButton.getInsets().right),
             42));
     status.setFont(TeacherSettingsStyle.font(13, false));
-    status.setForeground(TeacherDialogStyle.muted());
+    status.setForeground(TeacherSettingsStyle.muted());
     status.setName("settingsStatus");
     status
         .getAccessibleContext()
         .setAccessibleName(TeacherStrings.get("Teacher.settings.title", "AI commentary settings"));
     JPanel footer = TeacherSettingsStyle.panel(new BorderLayout(12, 0));
+    footer.setOpaque(true);
+    footer.setBackground(TeacherSettingsStyle.fieldSurface());
     footer.setBorder(
         BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherDialogStyle.border()),
-            BorderFactory.createEmptyBorder(10, 20, 10, 20)));
+            BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(10, 20, 10, 10)));
     JPanel buttons = TeacherSettingsStyle.panel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
     buttons.add(cancelButton);
     buttons.add(saveButton);
@@ -247,8 +251,8 @@ final class TeacherSettingsDialog extends JDialog {
     rememberApiKey.setOpaque(false);
     showApiKey.setFont(TeacherSettingsStyle.font(14, false));
     rememberApiKey.setFont(TeacherSettingsStyle.font(14, false));
-    showApiKey.setForeground(TeacherDialogStyle.text());
-    rememberApiKey.setForeground(TeacherDialogStyle.text());
+    showApiKey.setForeground(TeacherSettingsStyle.text());
+    rememberApiKey.setForeground(TeacherSettingsStyle.text());
     showApiKey.addActionListener(
         event -> apiKeyField.setEchoChar(showApiKey.isSelected() ? (char) 0 : passwordEchoChar));
     rankModeBox.addActionListener(event -> updateRankBounds());
@@ -266,7 +270,7 @@ final class TeacherSettingsDialog extends JDialog {
   }
 
   private JPanel buildConnectionPage() {
-    JPanel page = TeacherSettingsStyle.panel(new BorderLayout(0, 16));
+    JPanel page = TeacherSettingsStyle.panel(new BorderLayout(0, 8));
     page.add(
         TeacherSettingsStyle.heading(
             design("connection", "Connection"),
@@ -276,7 +280,7 @@ final class TeacherSettingsDialog extends JDialog {
     group.add(chatGptTab);
     group.add(apiTab);
     JPanel tabs = TeacherSettingsStyle.panel(new GridLayout(1, 2, 0, 0));
-    tabs.setBorder(new TeacherDialogStyle.RoundedBorder(TeacherDialogStyle.border(), 8));
+    tabs.setBorder(new TeacherDialogStyle.RoundedBorder(TeacherSettingsStyle.border(), 8));
     for (JToggleButton button : List.of(chatGptTab, apiTab)) {
       TeacherSettingsStyle.selection(button, false);
       tabs.add(button);
@@ -446,7 +450,7 @@ final class TeacherSettingsDialog extends JDialog {
     reload.weightx = 1;
     reload.gridwidth = 2;
     reload.anchor = GridBagConstraints.WEST;
-    reload.insets = new Insets(7, 0, 0, 0);
+    reload.insets = new Insets(0, 0, 0, 0);
     rows.add(reloadKnowledge, reload);
     JPanel top = TeacherSettingsStyle.panel(new BorderLayout());
     top.add(rows, BorderLayout.NORTH);
@@ -464,13 +468,13 @@ final class TeacherSettingsDialog extends JDialog {
                   : design("details", "Explanation details"),
               14,
               true);
-      section.setForeground(TeacherDialogStyle.muted());
+      section.setForeground(TeacherSettingsStyle.muted());
       GridBagConstraints sectionRow = new GridBagConstraints();
       sectionRow.gridx = 0;
       sectionRow.gridy = index == 0 ? 0 : 3;
       sectionRow.gridwidth = 2;
       sectionRow.anchor = GridBagConstraints.WEST;
-      sectionRow.insets = new Insets(index == 0 ? 0 : 6, 0, 2, 0);
+      sectionRow.insets = new Insets(index == 0 ? 0 : 12, 0, 4, 0);
       rows.add(section, sectionRow);
     }
     JPanel description = TeacherSettingsStyle.panel(new BorderLayout(0, 4));
@@ -483,10 +487,10 @@ final class TeacherSettingsDialog extends JDialog {
     JPanel line = TeacherSettingsStyle.panel(new BorderLayout(22, 0));
     line.setBorder(
         BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, TeacherDialogStyle.border()),
-            BorderFactory.createEmptyBorder(6, 0, 6, 0)));
+            BorderFactory.createMatteBorder(0, 0, 1, 0, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(4, 0, 4, 0)));
     line.add(description, BorderLayout.CENTER);
-    control.setPreferredSize(new Dimension(204, 38));
+    control.setPreferredSize(new Dimension(220, 38));
     JPanel right = TeacherSettingsStyle.panel(new java.awt.GridBagLayout());
     right.add(control);
     line.add(right, BorderLayout.EAST);
@@ -510,7 +514,7 @@ final class TeacherSettingsDialog extends JDialog {
   }
 
   private JScrollPane scrollPage(JPanel page) {
-    page.setBorder(BorderFactory.createEmptyBorder(22, 36, 12, 36));
+    page.setBorder(BorderFactory.createEmptyBorder(20, 36, 0, 36));
     JPanel tracking = new WidthTrackingPage();
     tracking.add(page, BorderLayout.CENTER);
     JScrollPane scroll = new JScrollPane(tracking);
@@ -559,6 +563,7 @@ final class TeacherSettingsDialog extends JDialog {
             ? design("savePreferences", "Save preferences")
             : design("save", "Save settings"));
     saveButton.getAccessibleContext().setAccessibleDescription(saveButton.getText());
+    if (isShowing()) (preferences ? preferencesPage : connectionPage).requestFocusInWindow();
   }
 
   private static String design(String key, String fallback) {

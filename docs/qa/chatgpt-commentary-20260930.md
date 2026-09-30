@@ -43,6 +43,11 @@ test caught it; the client now uses `NetworkProxy`, and the regression passes.
 
 ## Not yet accepted
 
+The later visual-fidelity pass repeats the native locale/account suite after changing fonts,
+palette, row spacing, tab padding and illustration assets. Helper text is asserted non-bold,
+and captures allow the requested navigation focus to settle before inspection. No permission,
+token handling or inference behavior was changed by that pass.
+
 - Real eligible ChatGPT account: official authorization, account model catalog, live commentary,
   restart persistence, refresh and sign-out/revocation. An isolated native login window was
   opened; no successful user authorization has been recorded. Fake service tests are not a
