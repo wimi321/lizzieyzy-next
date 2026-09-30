@@ -61,6 +61,11 @@ class ChatGptSettingsNativeTest {
                 assertEquals(chat.getWidth(), api.getWidth());
                 assertEquals(chat.getHeight(), api.getHeight());
                 assertEquals(chat.getFont(), api.getFont());
+                capture(reference[0], locale + "-initial");
+                assertNoDefaultScroll(reference[0]);
+                assertVisibleIcon(reference[0], "connectionWelcomeIcon");
+                assertNotNull(button(reference[0], "connectionPage").getIcon());
+                assertNotNull(button(reference[0], "preferencesPage").getIcon());
                 chat.doClick();
               });
           Thread.sleep(350);
@@ -68,6 +73,7 @@ class ChatGptSettingsNativeTest {
               () -> {
                 assertButtonsFit(reference[0], locale);
                 capture(reference[0], locale + "-chatgpt");
+                assertVisibleIcon(reference[0], "chatGptWelcomeIcon");
                 assertNoDefaultScroll(reference[0]);
                 button(reference[0], "apiKeyProvider").doClick();
                 reference[0].validate();
@@ -257,6 +263,16 @@ class ChatGptSettingsNativeTest {
         assertFalse(scroll.getHorizontalScrollBar().isVisible());
       }
     }
+  }
+
+  private static void assertVisibleIcon(Container root, String name) {
+    var label = (javax.swing.JLabel) named(root, name);
+    assertTrue(label.isShowing(), name + " must be visible");
+    assertNotNull(label.getIcon(), name + " must load its packaged asset");
+    assertTrue(label.getIcon().getIconWidth() > 0);
+    assertTrue(label.getIcon().getIconHeight() > 0);
+    assertTrue(label.getWidth() >= label.getIcon().getIconWidth());
+    assertTrue(label.getHeight() >= label.getIcon().getIconHeight());
   }
 
   private static void capture(TeacherSettingsDialog dialog, String name) {

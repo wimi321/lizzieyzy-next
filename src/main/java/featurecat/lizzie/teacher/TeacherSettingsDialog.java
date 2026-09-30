@@ -288,13 +288,7 @@ final class TeacherSettingsDialog extends JDialog {
     chatGptTab.setName("chatGptProvider");
     apiTab.setName("apiKeyProvider");
     providers.setOpaque(false);
-    JPanel choose = TeacherSettingsStyle.panel(new BorderLayout());
-    choose.setBorder(BorderFactory.createEmptyBorder(26, 0, 0, 0));
-    choose.add(
-        TeacherSettingsStyle.note(
-            ChatGptSettingsPanel.text("choose", "Choose a connection method and finish setup."), 2),
-        BorderLayout.NORTH);
-    providers.add(choose, "UNSELECTED");
+    providers.add(buildConnectionWelcome(), "UNSELECTED");
     providers.add(buildApiForm(), "API_KEY");
     providers.add(chatGptPanel, "CHATGPT");
     chatGptTab.addActionListener(event -> chooseProvider(TeacherSettings.Provider.CHATGPT));
@@ -303,6 +297,41 @@ final class TeacherSettingsDialog extends JDialog {
     providerContent.add(tabs, BorderLayout.NORTH);
     providerContent.add(providers, BorderLayout.CENTER);
     page.add(providerContent, BorderLayout.CENTER);
+    return page;
+  }
+
+  private JPanel buildConnectionWelcome() {
+    JPanel page = TeacherSettingsStyle.panel(new BorderLayout());
+    JPanel welcome = TeacherSettingsStyle.panel(new BorderLayout(36, 0));
+    welcome.setBorder(BorderFactory.createEmptyBorder(17, 20, 6, 0));
+    JLabel icon = new JLabel(TeacherSettingsStyle.icon("browser-globe", 86));
+    icon.setName("connectionWelcomeIcon");
+    icon.setVerticalAlignment(javax.swing.SwingConstants.TOP);
+    welcome.add(icon, BorderLayout.WEST);
+    JPanel intro = TeacherSettingsStyle.panel(new BorderLayout(0, 10));
+    intro.add(
+        TeacherSettingsStyle.label(design("setupTitle", "Connect an AI service"), 21, true),
+        BorderLayout.NORTH);
+    intro.add(
+        TeacherSettingsStyle.note(
+            ChatGptSettingsPanel.text("choose", "Choose a connection method and finish setup."), 2),
+        BorderLayout.CENTER);
+    welcome.add(intro, BorderLayout.CENTER);
+    page.add(welcome, BorderLayout.NORTH);
+    JPanel privacy = TeacherSettingsStyle.panel(new BorderLayout(10, 0));
+    privacy.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(14, 0, 26, 0)));
+    privacy.add(new JLabel(TeacherSettingsStyle.icon("lock-keyhole", 22)), BorderLayout.WEST);
+    privacy.add(
+        TeacherSettingsStyle.note(
+            design(
+                "privacy",
+                "Only selected analysis and questions are sent; the full game is not uploaded."),
+            1),
+        BorderLayout.CENTER);
+    page.add(privacy, BorderLayout.SOUTH);
     return page;
   }
 

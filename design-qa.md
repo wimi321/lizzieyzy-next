@@ -23,6 +23,18 @@ the older commentary-reader report below is retained and is not evidence for thi
 
 ## Findings And Corrections
 
+- Reopened P1 after the next user report: the first-open `UNSELECTED` connection card
+  contained only a sentence and no illustration. Earlier tests clicked ChatGPT before
+  capturing, so the selected-state comparison did not cover the actual onboarding state.
+  Reproduced in `docs/qa/chatgpt-settings/zh-CN-initial-before.png`; the new native assertion
+  failed before the fix. The neutral initial card now includes the same browser/globe,
+  aligned introduction and privacy footer without choosing or persisting a provider.
+  `initial-comparison.png` shows before/after, not a mock-versus-build comparison.
+  The selected ChatGPT state was separately recaptured and compared to the reference in
+  `connection-comparison.png`. Both combined images were opened and inspected.
+- Added visible-icon bounds assertions for initial and ChatGPT states in every locale,
+  plus asset decoding/nonempty-image tests. The native suite now captures first-open
+  before clicking either provider; saving preferences still leaves the provider unselected.
 - Second fidelity pass, after user feedback: the earlier pass accepted too much typography
   and spacing drift. Reopened these as P2: inherited gray/green text, uniformly heavy
   navigation, compressed preference rows, excessive login whitespace and the missing globe.
@@ -65,7 +77,7 @@ the older commentary-reader report below is retained and is not evidence for thi
 
 ## Interaction Evidence And Limits
 
-Native macOS tests exercised all seven locale variants, equal provider dimensions/fonts,
+Native macOS tests exercised first-open and all seven locale variants, equal provider dimensions/fonts,
 page switching, API draft preservation, preferences-only persistence, minimum resizing,
 and fake-service signed-in, model-error and sign-out states. Accessible names and button
 text bounds are checked. Focus outlines remain visible and the OS owns the close button.
@@ -73,6 +85,14 @@ text bounds are checked. Focus outlines remain visible and the OS owns the close
 Additional captures are under `docs/qa/chatgpt-settings/`: API form, signed-in account,
 model error, minimum window, English preferences and Thai preferences. No real credentials
 appear in the captures; the account is a local fake-service fixture.
+
+After the first-open fix, a temporary native app image was built from the newly packaged
+shaded JAR (no development-classpath resources). Desktop computer-use screenshots of its
+880 x 650 window confirmed the globe and navigation icons in the actual first-open and
+ChatGPT pages. API Key, Preferences and return navigation were also clicked and inspected.
+These desktop screenshots are inline in the task; the durable component captures and
+comparisons above cover the same controls without the 28 px native title bar. No real
+authentication or inference was invoked during this visual check.
 
 Windows native DPI, real screen-reader usage and real eligible ChatGPT account acceptance
 remain unverified. This result is limited to the local settings redesign, not an assertion

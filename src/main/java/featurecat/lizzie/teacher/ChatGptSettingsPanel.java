@@ -64,6 +64,7 @@ final class ChatGptSettingsPanel extends JPanel {
     welcome.setOpaque(false);
     welcome.setBorder(BorderFactory.createEmptyBorder(14, 20, 6, 0));
     JLabel icon = new JLabel(TeacherSettingsStyle.icon("browser-globe", 86));
+    icon.setName("chatGptWelcomeIcon");
     icon.setVerticalAlignment(javax.swing.SwingConstants.TOP);
     welcome.add(icon, BorderLayout.WEST);
     JPanel intro = TeacherSettingsStyle.panel(new BorderLayout(0, 10));

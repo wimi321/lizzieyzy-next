@@ -41,12 +41,30 @@ test caught it; the client now uses `NetworkProxy`, and the regression passes.
 - Local Markdown links, tracked-file LF policy and staged diff whitespace checks pass.
 - The final source remains native Swing; reference images are review artifacts, not UI skins.
 
-## Not yet accepted
+## First-open follow-up
 
 The later visual-fidelity pass repeats the native locale/account suite after changing fonts,
 palette, row spacing, tab padding and illustration assets. Helper text is asserted non-bold,
 and captures allow the requested navigation focus to settle before inspection. No permission,
 token handling or inference behavior was changed by that pass.
+
+The subsequent missing-icon report exposed a gap in that suite: it selected ChatGPT before
+checking the first-open screen. The unselected card was reproduced without any illustration,
+then fixed with a neutral introduction using the selected design's asset and privacy footer.
+Three focused tests now pass, covering both native scenarios and a new packaged-asset test.
+The native assertions explicitly check visible, unclipped icons before and after provider
+selection. The before/after first-open screenshots are recorded in `design-qa.md`.
+
+- Final headless `verify` and shaded packaging: 4,528 unit-test invocations, zero
+  failures/errors, 94 skipped; seven integration-test invocations, zero failures/errors,
+  six skipped. The three focused native/assets tests passed without skips.
+- The shaded JAR contains the browser/globe and both navigation icons. A temporary
+  jpackage app using that exact JAR was opened through the native desktop tool, not
+  `target/classes`. Its real first-open and ChatGPT pages visibly showed the illustration.
+  Clicked through API Key, Preferences and back to ChatGPT; all displayed correctly.
+  No login, model request, credential save or inference request was performed.
+
+## Not yet accepted
 
 - Real eligible ChatGPT account: official authorization, account model catalog, live commentary,
   restart persistence, refresh and sign-out/revocation. An isolated native login window was
