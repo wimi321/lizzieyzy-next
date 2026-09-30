@@ -178,8 +178,7 @@ final class TeacherDialogStyle {
     return String.format("#%02x%02x%02x", safe.getRed(), safe.getGreen(), safe.getBlue());
   }
 
-  private static void styleButton(
-      AbstractButton button, Color fill, Color foreground, Color outline) {
+  static void styleButton(AbstractButton button, Color fill, Color foreground, Color outline) {
     button.setUI(new FlatButtonUI(fill, outline));
     button.setContentAreaFilled(false);
     button.setOpaque(false);

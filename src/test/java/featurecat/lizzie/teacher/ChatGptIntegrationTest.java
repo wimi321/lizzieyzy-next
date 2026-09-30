@@ -161,7 +161,7 @@ class ChatGptIntegrationTest {
     return jwt.serialize();
   }
 
-  private ChatGptSessions.Account login(String prior) throws Exception {
+  ChatGptSessions.Account login(String prior) throws Exception {
     ChatGptSignIn attempt = sessions.signIn(prior);
     auth = ChatGptSignIn.query(attempt.authorization.getRawQuery());
     String client =

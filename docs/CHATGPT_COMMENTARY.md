@@ -2,7 +2,7 @@
 
 ## 中文使用说明
 
-打开 **AI 解说 → 设置**，在并列的 **ChatGPT 登录 / API Key** 中自行选择。
+打开 **AI 解说 → 设置 → 连接服务**，在并列的 **ChatGPT 登录 / API Key** 中自行选择。
 ChatGPT 登录通过系统浏览器完成，软件不收集密码；登录并授权后选择模型并保存。
 两种方式分别保留配置，切换不会清除另一种方式的凭据，也不会自动切换计费方式。
 KataGo 仍负责棋局计算，ChatGPT 只根据分析证据讲解；套餐资格和共享额度以 OpenAI 为准。
@@ -14,11 +14,21 @@ KataGo 仍负责棋局计算，ChatGPT 只根据分析证据讲解；套餐资�
 | --- | --- |
 | ![ChatGPT 登录设置](screenshots/chatgpt-login-zh-CN.png) | ![API Key 设置](screenshots/chatgpt-api-key-zh-CN.png) |
 
+左侧 **讲解偏好** 单独设置棋力水平、风格、术语密度、讲解节奏和变化细节，
+同时适用于两种连接方式。无需先登录，即可点击 **保存偏好**；这不会保存或改动
+连接页尚未提交的服务地址和密钥，窗口继续保留，方便返回连接页。
+
+![独立讲解偏好页](qa/chatgpt-settings/zh-CN-preferences.png)
+
 ## Choosing a connection
 
 Open **AI commentary > Settings**. **ChatGPT login** and **API Key** are equal alternatives.
 New installations ask you to choose; existing API-key configurations stay selected. Switching
 methods neither deletes the other configuration nor silently changes who pays for requests.
+
+The left navigation separates **Connection** from **Preferences**. Preferences apply to
+both providers and can be saved before login. **Save preferences** changes only teaching
+preferences and keeps the editor open; unsaved connection input stays in the form.
 
 With ChatGPT, select **Continue with ChatGPT** and finish authorization in your system browser.
 LizzieYzy Next never asks for a ChatGPT password. A one-time confirmation explains plan usage.

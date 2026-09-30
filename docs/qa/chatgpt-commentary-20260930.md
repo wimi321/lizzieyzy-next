@@ -25,6 +25,22 @@ Official direct OAuth/Responses contracts were checked on 2026-09-30.
 The new HTTP client initially bypassed the common proxy helper. The repository inventory
 test caught it; the client now uses `NetworkProxy`, and the regression passes.
 
+## Selected settings redesign verification
+
+- Selected connection/preferences references and side-by-side native captures are recorded
+  in `design-qa.md`; the latest local settings comparison passed with no open P0/P1/P2.
+- Final JDK 21 headless `verify` including shaded packaging: 4,527 unit-test invocations,
+  zero failures/errors, 94 skipped; seven integration-test invocations, zero failures/errors,
+  six skipped. The first restricted-sandbox run hit macOS child-process and home-directory
+  permission failures; rerunning with the required local permissions passed unchanged.
+- Two opt-in native macOS tests passed. They exercise seven locale variants, both provider
+  forms, isolated preferences, equal tabs, draft preservation, preferences-only persistence,
+  default no-scroll layout and minimum-size fallback, plus fake-service account/model/error/logout.
+- The longer English Save preferences button was initially clipped; sizing for both localized
+  footer labels fixed it and the complete native suite passed after the correction.
+- Local Markdown links, tracked-file LF policy and staged diff whitespace checks pass.
+- The final source remains native Swing; reference images are review artifacts, not UI skins.
+
 ## Not yet accepted
 
 - Real eligible ChatGPT account: official authorization, account model catalog, live commentary,

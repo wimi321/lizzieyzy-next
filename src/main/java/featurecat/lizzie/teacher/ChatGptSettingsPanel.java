@@ -4,7 +4,6 @@ import java.awt.BorderLayout;
 import java.awt.Desktop;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.GridLayout;
 import java.awt.Insets;
 import java.net.URI;
 import java.util.List;
@@ -29,6 +28,18 @@ final class ChatGptSettingsPanel extends JPanel {
   private final JButton refresh = button("refresh", "Refresh models");
   private final JButton cancel = button("cancel", "Cancel sign-in");
   private final JTextArea status = note("");
+  private final JPanel welcome = new JPanel();
+  private final JPanel fields = new JPanel();
+  private final JPanel actions = new JPanel();
+  private final JButton usage = button("usage", "Manage usage");
+  private final JPanel signInRow =
+      TeacherSettingsStyle.panel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+  private final JTextArea planNotice =
+      TeacherSettingsStyle.note(
+          TeacherSettingsStyle.text(
+              "planNotice",
+              "An eligible ChatGPT plan is required. Commentary uses shared plan limits, not unlimited usage."),
+          3);
   private boolean updating;
   private long generation;
   private ChatGptSignIn attempt;
@@ -37,46 +48,111 @@ final class ChatGptSettingsPanel extends JPanel {
   ChatGptSettingsPanel(ChatGptSessions sessions) {
     super(new BorderLayout(0, 8));
     this.sessions = sessions;
+    setOpaque(false);
     status.getAccessibleContext().setAccessibleName(text("tab", "ChatGPT login"));
-    setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
-    JPanel fields = new JPanel(new GridBagLayout());
+    status.setName("chatGptStatus");
+    JPanel content = TeacherSettingsStyle.panel(new GridBagLayout());
     GridBagConstraints row = new GridBagConstraints();
     row.gridx = 0;
     row.gridy = 0;
     row.weightx = 1;
     row.fill = GridBagConstraints.HORIZONTAL;
-    row.insets = new Insets(0, 0, 6, 0);
-    JLabel accountLabel = new JLabel(text("account", "ChatGPT account"));
+    row.insets = new Insets(3, 0, 3, 0);
+
+    welcome.setLayout(new BorderLayout(36, 0));
+    welcome.setOpaque(false);
+    welcome.setBorder(BorderFactory.createEmptyBorder(14, 20, 6, 0));
+    JLabel icon = new JLabel(TeacherSettingsStyle.icon("app-window", 86));
+    icon.setVerticalAlignment(javax.swing.SwingConstants.TOP);
+    welcome.add(icon, BorderLayout.WEST);
+    JPanel intro = TeacherSettingsStyle.panel(new BorderLayout(0, 10));
+    intro.add(
+        TeacherSettingsStyle.label(
+            TeacherSettingsStyle.text("chatTitle", "Use your ChatGPT account"), 21, true),
+        BorderLayout.NORTH);
+    intro.add(
+        TeacherSettingsStyle.note(
+            TeacherSettingsStyle.text(
+                "chatHint", "Sign in in your browser. No password is collected."),
+            1),
+        BorderLayout.CENTER);
+    welcome.add(intro, BorderLayout.CENTER);
+    content.add(welcome, row);
+
+    fields.setLayout(new GridBagLayout());
+    fields.setOpaque(false);
+    GridBagConstraints fieldRow = new GridBagConstraints();
+    fieldRow.gridx = 0;
+    fieldRow.gridy = 0;
+    fieldRow.weightx = 1;
+    fieldRow.fill = GridBagConstraints.HORIZONTAL;
+    fieldRow.insets = new Insets(3, 0, 4, 0);
+    TeacherSettingsStyle.input(accounts);
+    TeacherSettingsStyle.input(models);
+    accounts.setName("chatGptAccounts");
+    models.setName("chatGptModels");
+    refresh.setName("chatGptRefresh");
+    logout.setName("chatGptLogout");
+    JLabel accountLabel = TeacherSettingsStyle.label(text("account", "ChatGPT account"), 15, true);
     accountLabel.setLabelFor(accounts);
-    fields.add(accountLabel, row);
-    row.gridy++;
-    fields.add(accounts, row);
-    JPanel actions = new JPanel(new GridLayout(2, 2, 6, 6));
-    actions.add(connect);
-    actions.add(add);
-    actions.add(logout);
-    actions.add(cancel);
-    row.gridy++;
-    fields.add(actions, row);
-    JLabel modelLabel = new JLabel(text("model", "ChatGPT model"));
+    fields.add(accountLabel, fieldRow);
+    fieldRow.gridy++;
+    fields.add(accounts, fieldRow);
+    JLabel modelLabel = TeacherSettingsStyle.label(text("model", "ChatGPT model"), 15, true);
     modelLabel.setLabelFor(models);
-    row.gridy++;
-    fields.add(modelLabel, row);
-    JPanel modelRow = new JPanel(new BorderLayout(8, 0));
+    fieldRow.gridy++;
+    fields.add(modelLabel, fieldRow);
+    JPanel modelRow = TeacherSettingsStyle.panel(new BorderLayout(8, 0));
     modelRow.add(models, BorderLayout.CENTER);
     modelRow.add(refresh, BorderLayout.LINE_END);
+    fieldRow.gridy++;
+    fields.add(modelRow, fieldRow);
     row.gridy++;
-    fields.add(modelRow, row);
-    add(fields, BorderLayout.NORTH);
-    JPanel notes = new JPanel(new BorderLayout(0, 6));
-    notes.add(
-        note(
-            text(
-                "notice",
-                "Eligible ChatGPT plans only. Commentary shares your plan usage; it is not unlimited. Only the selected analysis and question are sent.")),
-        BorderLayout.NORTH);
-    notes.add(status, BorderLayout.CENTER);
-    JButton usage = button("usage", "Manage usage");
+    content.add(fields, row);
+
+    for (JButton button : List.of(connect, add, logout, refresh, cancel, usage)) {
+      TeacherSettingsStyle.button(button, button == connect);
+    }
+    connect.setName("chatGptConnect");
+    usage.setName("chatGptUsage");
+    connect.setPreferredSize(
+        new java.awt.Dimension(Math.max(270, connect.getPreferredSize().width), 44));
+    signInRow.add(connect);
+    signInRow.add(cancel);
+    row.gridy++;
+    content.add(signInRow, row);
+    actions.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 0));
+    actions.setOpaque(false);
+    actions.add(add);
+    actions.add(logout);
+    actions.add(usage);
+    row.gridy++;
+    content.add(actions, row);
+    row.gridy++;
+    content.add(planNotice, row);
+    row.gridy++;
+    content.add(status, row);
+    row.gridy++;
+    row.weighty = 1;
+    content.add(TeacherSettingsStyle.panel(new BorderLayout()), row);
+    add(content, BorderLayout.CENTER);
+    JPanel privacy = TeacherSettingsStyle.panel(new BorderLayout(10, 0));
+    privacy.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherDialogStyle.border()),
+            BorderFactory.createEmptyBorder(14, 0, 0, 0)));
+    privacy.add(new JLabel(TeacherSettingsStyle.icon("lock-keyhole", 22)), BorderLayout.WEST);
+    privacy.add(
+        TeacherSettingsStyle.note(
+            TeacherSettingsStyle.text(
+                "privacy",
+                "Only selected analysis and questions are sent; the full game is not uploaded."),
+            1),
+        BorderLayout.CENTER);
+    add(privacy, BorderLayout.SOUTH);
+    fields.setVisible(false);
+    actions.setVisible(false);
+    alignWelcomeActions(true);
     usage.addActionListener(
         event ->
             work(
@@ -85,8 +161,6 @@ final class ChatGptSettingsPanel extends JPanel {
                   return null;
                 },
                 ignored -> updateStatus()));
-    notes.add(usage, BorderLayout.SOUTH);
-    add(notes, BorderLayout.CENTER);
     cancel.setVisible(false);
     connect.addActionListener(event -> signIn(selected() == null ? null : selected().id));
     add.addActionListener(event -> signIn(null));
@@ -144,6 +218,15 @@ final class ChatGptSettingsPanel extends JPanel {
   private void showAccount() {
     ChatGptSessions.Account account = selected();
     boolean signedIn = account != null && account.signedIn;
+    welcome.setVisible(!signedIn && accounts.getItemCount() == 0);
+    fields.setVisible(accounts.getItemCount() > 0);
+    actions.setVisible(signedIn);
+    planNotice.setVisible(!signedIn || !account.authorized);
+    connect.setVisible(!signedIn || !account.authorized);
+    signInRow.setVisible(connect.isVisible());
+    alignWelcomeActions(welcome.isVisible());
+    revalidate();
+    repaint();
     connect.setEnabled(!signedIn || !account.authorized);
     logout.setEnabled(signedIn);
     refresh.setEnabled(signedIn && account.authorized);
@@ -172,6 +255,7 @@ final class ChatGptSettingsPanel extends JPanel {
   private void updateStatus() {
     ChatGptSessions.Account account = selected();
     boolean signedIn = account != null && account.signedIn;
+    status.setVisible(signedIn);
     status.setText(
         !signedIn
             ? text("notConnected", "Connect ChatGPT to use your plan.")
@@ -186,7 +270,13 @@ final class ChatGptSettingsPanel extends JPanel {
                     : text("usingPlan", "Using ChatGPT plan"));
   }
 
+  private void alignWelcomeActions(boolean empty) {
+    signInRow.setBorder(BorderFactory.createEmptyBorder(0, empty ? 142 : 0, 4, 0));
+    planNotice.setBorder(BorderFactory.createEmptyBorder(0, empty ? 142 : 0, 0, 0));
+  }
+
   private void signIn(String id) {
+    signInRow.setVisible(true);
     cancel.setVisible(true);
     work(
         () -> {
@@ -279,6 +369,7 @@ final class ChatGptSettingsPanel extends JPanel {
     models.setEnabled(false);
     accounts.setEnabled(false);
     status.setText(text("working", "Connecting..."));
+    status.setVisible(true);
     worker =
         new SwingWorker<T, Void>() {
           @Override
@@ -301,6 +392,8 @@ final class ChatGptSettingsPanel extends JPanel {
             } catch (Exception failure) {
               cancel.setVisible(false);
               connect.setEnabled(true);
+              connect.setVisible(true);
+              signInRow.setVisible(true);
               Throwable root = failure;
               while (root.getCause() != null) root = root.getCause();
               // Network/library exceptions may include URLs. Only display known localized errors.
@@ -335,17 +428,7 @@ final class ChatGptSettingsPanel extends JPanel {
   }
 
   private static JTextArea note(String text) {
-    JTextArea area = new JTextArea(text, 3, 35);
-    area.setLineWrap(true);
-    area.setWrapStyleWord(true);
-    area.setEditable(false);
-    area.setOpaque(false);
-    area.setFont(javax.swing.UIManager.getFont("Label.font"));
-    area.setForeground(javax.swing.UIManager.getColor("Label.foreground"));
-    area.getAccessibleContext().setAccessibleName(text);
-    ((javax.swing.text.DefaultCaret) area.getCaret())
-        .setUpdatePolicy(javax.swing.text.DefaultCaret.NEVER_UPDATE);
-    return area;
+    return TeacherSettingsStyle.note(text, 1);
   }
 
   private record Loaded(List<ChatGptSessions.Account> accounts, ChatGptSessions.Account active) {}
