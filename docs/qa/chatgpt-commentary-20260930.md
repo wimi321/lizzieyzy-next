@@ -84,6 +84,29 @@ legacy/new settings reload. The API screenshot and focused-empty screenshot are 
   its click-to-hide check is therefore inconclusive. Focus hide/restore behavior is
   verified by the native Swing test, not claimed as a passed manual click check.
 
+## Model example follow-up
+
+- The API model field now starts empty with a painted, localized `gpt-5.4-mini`
+  example, using the same focus-hide behavior as the address. The example is not a
+  default model, saved setting or request parameter. Explicitly saved model names
+  are retained; an empty model is rejected before saving connection settings.
+- Model discovery now works without a selected model and makes only a model-list
+  request. Loading the list does not silently choose its first entry.
+- The example identifier is documented in the
+  [official model catalog](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
+  It is not a claim that every third-party provider offers that model.
+- The 26 focused tests passed without skips, including native focus hide/restore,
+  model selection, seven locale layouts, blank configuration reload, existing
+  configuration preservation and fake-service discovery. The first sandboxed
+  native launch aborted before UI assertions; the desktop-enabled rerun passed.
+- Updated [API screenshot](../screenshots/chatgpt-api-key-zh-CN.png) and
+  [focused model screenshot](chatgpt-settings/zh-CN-api-model-focused.png) were
+  inspected. Windows native validation remains outstanding.
+- Full headless Maven `verify` and shaded packaging passed: 4,533 unit-test
+  invocations, zero failures/errors, 95 skipped; seven integration-test invocations,
+  zero failures/errors, six skipped. Markdown links, line endings and diff
+  whitespace checks also passed.
+
 ## Not yet accepted
 
 - Real eligible ChatGPT account: official authorization, account model catalog, live commentary,

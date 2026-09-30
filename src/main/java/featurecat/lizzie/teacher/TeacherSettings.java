@@ -32,7 +32,7 @@ public final class TeacherSettings {
   private volatile ChatGptSessions.Account chatGptAccount;
   static final String DEFAULT_BASE_URL = "";
   private static final String LEGACY_BASE_URL = "https://api.openai.com/v1";
-  static final String DEFAULT_MODEL = "gpt-4o-mini";
+  static final String DEFAULT_MODEL = "";
 
   private static final String FILE_NAME = "teacher.properties";
   private static final String CREDENTIAL_PREFIX = "ai-commentary:";
@@ -110,7 +110,8 @@ public final class TeacherSettings {
     } catch (IllegalArgumentException invalid) {
       provider = Provider.UNSELECTED;
     }
-    model = validateModel(properties.getProperty("model", DEFAULT_MODEL));
+    String storedModel = properties.getProperty("model", DEFAULT_MODEL);
+    model = storedModel.isBlank() ? "" : validateModel(storedModel);
     rememberApiKey = Boolean.parseBoolean(properties.getProperty("rememberApiKey", "false"));
     rankMode = "d".equals(properties.getProperty("teacher.rankMode", "k")) ? "d" : "k";
     rankNum = clampInt(properties.getProperty("teacher.rankNum", "5"), 1, maximumRank(rankMode), 5);
@@ -352,7 +353,10 @@ public final class TeacherSettings {
   static String validateModel(String value) {
     String candidate = value == null ? "" : value.trim();
     if (candidate.isEmpty()) {
-      throw new IllegalArgumentException("A model name is required.");
+      throw new IllegalArgumentException(
+          TeacherStrings.get(
+              "Teacher.settings.enterModel",
+              "Choose a model from your provider or enter its name."));
     }
     if (candidate.length() > 160 || candidate.chars().anyMatch(Character::isISOControl)) {
       throw new IllegalArgumentException("Model name is invalid.");

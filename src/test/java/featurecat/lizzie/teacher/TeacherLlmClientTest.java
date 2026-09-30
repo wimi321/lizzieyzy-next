@@ -64,8 +64,7 @@ class TeacherLlmClientTest {
         });
     server.start();
 
-    TeacherLlmClient client = new TeacherLlmClient(baseUrl, "secret", "a-model");
-    assertEquals(List.of("a-model", "z-model"), client.listModels());
+    assertEquals(List.of("a-model", "z-model"), TeacherLlmClient.listModels(baseUrl, "secret"));
     assertEquals(1, modelCalls.get());
   }
 
@@ -273,8 +272,7 @@ class TeacherLlmClientTest {
                       "T05_TEACHER_KEY_CANARY",
                       "model")
                   .stream(
-                      List.of(
-                          new TeacherLlmClient.Message("user", "T05_TEACHER_PROMPT_CANARY")),
+                      List.of(new TeacherLlmClient.Message("user", "T05_TEACHER_PROMPT_CANARY")),
                       new TeacherLlmClient.Cancellation(),
                       ignored -> {}));
       runtime.shutdown();

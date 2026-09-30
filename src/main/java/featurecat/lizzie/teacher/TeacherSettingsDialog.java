@@ -352,6 +352,25 @@ final class TeacherSettingsDialog extends JDialog {
     apiKeyField.setName("apiSecret");
     modelBox.setName("apiModel");
     modelBox.setEditable(true);
+    modelBox.setEditor(
+        new javax.swing.plaf.basic.BasicComboBoxEditor() {
+          @Override
+          protected JTextField createEditorComponent() {
+            var field =
+                new TeacherExampleField(
+                    TeacherStrings.get("Teacher.settings.modelExample", "Example: gpt-5.4-mini"),
+                    18);
+            field.setName("apiModelInput");
+            field.setBorder(BorderFactory.createEmptyBorder());
+            field.setFont(TeacherSettingsStyle.font(15, false));
+            field.setForeground(TeacherSettingsStyle.text());
+            field.setBackground(TeacherSettingsStyle.fieldSurface());
+            field
+                .getAccessibleContext()
+                .setAccessibleName(TeacherStrings.get("Teacher.settings.model", "Model"));
+            return field;
+          }
+        });
     TeacherSettingsStyle.button(refreshModels, false);
     JPanel keyRow = TeacherSettingsStyle.panel(new BorderLayout(8, 0));
     keyRow.add(apiKeyField, BorderLayout.CENTER);
@@ -642,7 +661,7 @@ final class TeacherSettingsDialog extends JDialog {
           apiTab.setSelected(snapshot.provider == TeacherSettings.Provider.API_KEY);
           chooseProvider(snapshot.provider);
           baseUrlField.setText(snapshot.baseUrl);
-          modelBox.addItem(snapshot.model);
+          if (!snapshot.model.isBlank()) modelBox.addItem(snapshot.model);
           modelBox.setSelectedItem(snapshot.model);
           rememberApiKey.setSelected(snapshot.rememberApiKey);
           rankModeBox.setSelectedIndex("d".equals(snapshot.rankMode) ? 1 : 0);
@@ -681,7 +700,6 @@ final class TeacherSettingsDialog extends JDialog {
     if (!validateAddressInput()) return;
     char[] key = apiKeyField.getPassword();
     String baseUrl = baseUrlField.getText();
-    String selectedModel = selectedModel();
     if (key.length == 0) {
       status.setText(TeacherStrings.get("Teacher.settings.enterKey", "Enter an API key first."));
       return;
@@ -696,7 +714,7 @@ final class TeacherSettingsDialog extends JDialog {
           @Override
           protected List<String> doInBackground() throws Exception {
             try {
-              return new TeacherLlmClient(baseUrl, new String(keyCopy), selectedModel).listModels();
+              return TeacherLlmClient.listModels(baseUrl, new String(keyCopy));
             } finally {
               Arrays.fill(keyCopy, '\0');
             }
@@ -715,6 +733,8 @@ final class TeacherSettingsDialog extends JDialog {
               }
               if (previous != null && !previous.toString().isBlank()) {
                 modelBox.setSelectedItem(previous.toString());
+              } else {
+                modelBox.setSelectedItem(null);
               }
               status.setText(
                   TeacherStrings.format(
@@ -753,6 +773,15 @@ final class TeacherSettingsDialog extends JDialog {
     }
     if (!preferencesOnly && provider == TeacherSettings.Provider.API_KEY && !validateAddressInput())
       return;
+    if (!preferencesOnly && provider == TeacherSettings.Provider.API_KEY) {
+      try {
+        TeacherSettings.validateModel(selectedModel());
+      } catch (IllegalArgumentException invalid) {
+        status.setText(invalid.getMessage());
+        modelBox.getEditor().getEditorComponent().requestFocusInWindow();
+        return;
+      }
+    }
     String chatAccount = chatGptPanel.selectedAccountId();
     String chatModel = chatGptPanel.selectedModel();
     char[] key = apiKeyField.getPassword();

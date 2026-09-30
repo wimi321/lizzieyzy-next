@@ -124,11 +124,17 @@ class TeacherSettingsTest {
     var store = new MemoryCredentialStore(true);
     var settings = new TeacherSettings(file, store);
     assertEquals("", settings.load().baseUrl);
+    assertEquals("", settings.snapshot().model);
     settings.saveTeachingPreferences("k", 5, 0, 1, 1, 1);
     assertEquals("", new TeacherSettings(file, store).load().baseUrl);
+    assertEquals("", new TeacherSettings(file, store).load().model);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> settings.save("https://provider.example/v1", "", new char[0], false));
     assertThrows(
         IllegalArgumentException.class, () -> settings.save("  ", "model", new char[0], false));
     assertFalse(Files.readString(file).contains("openai.com"));
+    assertFalse(Files.readString(file).contains("gpt-"));
     settings.forgetApiKey();
     assertEquals("", settings.snapshot().baseUrl);
   }
@@ -150,6 +156,14 @@ class TeacherSettingsTest {
     assertEquals(
         "https://api.openai.com/v1",
         new TeacherSettings(file, new MemoryCredentialStore(true)).load().baseUrl);
+  }
+
+  @Test
+  void explicitlySavedModelRemainsUnchanged() throws Exception {
+    Path file = temporaryDirectory.resolve("existing-model.properties");
+    Files.writeString(file, "model=gpt-4o-mini\n");
+    assertEquals(
+        "gpt-4o-mini", new TeacherSettings(file, new MemoryCredentialStore(true)).load().model);
   }
 
   @Test

@@ -35,23 +35,38 @@ public final class TeacherLlmClient implements CommentaryClient {
   private final String model;
 
   public TeacherLlmClient(String baseUrl, String apiKey, String model) throws IOException {
-    this(
-        NetworkProxy.configure(HttpClient.newBuilder())
-            .connectTimeout(Duration.ofSeconds(15))
-            // Never forward an API key to a redirect target. Providers must expose their final
-            // HTTPS API URL explicitly.
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .build(),
-        baseUrl,
-        apiKey,
-        model);
+    this(newHttpClient(), baseUrl, apiKey, model);
+  }
+
+  private static HttpClient newHttpClient() throws IOException {
+    return NetworkProxy.configure(HttpClient.newBuilder())
+        .connectTimeout(Duration.ofSeconds(15))
+        // Never forward an API key to a redirect target.
+        .followRedirects(HttpClient.Redirect.NEVER)
+        .build();
   }
 
   TeacherLlmClient(HttpClient httpClient, String baseUrl, String apiKey, String model) {
+    this(
+        httpClient,
+        normalizeApiBase(baseUrl),
+        requireApiKey(apiKey),
+        TeacherSettings.validateModel(model));
+  }
+
+  private TeacherLlmClient(HttpClient httpClient, URI apiBase, String apiKey, String model) {
     this.httpClient = httpClient;
-    this.apiBase = normalizeApiBase(baseUrl);
-    this.apiKey = requireApiKey(apiKey);
-    this.model = TeacherSettings.validateModel(model);
+    this.apiBase = apiBase;
+    this.apiKey = apiKey;
+    this.model = model;
+  }
+
+  /** Model discovery does not require a model selection or send an inference request. */
+  public static List<String> listModels(String baseUrl, String apiKey)
+      throws IOException, InterruptedException {
+    return new TeacherLlmClient(
+            newHttpClient(), normalizeApiBase(baseUrl), requireApiKey(apiKey), null)
+        .listModels();
   }
 
   public List<String> listModels() throws IOException, InterruptedException {
@@ -89,6 +104,7 @@ public final class TeacherLlmClient implements CommentaryClient {
 
   public String stream(List<Message> messages, Cancellation cancellation, Consumer<String> onText)
       throws IOException, InterruptedException {
+    TeacherSettings.validateModel(model);
     List<Message> safeMessages = validateMessages(messages);
     Cancellation requestCancellation = cancellation == null ? new Cancellation() : cancellation;
     Consumer<String> receiver = onText == null ? ignored -> {} : onText;

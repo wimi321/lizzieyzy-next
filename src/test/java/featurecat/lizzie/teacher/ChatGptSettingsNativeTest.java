@@ -88,12 +88,18 @@ class ChatGptSettingsNativeTest {
                             .orElseThrow();
                 assertEquals("", url.getText());
                 assertTrue(((TeacherExampleField) url).isExampleVisible());
+                var model = (TeacherExampleField) named(reference[0], "apiModelInput");
+                assertEquals("", model.getText());
+                assertTrue(model.isExampleVisible());
                 ((AbstractButton) named(reference[0], "saveSettings")).doClick();
                 assertTrue(reference[0].isShowing());
                 assertEquals(TeacherSettings.Provider.UNSELECTED, settings.snapshot().provider);
                 assertEquals("", settings.snapshot().baseUrl);
                 url.setText("https://example.com/v1");
                 assertFalse(((TeacherExampleField) url).isExampleVisible());
+                ((AbstractButton) named(reference[0], "saveSettings")).doClick();
+                assertTrue(reference[0].isShowing());
+                assertEquals("", settings.snapshot().model);
                 button(reference[0], "preferencesPage").doClick();
                 reference[0].validate();
                 assertFalse(button(reference[0], "chatGptProvider").isShowing());
@@ -202,6 +208,28 @@ class ChatGptSettingsNativeTest {
             assertFalse(address.isExampleVisible());
             assertEquals("https://provider.example/v1", address.getText());
             assertEquals("", settings.snapshot().baseUrl);
+            named(dialog[0], "apiModelInput").requestFocusInWindow();
+          });
+      await(() -> named(dialog[0], "apiModelInput").hasFocus());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            var model = (TeacherExampleField) named(dialog[0], "apiModelInput");
+            assertEquals("", model.getText());
+            assertFalse(model.isExampleVisible());
+            capture(dialog[0], "zh-CN-api-model-focused");
+            named(dialog[0], "apiSecret").requestFocusInWindow();
+          });
+      await(() -> named(dialog[0], "apiSecret").hasFocus());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            var model = (TeacherExampleField) named(dialog[0], "apiModelInput");
+            assertTrue(model.isExampleVisible());
+            var box = (javax.swing.JComboBox<?>) named(dialog[0], "apiModel");
+            box.setSelectedItem("provider-model");
+            assertEquals("provider-model", model.getText());
+            assertFalse(model.isExampleVisible());
+            assertEquals("provider-model", box.getEditor().getItem());
+            assertEquals("", settings.snapshot().model);
           });
     } finally {
       if (dialog[0] != null) SwingUtilities.invokeAndWait(dialog[0]::dispose);
