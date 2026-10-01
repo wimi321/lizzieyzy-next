@@ -1183,7 +1183,7 @@ class EngineManagerEngineGameStateMachineTest {
     black.pda = 0.25;
     black.isInputCommand = true;
 
-    black.getParameterScadule(true, TimeUnit.MINUTES.toMillis(2));
+    black.readKataParameters(TimeUnit.MINUTES.toMillis(2));
     int pdaCommandId =
         commandIdFor(black.commandText(), "kata-get-param playoutDoublingAdvantage");
     int wrnCommandId =
@@ -1211,20 +1211,18 @@ class EngineManagerEngineGameStateMachineTest {
         "=" + (rulesCommandId + 100_000) + " " + rulesPayload);
 
     assertEquals("", black.recentRulesLine);
-    assertTrue(black.getRcentLine);
 
     black.dispatchReaderLineForTest("=" + rulesCommandId + " " + rulesPayload);
 
     assertEquals("= " + rulesPayload, black.recentRulesLine);
     assertEquals("= " + rulesPayload, Lizzie.config.currentKataGoRules);
     assertEquals(4, black.usingSpecificRules);
-    assertFalse(black.getRcentLine);
     assertEquals(0, Lizzie.board.getHistory().getMoveNumber());
     assertTrue(black.isInputCommand);
 
-    // Settle the deliberately out-of-order WRN response after the read cycle has closed. It still
-    // belongs to its numbered pending command and must remain isolated from the generic parser.
     black.dispatchReaderLineForTest("=" + wrnCommandId + " 0.5");
+    assertEquals(1.75, black.pda, 0.0001);
+    assertEquals(0.5, black.wrn, 0.0001);
     assertEquals(0, Lizzie.board.getHistory().getMoveNumber());
     assertTrue(black.isInputCommand);
     black.isInputCommand = false;

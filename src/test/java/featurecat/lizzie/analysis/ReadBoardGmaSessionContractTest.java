@@ -89,7 +89,7 @@ class ReadBoardGmaSessionContractTest {
   }
 
   @Test
-  void updateRestoreIntentIsLatestWinsInsideGmaInFlightOnly() {
+  void physicalTargetUpdatesSurviveRetirementWithoutReauthorizingMoves() {
     RecordingPorts ports = new RecordingPorts();
     ReadBoardGmaSession session = createSession(ports);
     ReadBoardGmaSession.HelperCapability helper = session.helperCapability();
@@ -98,30 +98,21 @@ class ReadBoardGmaSessionContractTest {
     ReadBoardGmaSession.GmaTerminalCapability terminalCapability =
         session.admitGma(helper, firstIntent, ReadBoardGmaSession.RuntimeSnapshot.empty());
 
-    session.updateRestoreIntent(helper, latestIntent);
+    assertTrue(session.updateRestoreIntent(terminalCapability, latestIntent));
 
     ReadBoardGmaSession.GmaInFlight gma =
         assertInstanceOf(ReadBoardGmaSession.GmaInFlight.class, session.state());
     assertSame(latestIntent, gma.authoritativeRestoreIntent());
     assertTrue(ports.calls.isEmpty());
 
-    // Retirement freezes helper updates, but the still-valid physical terminal capability can
-    // provide the final authoritative post-terminal intent without re-authorizing the helper.
     session.retire(helper);
-    session.updateRestoreIntent(helper, new Object());
-    assertSame(
-        latestIntent,
-        assertInstanceOf(ReadBoardGmaSession.GmaInFlight.class, session.state())
-            .authoritativeRestoreIntent());
-
-    Object finalTerminalIntent = new Object();
-    session.consumeGmaTerminal(
-        terminalCapability, ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR, finalTerminalIntent);
-    assertSame(
-        finalTerminalIntent,
-        assertInstanceOf(ReadBoardGmaSession.RestoringExact.class, session.state())
-            .capturedExactOperation()
-            .restoreIntent());
+    Object retiredTarget = new Object();
+    assertTrue(session.updateRestoreIntent(terminalCapability, retiredTarget));
+    assertTrue(gma.authorization().invalidated());
+    assertNull(session.admitGma(helper, new Object(), ReadBoardGmaSession.RuntimeSnapshot.empty()));
+    assertTrue(ports.calls.isEmpty(), "target updates must not interrupt physical GMA");
+    session.consumeGmaTerminal(terminalCapability, ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR);
+    assertSame(retiredTarget, ports.exactIntents.get(0));
   }
 
   @Test
@@ -227,8 +218,8 @@ class ReadBoardGmaSessionContractTest {
     ReadBoardGmaSession.ExactParticipantCapability firstExact = ports.exactStarts.get(0);
 
     // Deferred requests are accepted while RestoringExact and are latest-wins.
-    assertTrue(session.deferExactRestore(terminalCapability, new Object()));
-    assertTrue(session.deferExactRestore(terminalCapability, latestIntent));
+    assertTrue(session.updateRestoreIntent(terminalCapability, new Object()));
+    assertTrue(session.updateRestoreIntent(terminalCapability, latestIntent));
 
     // Exact success with a deferred request pending neither publishes nor releases: it starts a
     // new exact attempt with the latest deferred intent.
@@ -270,8 +261,8 @@ class ReadBoardGmaSessionContractTest {
     assertEquals(1, ports.runtimeStarts.size());
 
     // Deferred requests are also accepted while RestoringRuntime and are latest-wins.
-    assertTrue(session.deferExactRestore(terminalCapability, new Object()));
-    assertTrue(session.deferExactRestore(terminalCapability, intent));
+    assertTrue(session.updateRestoreIntent(terminalCapability, new Object()));
+    assertTrue(session.updateRestoreIntent(terminalCapability, intent));
 
     // Runtime success with a deferred request pending neither publishes nor releases: the latest
     // deferred intent starts a new exact attempt first.
@@ -308,8 +299,6 @@ class ReadBoardGmaSessionContractTest {
     ReadBoardGmaSession.GmaTerminalCapability terminalCapability =
         session.admitGma(session.helperCapability(), new Object(), nonEmptySnapshot());
 
-    // While the GMA request is in flight the terminal line has not been consumed: no deferral.
-    assertFalse(session.deferExactRestore(terminalCapability, new Object()));
 
     session.consumeGmaTerminal(terminalCapability, ReadBoardGmaSession.GmaTerminal.PASS);
     assertInstanceOf(ReadBoardGmaSession.RestoringExact.class, session.state());
@@ -320,17 +309,17 @@ class ReadBoardGmaSessionContractTest {
     ReadBoardGmaSession.GmaTerminalCapability foreignTerminal =
         foreign.admitGma(
             foreign.helperCapability(), new Object(), ReadBoardGmaSession.RuntimeSnapshot.empty());
-    assertFalse(session.deferExactRestore(foreignTerminal, new Object()));
+    assertFalse(session.updateRestoreIntent(foreignTerminal, new Object()));
 
     ReadBoardGmaSession twin = createSession(INCARNATION, new RecordingPorts());
     ReadBoardGmaSession.GmaTerminalCapability twinTerminal =
         twin.admitGma(
             twin.helperCapability(), new Object(), ReadBoardGmaSession.RuntimeSnapshot.empty());
-    assertFalse(session.deferExactRestore(twinTerminal, new Object()));
+    assertFalse(session.updateRestoreIntent(twinTerminal, new Object()));
 
     // The session's own terminal capability is accepted and latest-wins.
-    assertTrue(session.deferExactRestore(terminalCapability, staleIntent));
-    assertTrue(session.deferExactRestore(terminalCapability, latestIntent));
+    assertTrue(session.updateRestoreIntent(terminalCapability, staleIntent));
+    assertTrue(session.updateRestoreIntent(terminalCapability, latestIntent));
     session.completeExact(
         ports.exactStarts.get(0), new ReadBoardGmaSession.ParticipantResult.Succeeded());
     assertEquals(2, ports.exactStarts.size());
@@ -344,7 +333,7 @@ class ReadBoardGmaSessionContractTest {
     assertEquals(1, ports.releases.size());
 
     // After the terminal, deferrals through the same capability are absorbed.
-    assertFalse(session.deferExactRestore(terminalCapability, new Object()));
+    assertFalse(session.updateRestoreIntent(terminalCapability, new Object()));
     assertEquals(1, ports.publications.size());
     assertEquals(1, ports.releases.size());
     assertEquals(2, ports.exactStarts.size());
@@ -416,13 +405,8 @@ class ReadBoardGmaSessionContractTest {
     assertTrue(authorization.invalidated());
     assertInstanceOf(ReadBoardGmaSession.GmaInFlight.class, session.state());
     assertTrue(ports.calls.isEmpty());
-    // The helper capability is revoked: no new admission, no new intent capture.
+    // The helper capability is revoked: no new admission.
     assertNull(session.admitGma(helper, new Object(), ReadBoardGmaSession.RuntimeSnapshot.empty()));
-    session.updateRestoreIntent(helper, new Object());
-    assertSame(
-        intent,
-        assertInstanceOf(ReadBoardGmaSession.GmaInFlight.class, session.state())
-            .authoritativeRestoreIntent());
     // The session-owned terminal capability is not revoked: exact restore still starts.
     session.consumeGmaTerminal(terminalCapability, ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR);
     assertInstanceOf(ReadBoardGmaSession.RestoringExact.class, session.state());
@@ -441,7 +425,7 @@ class ReadBoardGmaSessionContractTest {
         ReadBoardGmaSession.RuntimeSnapshot.of(capturedParams);
     ReadBoardGmaSession.GmaTerminalCapability terminalCapability =
         session.admitGma(session.helperCapability(), intent, snapshot);
-    session.updateRestoreIntent(session.helperCapability(), latestIntent);
+    assertTrue(session.updateRestoreIntent(terminalCapability, latestIntent));
 
     session.consumeGmaTerminal(terminalCapability, ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR);
     // The runtime phase runs only for a retired session; retire while RestoringExact.
@@ -803,7 +787,7 @@ class ReadBoardGmaSessionContractTest {
     session.completeExact(
         ports.exactStarts.get(0), new ReadBoardGmaSession.ParticipantResult.Succeeded());
     session.retire(session.helperCapability());
-    session.updateRestoreIntent(session.helperCapability(), new Object());
+    assertFalse(session.updateRestoreIntent(terminalCapability, new Object()));
     session.invalidateAuthorization(session.helperCapability());
     assertNull(
         session.admitGma(

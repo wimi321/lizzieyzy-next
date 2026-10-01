@@ -61,6 +61,89 @@ public final class CommandLaunchHelper {
 
   private CommandLaunchHelper() {}
 
+  /** Whether model and snapshot paths may belong to a launcher rather than the host filesystem. */
+  public static boolean isIndirectLauncher(String command) {
+    String executable =
+        command
+            .substring(Math.max(command.lastIndexOf('/'), command.lastIndexOf('\\')) + 1)
+            .toLowerCase(Locale.ROOT);
+    if (executable.endsWith(".exe")) {
+      executable = executable.substring(0, executable.length() - 4);
+    } else if (executable.endsWith(".bat")
+        || executable.endsWith(".cmd")
+        || executable.endsWith(".ps1")
+        || executable.endsWith(".sh")) {
+      return true;
+    }
+    if (isInterpreterHostExecutable(executable)) {
+      return true;
+    }
+    return switch (executable) {
+      case "ssh",
+          "plink",
+          "wsl",
+          "wslhost",
+          "docker",
+          "podman",
+          "wine",
+          "wine64",
+          "flatpak",
+          "snap",
+          "cmd",
+          "powershell",
+          "pwsh",
+          "sh",
+          "bash",
+          "zsh",
+          "fish",
+          "env",
+          "nohup" ->
+          true;
+      default -> false;
+    };
+  }
+
+  private static boolean isInterpreterHostExecutable(String executable) {
+    if (switch (executable) {
+      case "py", "nodejs", "bun", "deno", "cscript", "wscript", "dotnet", "mono" -> true;
+      default -> false;
+    }) {
+      return true;
+    }
+    return hasNumericVersionSuffix(executable, "pythonw")
+        || hasNumericVersionSuffix(executable, "python")
+        || hasNumericVersionSuffix(executable, "pypy")
+        || hasNumericVersionSuffix(executable, "javaw")
+        || hasNumericVersionSuffix(executable, "java")
+        || hasNumericVersionSuffix(executable, "node")
+        || hasNumericVersionSuffix(executable, "ruby")
+        || hasNumericVersionSuffix(executable, "perl")
+        || hasNumericVersionSuffix(executable, "php");
+  }
+
+  private static boolean hasNumericVersionSuffix(String executable, String baseName) {
+    if (!executable.startsWith(baseName)) {
+      return false;
+    }
+    if (executable.length() == baseName.length()) {
+      return true;
+    }
+    boolean sawDigit = false;
+    boolean previousDot = false;
+    for (int index = baseName.length(); index < executable.length(); index++) {
+      char value = executable.charAt(index);
+      if (value >= '0' && value <= '9') {
+        sawDigit = true;
+        previousDot = false;
+      } else if (value == '.' && sawDigit && !previousDot && index + 1 < executable.length()) {
+        previousDot = true;
+      } else {
+        return false;
+      }
+    }
+    return sawDigit;
+  }
+
   public static EngineCommandPurpose classifyCommand(List<String> tokens) {
     if (tokens == null || tokens.size() < 2) {
       return EngineCommandPurpose.GTP;

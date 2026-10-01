@@ -5,6 +5,7 @@ import featurecat.lizzie.EngineStartupStatus;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.gtpconfig.GtpConfigurationProbe;
 import featurecat.lizzie.analysis.remote.EngineTransport;
+import featurecat.lizzie.analysis.remote.ZhiziGtpTransport;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.enginegame.EngineGamePlayMode;
 import featurecat.lizzie.enginegame.EngineGameSide;
@@ -24,6 +25,7 @@ import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.Stone;
+import featurecat.lizzie.util.B11ModelNotice;
 import featurecat.lizzie.util.CommandLaunchHelper;
 import featurecat.lizzie.util.EngineThreadPolicy;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
@@ -380,10 +382,8 @@ public class Leelaz {
   public boolean isThinking = false;
   public boolean isInputCommand = false;
 
-  public volatile boolean getRcentLine = false;
-  private final Object parameterReadTimeoutLock = new Object();
-  private long parameterReadTimeoutGeneration;
-  private int recentLineNumber = 0;
+  private final Object parameterReadLock = new Object();
+  private ParameterRead activeParameterRead;
   public volatile String recentRulesLine = "";
   public int usingSpecificRules = -1; // 1=中国规则2=中古规则3=日本规则4=TT规则5=其他规则
   private final Object engineRulesLock = new Object();
@@ -601,6 +601,7 @@ public class Leelaz {
       new ReadBoardGmaRuntimeParam("ponderingEnabled");
   private volatile Object readBoardGmaLock;
   private volatile EngineModeReservation readBoardGmaReservation;
+  private volatile ReadBoardGmaReservation lastReadBoardGmaReservation;
   private volatile ReadBoardGmaRestoreBarrier readBoardGmaRestoreBarrier;
   private volatile ReadBoardGmaPreparation readBoardGmaPreparation;
   private volatile ReadBoardGmaResponseBinding readBoardGmaResponseBinding;
@@ -1286,6 +1287,9 @@ public class Leelaz {
   }
 
   private void startEngineOwned(int index) throws IOException {
+    ReaderStreamBinding previousModelBinding = readerStreamBinding;
+    if (previousModelBinding != null) previousModelBinding.speedModelLookup = null;
+    List<String> modelLaunchCommands = List.of();
     storePendingTensorRtRepairContext(null);
     EngineManager.EngineGameOwnerTransaction engineGameStartupTransaction =
         engineGameStartupCommandContext.get();
@@ -1500,6 +1504,7 @@ public class Leelaz {
             "Using stable NVIDIA OpenCL compatibility mode...");
       }
       ProcessBuilder processBuilder = new ProcessBuilder(launchCommands);
+      modelLaunchCommands = List.copyOf(launchCommands);
       CommandLaunchHelper.configureProcessBuilder(processBuilder, launchSpec);
       KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, engineExecutable);
       processBuilder.redirectErrorStream(false);
@@ -1585,6 +1590,13 @@ public class Leelaz {
     // new Thread(this::read).start();
     // can stop engine for switching weights
     ReaderStreamBinding startedReaderStreamBinding = currentReaderStreamBinding();
+    if (startedReaderStreamBinding.remoteTransport instanceof ZhiziGtpTransport zhizi) {
+      startedReaderStreamBinding.speedModelLookup =
+          B11ModelNotice.known(B11ModelNotice.isZhiziB11(zhizi.modelIdentifier()));
+    } else if (!useRemoteCompute && !useJavaSSH && !isSSH && !modelLaunchCommands.isEmpty()) {
+      startedReaderStreamBinding.speedModelLookup =
+          B11ModelNotice.local(modelLaunchCommands, startedReaderStreamBinding.processWorkingDirectory);
+    }
     ScheduledExecutorService stdoutExecutor = Executors.newSingleThreadScheduledExecutor();
     ScheduledExecutorService stderrExecutor = Executors.newSingleThreadScheduledExecutor();
     if (!startReaderExecutors(startedReaderStreamBinding, stdoutExecutor, stderrExecutor)) {
@@ -1603,6 +1615,17 @@ public class Leelaz {
       return false;
     }
     return classifyCommandAsBenchmark();
+  }
+
+  /** Nonblocking, filesystem-free identity of this engine's current process/connection. */
+  public boolean usesB11ForSpeedNotice() {
+    ReaderStreamBinding binding = readerStreamBinding;
+    B11ModelNotice.Lookup lookup = binding == null ? null : binding.speedModelLookup;
+    return binding != null
+        && !binding.terminated
+        && !binding.readerShutdownRequested
+        && lookup != null
+        && lookup.isB11();
   }
 
   public boolean hasGtpCapability() {
@@ -4297,67 +4320,7 @@ public class Leelaz {
   }
 
   static boolean isIndirectLauncher(String command) {
-    String executable =
-        command.substring(Math.max(command.lastIndexOf('/'), command.lastIndexOf('\\')) + 1)
-            .toLowerCase(Locale.ROOT);
-    if (executable.endsWith(".exe")) {
-      executable = executable.substring(0, executable.length() - 4);
-    } else if (executable.endsWith(".bat")
-        || executable.endsWith(".cmd")
-        || executable.endsWith(".ps1")
-        || executable.endsWith(".sh")) {
-      return true;
-    }
-    if (isInterpreterHostExecutable(executable)) {
-      return true;
-    }
-    return switch (executable) {
-      case "ssh", "plink", "wsl", "wslhost", "docker", "podman", "wine", "wine64",
-          "flatpak", "snap", "cmd", "powershell", "pwsh", "sh", "bash", "zsh", "fish",
-          "env", "nohup" -> true;
-      default -> false;
-    };
-  }
-
-  private static boolean isInterpreterHostExecutable(String executable) {
-    if (switch (executable) {
-      case "py", "nodejs", "bun", "deno", "cscript", "wscript", "dotnet", "mono" -> true;
-      default -> false;
-    }) {
-      return true;
-    }
-    return hasNumericVersionSuffix(executable, "pythonw")
-        || hasNumericVersionSuffix(executable, "python")
-        || hasNumericVersionSuffix(executable, "pypy")
-        || hasNumericVersionSuffix(executable, "javaw")
-        || hasNumericVersionSuffix(executable, "java")
-        || hasNumericVersionSuffix(executable, "node")
-        || hasNumericVersionSuffix(executable, "ruby")
-        || hasNumericVersionSuffix(executable, "perl")
-        || hasNumericVersionSuffix(executable, "php");
-  }
-
-  private static boolean hasNumericVersionSuffix(String executable, String baseName) {
-    if (!executable.startsWith(baseName)) {
-      return false;
-    }
-    if (executable.length() == baseName.length()) {
-      return true;
-    }
-    boolean sawDigit = false;
-    boolean previousDot = false;
-    for (int index = baseName.length(); index < executable.length(); index++) {
-      char value = executable.charAt(index);
-      if (value >= '0' && value <= '9') {
-        sawDigit = true;
-        previousDot = false;
-      } else if (value == '.' && sawDigit && !previousDot && index + 1 < executable.length()) {
-        previousDot = true;
-      } else {
-        return false;
-      }
-    }
-    return sawDigit;
+    return CommandLaunchHelper.isIndirectLauncher(command);
   }
 
   private void initializeStreams(InputStream stdout, OutputStream stdin, InputStream stderr) {
@@ -5002,6 +4965,7 @@ public class Leelaz {
     private volatile Object analysisOutputRecoveryToken;
     private volatile Integer confirmedRuntimeSearchThreads;
     private volatile RuntimeThreadOverrideState runtimeThreadOverrideState;
+    private volatile B11ModelNotice.Lookup speedModelLookup;
 
     private long runtimeThreadWriteSequence;
     private long confirmedRuntimeThreadSequence;
@@ -6669,10 +6633,7 @@ public class Leelaz {
     if (binding.startupDiagnostic != null)
       binding.startupDiagnostic.fail("startup-handshake", failure.toString());
     isCheckingPda = false;
-    synchronized (parameterReadTimeoutLock) {
-      parameterReadTimeoutGeneration++;
-      getRcentLine = false;
-    }
+    cancelParameterRead();
     try {
       rememberRecentLine(
           recentStderrLines,
@@ -6728,7 +6689,7 @@ public class Leelaz {
       setKataEnginePara();
       confirmKataRulesAfterStartup(isolatedEngineGameStartup);
       if (!isolatedEngineGameStartup) {
-        getParameterScadule(true);
+        readKataParameters();
       }
     } catch (RuntimeException | Error startupFailure) {
       if (pdaQueryCleanup != null) {
@@ -8492,7 +8453,8 @@ public class Leelaz {
     if (this != Lizzie.leelaz) return;
     if (Lizzie.frame != null
         && Lizzie.frame.readBoard != null
-        && Lizzie.frame.readBoard.isReadBoardGmaAutoPlayActive()) return;
+        && (Lizzie.frame.readBoard.isReadBoardGmaEngineBusy()
+            || Lizzie.frame.readBoard.isNormalAutoPlayTransitionPending())) return;
     if (LizzieFrame.toolbar.isAutoPlay) {
       if ((Lizzie.board.getHistory().isBlacksTurn()
               && LizzieFrame.toolbar.chkAutoPlayBlack.isSelected())
@@ -14026,17 +13988,11 @@ public class Leelaz {
             && queuedCommand.isEngineGameCommand()
             && !queuedCommand.isOrdinaryEngineGameBootstrap())
         || exactLoadSgf
-        || (getRcentLine && isRecentParameterReadCommand(command))
         || (command != null
             && handler != NO_OP_RESPONSE_HANDLER
             && (command.startsWith("kata-get-param ") || command.startsWith("kata-set-param ")));
   }
 
-  private static boolean isRecentParameterReadCommand(String command) {
-    return "kata-get-param playoutDoublingAdvantage".equals(command)
-        || "kata-get-param analysisWideRootNoise".equals(command)
-        || "kata-get-rules".equals(command);
-  }
 
   private int nextResponseCommandId(
       String command, Runnable handler, QueuedCommand queuedCommand) {
@@ -14066,9 +14022,6 @@ public class Leelaz {
     }
     if (queuedCommand != null && queuedCommand.isEngineGameCommand()) {
       return engineGameResponseCommandIds.getAndIncrement();
-    }
-    if (getRcentLine && isRecentParameterReadCommand(command)) {
-      return readBoardGmaResponseCommandIds.getAndIncrement();
     }
     if (command != null
         && handler != NO_OP_RESPONSE_HANDLER
@@ -14415,31 +14368,10 @@ public class Leelaz {
       afterEngineRulesResponseHandlerPeek();
       return line.startsWith("?") || line.startsWith("=");
     }
-    if (!isRecentParameterReadCommand(pending.command)) {
-      return false;
-    }
-    if (!line.startsWith("=") || !getRcentLine) {
-      // Matching errors and late successes still belong exclusively to this pending command.
-      return line.startsWith("?") || line.startsWith("=");
-    }
-    String payload = gtpResponsePayload(line);
-    if (pending.command.equals("kata-get-rules")) {
-      return true;
-    }
-    try {
-      double value = Double.parseDouble(payload);
-      if (pending.command.equals("kata-get-param playoutDoublingAdvantage")) {
-        pda = value;
-        recentLineNumber = Math.max(recentLineNumber, 1);
-      } else if (pending.command.equals("kata-get-param analysisWideRootNoise")) {
-        wrn = value;
-        recentLineNumber = Math.max(recentLineNumber, 2);
-        Lizzie.frame.setPdaAndWrn(pda, wrn);
-      }
-    } catch (NumberFormatException ignored) {
-      // A malformed payload belongs to the matched command but must not corrupt the cached value.
-    }
-    return true;
+    // The callback owns the captured parameter round. Even an expired round's reply must be
+    // consumed here rather than interpreted as an ordinary move or console command response.
+    return pending.handler instanceof ParameterReadResponseHandler
+        && (line.startsWith("?") || line.startsWith("="));
   }
 
   /** Freezes the exact engine-game startup owner before the parser dispatches post-name work. */
@@ -17186,6 +17118,64 @@ public class Leelaz {
         reservedEngine.endExclusiveGtpLifecycleTransition(owner);
       }
     }
+  }
+
+  private final class ReadBoardGmaReservation extends EngineModeReservation {
+    private final ReaderStreamBinding binding = currentReaderStreamBinding();
+    private final CompletableFuture<Boolean> drained = new CompletableFuture<>();
+    private final AtomicBoolean released = new AtomicBoolean();
+    private volatile boolean failed;
+
+    private ReadBoardGmaReservation(Object owner) {
+      super(Leelaz.this, owner);
+    }
+
+    private void release(boolean restored) {
+      if (!released.compareAndSet(false, true)) return;
+      boolean success = restored && !failed && !engineStateUnrestored
+          && currentReaderStreamBinding() == binding && !binding.terminated;
+      super.close();
+      drained.complete(success);
+    }
+
+    @Override
+    public void close() {
+      release(false);
+    }
+  }
+
+  /** Captures the current drain, reserving idle GMA parameter restoration when necessary. */
+  CompletableFuture<Boolean> prepareReadBoardGmaDrain() {
+    synchronized (engineArbitrationLock()) {
+      synchronized (readBoardGmaLock()) {
+        if (engineStateUnrestored) return CompletableFuture.completedFuture(false);
+        if (readBoardGmaReservation == null
+            && (hasReadBoardGmaRuntimeState(readBoardGmaPondering)
+                || hasReadBoardGmaRuntimeState(readBoardGmaMaxTime)
+                || hasReadBoardGmaRuntimeState(readBoardGmaMaxVisits))
+            && !beginReadBoardGmaSession()) return CompletableFuture.completedFuture(false);
+        ReadBoardGmaReservation reservation = lastReadBoardGmaReservation;
+        return reservation != null
+                && (readBoardGmaReservation == reservation || !reservation.drained.isDone())
+            ? reservation.drained : null;
+      }
+    }
+  }
+
+  void invalidateReadBoardGmaDrain(
+      ReadBoardGmaSession.ReservationReleaseCapability capability) {
+    if (capability.reservationOwner() instanceof ReadBoardGmaReservation reservation) {
+      reservation.failed = true;
+    }
+  }
+
+  boolean isReadBoardGmaDraining() {
+    ReadBoardGmaReservation reservation = lastReadBoardGmaReservation;
+    return reservation != null && !reservation.drained.isDone();
+  }
+
+  private void releaseRestoredReadBoardGmaReservation(EngineModeReservation reservation) {
+    ((ReadBoardGmaReservation) reservation).release(true);
   }
 
   public static final class ExactSnapshotRestoreAdmission {
@@ -20964,7 +20954,7 @@ public class Leelaz {
       readBoardGmaReservation = null;
     }
     if (reservation != null) {
-      reservation.close();
+      releaseRestoredReadBoardGmaReservation(reservation);
     }
   }
 
@@ -20981,7 +20971,8 @@ public class Leelaz {
         if (!beginExclusiveGtpLifecycleTransition(owner)) {
           return false;
         }
-        readBoardGmaReservation = new EngineModeReservation(this, owner);
+        lastReadBoardGmaReservation = new ReadBoardGmaReservation(owner);
+        readBoardGmaReservation = lastReadBoardGmaReservation;
         return true;
       }
     }
@@ -21343,7 +21334,7 @@ public class Leelaz {
       timeout.cancel();
     }
     if (reservation != null) {
-      reservation.close();
+      releaseRestoredReadBoardGmaReservation(reservation);
     }
     if (staleFailure != null) {
       staleFailure.accept(
@@ -24556,7 +24547,6 @@ public class Leelaz {
       completed = engineRulesResult.confirmed(observed);
       publishEngineRulesResultLocked(operation, completed);
       recentRulesLine = observedRulesLine;
-      getRcentLine = false;
       getSuicidalAndRules();
       if (!isolated && this == Lizzie.leelaz && Lizzie.config != null) {
         Lizzie.config.currentKataGoRules = recentRulesLine;
@@ -24852,50 +24842,144 @@ public class Leelaz {
     return true;
   }
 
-  public void getParameterScadule(boolean sendCommand) {
-    getParameterScadule(sendCommand, TimeUnit.SECONDS.toMillis(30));
+  private void readKataParameters() {
+    readKataParameters(TimeUnit.SECONDS.toMillis(30));
   }
 
-  void getParameterScadule(boolean sendCommand, long timeoutMillis) {
-    final long timeoutGeneration;
-    boolean queryRules = false;
-    synchronized (parameterReadTimeoutLock) {
-      timeoutGeneration = ++parameterReadTimeoutGeneration;
-      getRcentLine = true;
-      if (sendCommand) {
-        recentLineNumber = 0;
-        sendCommand("kata-get-param playoutDoublingAdvantage");
-        sendCommand("kata-get-param analysisWideRootNoise");
-        queryRules = engineRulesResult.status() != EngineRulesResult.Status.PENDING;
+  void readKataParameters(long timeoutMillis) {
+    long primaryGeneration = Lizzie.capturePrimaryEngineGeneration(this);
+    ParameterRead read = new ParameterRead(currentReaderStreamBinding(), primaryGeneration);
+    synchronized (parameterReadLock) {
+      activeParameterRead = read;
+    }
+    try {
+      sendParameterRead(read, "playoutDoublingAdvantage", true);
+      sendParameterRead(read, "analysisWideRootNoise", false);
+      if (engineRulesResult.status() != EngineRulesResult.Status.PENDING) {
+        queryEngineRulesOperationImmediately(timeoutMillis);
       }
+      scheduleParameterReadTimeout(
+          () -> {
+            synchronized (parameterReadLock) {
+              if (activeParameterRead == read && !read.complete()) activeParameterRead = null;
+            }
+          }, timeoutMillis);
+    } catch (RuntimeException | Error failure) {
+      retireParameterRead(read);
+      throw failure;
     }
-    if (queryRules) {
-      queryEngineRulesOperationImmediately(timeoutMillis);
-    }
-    Thread timeoutThread =
-        new Thread(
-            () -> {
-              try {
-                Thread.sleep(Math.max(0L, timeoutMillis));
-              } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                return;
-              }
-              synchronized (parameterReadTimeoutLock) {
-                if (parameterReadTimeoutGeneration == timeoutGeneration) {
-                  getRcentLine = false;
-                }
-              }
-            },
-            "lizzie-katago-parameter-timeout");
+  }
+  void scheduleParameterReadTimeout(Runnable timeout, long timeoutMillis) {
+    Thread timeoutThread = new Thread(() -> {
+      try {
+        Thread.sleep(Math.max(0L, timeoutMillis));
+      } catch (InterruptedException interrupted) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+      timeout.run();
+    }, "lizzie-katago-parameter-timeout");
     timeoutThread.setDaemon(true);
     timeoutThread.start();
   }
 
+
+  private void sendParameterRead(ParameterRead read, String parameter, boolean pdaParameter) {
+    String command = "kata-get-param " + parameter;
+    ParameterReadResponseHandler handler = new ParameterReadResponseHandler(read, pdaParameter);
+    CommandSendFailureHandler onFailure = failure -> retireParameterRead(read);
+    Object startupContext = startupPostActionCommandContext.get();
+    if (startupContext instanceof StartupPostActionLease) {
+      ((StartupPostActionLease) startupContext).sendCommand(command, handler, onFailure);
+    } else if (startupContext instanceof ReaderStreamBinding) {
+      sendStartupPostActionCommand(command, (ReaderStreamBinding) startupContext, handler, onFailure);
+    } else if (!sendCommand(command, handler, onFailure, true, false, null, false, read.binding)) {
+      retireParameterRead(read);
+    }
+  }
+
+  private void retireParameterRead(ParameterRead read) {
+    synchronized (parameterReadLock) {
+      if (activeParameterRead == read) activeParameterRead = null;
+    }
+  }
+
   public void cancelParameterRead() {
-    synchronized (parameterReadTimeoutLock) {
-      parameterReadTimeoutGeneration++;
-      getRcentLine = false;
+    synchronized (parameterReadLock) {
+      activeParameterRead = null;
+    }
+  }
+
+  private static final class ParameterRead {
+    private final ReaderStreamBinding binding;
+    private final long primaryGeneration;
+    private boolean hasPda;
+    private boolean hasWrn;
+    private double pda;
+    private double wrn;
+
+    private ParameterRead(ReaderStreamBinding binding, long primaryGeneration) {
+      this.binding = binding;
+      this.primaryGeneration = primaryGeneration;
+    }
+
+    private boolean complete() {
+      return hasPda && hasWrn;
+    }
+  }
+
+  private final class ParameterReadResponseHandler implements Runnable {
+    private final ParameterRead read;
+    private final boolean pdaParameter;
+
+    private ParameterReadResponseHandler(ParameterRead read, boolean pdaParameter) {
+      this.read = read;
+      this.pdaParameter = pdaParameter;
+    }
+
+    @Override
+    public void run() {
+      if (isCurrentCommandResponseError()) {
+        retireParameterRead(read);
+        return;
+      }
+      double value;
+      try {
+        value = Double.parseDouble(gtpResponsePayload(currentCommandResponseLine()));
+      } catch (NumberFormatException invalid) {
+        retireParameterRead(read);
+        return;
+      }
+      if (!Double.isFinite(value)) {
+        retireParameterRead(read);
+        return;
+      }
+      synchronized (engineArbitrationLock()) {
+        synchronized (parameterReadLock) {
+          if (activeParameterRead != read || read.complete()
+              || readerStreamBinding != read.binding || read.binding.terminated) return;
+          if (pdaParameter) {
+            pda = read.pda = value;
+            read.hasPda = true;
+          } else {
+            wrn = read.wrn = value;
+            read.hasWrn = true;
+          }
+          if (!read.complete()) return;
+        }
+      }
+      SwingUtilities.invokeLater(() -> Lizzie.runIfPrimaryEngine(
+          Leelaz.this, read.primaryGeneration, () -> {
+            synchronized (engineArbitrationLock()) {
+              synchronized (parameterReadLock) {
+                if (activeParameterRead == read && readerStreamBinding == read.binding
+                    && !read.binding.terminated && !read.binding.suppressGlobalEnginePresentation
+                    && Lizzie.frame != null) {
+                  Lizzie.frame.setPdaAndWrn(read.pda, read.wrn);
+                }
+              }
+            }
+          }));
     }
   }
 

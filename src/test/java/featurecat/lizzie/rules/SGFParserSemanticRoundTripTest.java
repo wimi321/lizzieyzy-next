@@ -10,10 +10,13 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Lizzie;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -23,6 +26,97 @@ import org.junit.jupiter.params.provider.ValueSource;
  */
 class SGFParserSemanticRoundTripTest {
   private static final int SIZE = 5;
+  @TempDir Path tempDirectory;
+
+  @ParameterizedTest
+  @ValueSource(strings = {"\n", "\\n", "\\r\\n"})
+  void detachedAndLiveImportsKeepResultSeparateFromComments(String newline) throws Exception {
+    try (RulesLayerTestHarness ignored = RulesLayerTestHarness.open(SIZE)) {
+      String sgf = "(;SZ[5]RE[B+R]" + newline + ";B[aa](;W[bb])(;W[cc]))";
+      BoardHistoryList live = Lizzie.board.getHistory();
+      live.getGameInfo().setResult("W+R");
+      RulesLayerTestHarness.TrackingFrame frame =
+          (RulesLayerTestHarness.TrackingFrame) Lizzie.frame;
+      int publications = frame.resultPublications;
+      var titleField = featurecat.lizzie.gui.LizzieFrame.class.getDeclaredField("resultTitle");
+      titleField.setAccessible(true);
+      Object title = titleField.get(frame);
+      BoardHistoryList detached = SGFParser.parseSgf(sgf, true);
+      assertSame(live, Lizzie.board.getHistory());
+      assertEquals("W+R", live.getGameInfo().getResult());
+      assertEquals(title, titleField.get(frame));
+      assertEquals(publications, frame.resultPublications);
+      assertTrue(SGFParser.loadFromString(sgf, false));
+      assertTreeSemanticsEqual(Lizzie.board.getHistory(), detached);
+      assertEquals("B+R", detached.getGameInfo().getResult());
+      Lizzie.board.setHistory(detached);
+      assertTrue(SGFParser.loadFromString(SGFParser.saveToString(false), false));
+      assertEquals("B+R", Lizzie.board.getHistory().getGameInfo().getResult());
+      assertTreeSemanticsEqual(detached, Lizzie.board.getHistory());
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "(;SZ[5]\\r;B[aa])", "(;SZ[5]\\\\n;B[aa])",
+      "(;SZ[5]K\\nM[6.5];B[aa])", "(;SZ[5]K\\n\\nM[6.5];B[aa])",
+      "(;SZ[5]\\n;B[aa](;W[bb])", "(;SZ[5]\\n;B[aa]C[unfinished)",
+      "(;SZ[5]\\n;B[aa])\\n(;SZ[5]"
+  })
+  void ambiguousStructuralEscapesCannotReplaceLoadedHistory(String invalid) throws Exception {
+    try (RulesLayerTestHarness ignored = RulesLayerTestHarness.open(SIZE)) {
+      assertTrue(SGFParser.loadFromString("(;SZ[5];B[cc])", false));
+      BoardHistoryList original = Lizzie.board.getHistory();
+      BoardHistoryNode current = original.getCurrentHistoryNode();
+      assertNull(SGFParser.parseSgf(invalid, true));
+      assertFalse(SGFParser.loadFromString(invalid, false));
+      assertSame(original, Lizzie.board.getHistory());
+      assertFalse(SGFParser.loadFromStringforedit(invalid));
+      assertSame(original, Lizzie.board.getHistory());
+      assertSame(current, original.getCurrentHistoryNode());
+      Path file = tempDirectory.resolve("ambiguous.sgf");
+      Files.writeString(file, invalid);
+      assertFalse(SGFParser.load(file.toString(), false, false));
+      assertSame(original, Lizzie.board.getHistory());
+      assertSame(current, original.getCurrentHistoryNode());
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"\\n", "\\r\\n"})
+  void structuralNewlinesPreserveMovesBranchesAndPropertyValues(String newline) throws Exception {
+    try (RulesLayerTestHarness ignored = RulesLayerTestHarness.open(SIZE)) {
+      String normal =
+          "(;SZ[5]\nKM[6.5]XX[keep\\\\n]C[中文 \\] \\\\ slash\nsecond line]"
+              + "\n;B[aa]\n(;W[bb]C[main];B[cc])\n(;W[dd]C[variation];B[ee]))";
+      String escaped = normal.replace("\n;", newline + ";")
+          .replace("\nKM", newline + "KM").replace("\n(", newline + "(");
+      BoardHistoryList expected = SGFParser.parseSgf(normal, true);
+      BoardHistoryList live = Lizzie.board.getHistory();
+      BoardHistoryList actual = SGFParser.parseSgf(escaped, true);
+      assertSame(live, Lizzie.board.getHistory());
+      assertTreeSemanticsEqual(expected, actual);
+      assertEquals(expected.getStart().getData().getProperty("XX"),
+          actual.getStart().getData().getProperty("XX"));
+      assertEquals(List.of("BLACK 0,0", "WHITE 1,1", "BLACK 2,2"), mainlineMoves(actual));
+      assertTrue(SGFParser.loadFromString(escaped, false));
+      assertTreeSemanticsEqual(expected, Lizzie.board.getHistory());
+      assertTrue(SGFParser.loadFromStringforedit(escaped));
+      assertTreeSemanticsEqual(expected, Lizzie.board.getHistory());
+      Path input = tempDirectory.resolve("escaped.sgf");
+      Files.writeString(input, escaped);
+      assertTrue(SGFParser.load(input.toString(), false, false));
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+      assertTreeSemanticsEqual(expected, Lizzie.board.getHistory());
+      assertEquals(escaped, Files.readString(input));
+      Path saved = tempDirectory.resolve("saved.sgf");
+      Files.writeString(saved, SGFParser.saveToString(false));
+      assertTrue(SGFParser.load(saved.toString(), false, false));
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+      assertTreeSemanticsEqual(expected, Lizzie.board.getHistory());
+      assertTreeSemanticsEqual(expected, SGFParser.parseSgf(SGFParser.saveToString(false), true));
+    }
+  }
 
   @ParameterizedTest
   @ValueSource(strings = {"LZ", "LZOP", "LZ2", "LZOP2"})

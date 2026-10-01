@@ -1,0 +1,53 @@
+name: B11 Speed Notice UI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/b11-speed-notice.yml'
+      - 'src/main/java/featurecat/lizzie/util/B11ModelNotice.java'
+      - 'src/main/java/featurecat/lizzie/analysis/Leelaz.java'
+      - 'src/main/java/featurecat/lizzie/analysis/remote/ZhiziGtpTransport.java'
+      - 'src/main/java/featurecat/lizzie/gui/B11SpeedNoticePanel.java'
+      - 'src/main/java/featurecat/lizzie/gui/KataGoAutoSetupDialog.java'
+      - 'src/main/java/featurecat/lizzie/gui/LizzieFrame.java'
+      - 'src/main/resources/l10n/**'
+      - 'src/test/java/featurecat/lizzie/**/B11*Test.java'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b11-speed-notice-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-layout:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Check actual Swing windows at four scales and all supported locales
+        shell: pwsh
+        run: |
+          mvn -B '-Dfmt.skip=true' '-Djava.awt.headless=false' '-Dlizzie.desktop.required=true' '-Dtest=B11SpeedNoticeDesktopTest,B11SpeedNoticePanelTest' test
+          if ($LASTEXITCODE -ne 0) { throw 'B11 window acceptance failed' }
+          [xml]$report = Get-Content 'target/surefire-reports/TEST-featurecat.lizzie.gui.B11SpeedNoticeDesktopTest.xml'
+          if ([int]$report.testsuite.tests -ne 4 -or [int]$report.testsuite.failures -ne 0 -or [int]$report.testsuite.errors -ne 0 -or [int]$report.testsuite.skipped -ne 0) {
+            throw 'A required desktop scale was missing, skipped or failed'
+          }
+      - name: Preserve window screenshots and assertions, not performance claims
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: b11-speed-notice-windows
+          path: |
+            target/desktop-smoke/probes/
+            target/surefire-reports/
+          if-no-files-found: error
+          retention-days: 7

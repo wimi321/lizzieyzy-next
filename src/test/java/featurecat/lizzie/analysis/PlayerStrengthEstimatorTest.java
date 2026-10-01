@@ -39,13 +39,16 @@ class PlayerStrengthEstimatorTest {
   private int previousBoardWidth;
   private int previousBoardHeight;
   private PlayerStrengthEstimator.StrengthModel previousStrengthModel;
+  private Config previousConfig;
   @TempDir Path tempDir;
 
   @BeforeEach
-  void setUp() {
+  void setUp() throws IOException {
     previousBoardWidth = Board.boardWidth;
     previousBoardHeight = Board.boardHeight;
     previousStrengthModel = PlayerStrengthEstimator.activeModel();
+    previousConfig = Lizzie.config;
+    Lizzie.config = ConfigTestHelper.createForTests(tempDir);
     Board.boardWidth = BOARD_SIZE;
     Board.boardHeight = BOARD_SIZE;
     PlayerStrengthEstimator.setActiveModel(PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN);
@@ -56,6 +59,7 @@ class PlayerStrengthEstimatorTest {
     Board.boardWidth = previousBoardWidth;
     Board.boardHeight = previousBoardHeight;
     PlayerStrengthEstimator.setActiveModel(previousStrengthModel);
+    Lizzie.config = previousConfig;
   }
 
   @Test

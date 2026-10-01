@@ -4921,7 +4921,6 @@ class EngineManagerInitialStartupSynchronizationTest {
                             engine.started = true;
                             engine.isLoaded = true;
                             engine.commands.clear();
-                            engine.getRcentLine = false;
                           }));
                 } catch (Throwable failure) {
                   ownerFailure.set(failure);
@@ -4956,7 +4955,6 @@ class EngineManagerInitialStartupSynchronizationTest {
         assertNull(parserFailure.get());
         assertTrue(
             engine.commands.isEmpty(), "the old reader must not configure the rebound engine");
-        assertFalse(engine.getRcentLine, "the old reader must not arm a parameter-read timeout");
       } finally {
         rebindReader.countDown();
         primaryOwner.join(2_000L);
@@ -5069,7 +5067,6 @@ class EngineManagerInitialStartupSynchronizationTest {
       assertTrue(engine.startupCommandAttempts.contains("getdympdacap"));
       assertFalse(engine.isCheckingPdaForTest());
       assertTrue(engine.pdaStartupTimeouts.isEmpty());
-      assertFalse(engine.getRcentLine, "failed startup must retire parameter-read state");
       assertFalse(engine.isLoaded, "failed post-work must not publish startup readiness");
       assertTrue(engine.isDownWithError, "failed post-work must fail the exact runtime closed");
     }
@@ -5109,7 +5106,6 @@ class EngineManagerInitialStartupSynchronizationTest {
           "the controlled failure must be reached through the requested startup command");
       assertFalse(engine.isCheckingPdaForTest());
       assertTrue(engine.pdaStartupTimeouts.isEmpty());
-      assertFalse(engine.getRcentLine, "failed startup must retire parameter-read state");
       assertFalse(engine.isLoaded, "failed post-work must not publish startup readiness");
       assertTrue(engine.isDownWithError, "failed post-work must fail the exact runtime closed");
     }

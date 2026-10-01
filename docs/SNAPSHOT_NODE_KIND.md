@@ -98,6 +98,9 @@ ReadBoard 协议里的 `pass` 行在自动落子/交换顺序链路中表示用�
 - 这些被隔离的 live state 包含 `hasStartStone/startStonelist`、player title、komi、引擎 komi/best-move 等当前窗口状态；相关副作用只允许在调用方显式采用解析结果后发生。
 - SGF 分析标签 `LZ` / `LZ2` / `LZOP` / `LZOP2`（含双引擎对应 payload）在 detached `parseSgf(...)` 阶段必须写入解析目标 history/node 的 `BoardData`，不能读写或覆盖当前 live board 的分析字段。
 - detached `parseSgf(...) -> setHistory(...) -> saveToString(...)` round-trip 必须保留 analysis payload（`engineName` / `engineName2`、playouts、best-move 列表）。
+- 文件、字符串、编辑态和 detached SGF 导入统一兼容属性值之外、结构空白位置的字面量 `\n` 与 `\r\n`；属性值原文继续交给既有 SGF 转义解析，不全文反转义，不改写输入文件。
+- 未知结构转义、双重包装、被转义换行拆开的属性名，以及含本次结构转义的未闭合树/属性值，必须导入失败；live 入口保留原棋谱，detached 入口返回 `null`。普通 SGF 的既有无关容错保持不变。
+- detached 与 live 导入都把 `RE` 保存为 `GameInfo.result`；不能将结果伪造成根或末节点注释，保存重开保持真实注释与对局结果。
 - `LZ` / `LZ2` / `LZOP` / `LZOP2` 单行 header-only analysis payload 视为完整 payload；缺少第二行 PV 时，`parseSgf(...)`、`setHistory(...)` adopt、`saveToString(...)` 与 round-trip 仍导出等价 payload。
 - header 内 `engineName`、`playouts`、`scoreMean`、`scoreStdev`、`pda`（双引擎槽位含 `engineName2`、`scoreMean2`、`scoreStdev2`、`pda2`）在 parse、`setHistory(...)` adopt、`saveToString(...)`、round-trip 全链路保留。
 - `setHistory(...)` adopt detached history 时，board 级 Kata 状态从 adopted history 重新推导：
@@ -127,6 +130,8 @@ ReadBoard 协议里的 `pass` 行在自动落子/交换顺序链路中表示用�
 - foreground/GMA adapter 只负责把自己的 session/reservation identity 映射为 opaque admission，再调用 generic history/current-position capture；产品-specific stop、name、komi、clear、quarantine 与 completion policy 留在 adapter/owner。
 - 自动/直接 restart 的 exact 与 root 路线都经过同一个 owner board synchronization fence；owner 只能在 fence 成功后恢复 captured ponder，失败或不可用时不启动分析，并在既有 completion boundary 释放 reservation。
 - `Leelaz` 继续唯一拥有 ordinary command queue、response handler、timeout、late-response retirement、output-stream invalidation 与 engine arbitration；exact module 只通过窄 admission-aware seam 使用这些能力。
+- 普通 KataGo 启动的 PDA/WRN 回读由 `Leelaz` 持有独立轮次，绑定既有 numbered pending response 与 reader incarnation；规则 operation 的成功、失败和超时不结算参数轮次。startup-post 查询仍遵守原有实际写出／失败关闭边界。
+- PDA/WRN 仅在同一有效轮次两项有限数值均成功回读后，通过现有工具栏路径发布完整一对；回复次序不影响结果，合法零值不是空白。错误、格式错误、缺失或超时不以自动载入配置／默认零补齐成功。取消、替换及旧 timeout 不影响后继轮次；EDT 发布时复验原前台 generation、reader 与轮次，隔离启动不得更新全局显示。
 - 手动终止 genmove 对局后，空 numbered ACK 仍是非终态；迟到的合法 analyze `play` 只结清原 reader binding 的 pending handler，不追加应用的真实 `MOVE/PASS` 或比赛结果。缺失终态继续按既有五秒物理请求 watchdog 回收。
 - 已停止对局的前台引擎在物理请求退役后，由 `EngineManager` 异步冻结并执行当前应用盘面的 root/exact 恢复；退役屏障保留到既有稳定 board synchronization fence 完成。恢复命令仅获该 lifecycle owner 对原 binding 的写入授权，失败将原目标标为 unavailable，替换实例不受旧归还影响；手动停止不自动恢复 ponder。
 - 对局中所有贴目入口统一提交给当前 engine-game owner；界面区分已确认贴目与待应用目标，连续输入只保留最新目标，不修改 frozen opening plan 或后续批次默认值。GENMOVE 已发出的当前合法手须先完成并由对手接受，再开始贴目切换。
@@ -200,6 +205,7 @@ ReadBoard 协议里的 `pass` 行在自动落子/交换顺序链路中表示用�
 - exact module 继续拥有静态锚点、临时 SGF 消费与真实 tail sequencing；最终 owner confirmation、root replay 和 ponder 留在现有 owner。exact 一旦开始，失败不切换到 root fallback。
 - Board 恢复的 GTP 等待在 EDT 和 Board monitor 外执行。完成时重新检查冻结目标，过期 completion 不恢复分析，也不把替换引擎当作原恢复目标。
 - foreground handback 已冻结的同一 Board/主引擎盘面恢复先按捕获内容完成确认，再由现有 owner 检查稳定性并追赶最新目标；导航发生在 companion close 期间不能提前截断该收敛循环。Board 或主引擎 incarnation 替换仍拒绝旧恢复。
+- 自动快析及后台主线补全（含复用预加载 worker）完成只采纳分析结果并保留当时的浏览节点 identity，不为完成通知推进棋盘，也不退回启动节点。借用主引擎时继续由 foreground lease 恢复并确认最新局面后归还；lease 持有期间不得借 `BOARD_SYNC` 导航。用户暂停、换谱或主引擎替换使旧 completion 失效，不能恢复 ponder；手动闪电分析既有完成导航不变。
 - 同一合法目标的缓存和已导入 SGF 分析继续保留；主副引擎槽位独立。未确认或已失效来源不得建立新的 visits 高水位。board-only 同步及真实 PASS、dummy PASS、setup 语义保持原合同。
 
 ## ReadBoard 单次同步分析恢复（Issue #429 / Ticket 03）
@@ -214,6 +220,18 @@ ReadBoard 协议里的 `pass` 行在自动落子/交换顺序链路中表示用�
 - 停止同步、关闭自动落子、切换自动落子执子方或模式都会失效旧的 pending resume；随后重新开启也不能复活旧回调。最终恢复还须满足当前自动落子启用、非用户暂停及既有自动分析/对局互斥条件。GMA 仍由其独立调度器负责，不转入普通 `kata-analyze` 路径（Issue #560）。
 - 一致且无需恢复的重复快照不重新捕获恢复或重启合法分析流。普通首次同步直接采用最终视图，不以先回退再延迟前进触发额外分析。
 - 无引擎时仍完成本地 board/history 更新；GMA 和对局 continuation 保持独立的路由与 ownership exclusion。手动导航、手动分析恢复及普通棋谱加载策略保持原契约。
+
+### GMA 退出后的普通自动落子授权
+
+- 已有 GMA 准备、物理请求或恢复工作时，普通 `play>` 只登记最新切换意图，并撤销旧 GMA 的落子授权；不得提前发送普通分析或与恢复冲突的位置命令。新 `play>` 替换旧意图，不替换旧物理工作的收尾责任。
+- 收尾结果绑定原 reservation 和 reader incarnation，只有必需恢复成功且实际释放 reservation 后才可报告成功。准备阶段的零副作用取消可成功；错误、超时、终止、reader 替换或 quarantine 不授权普通分析。session terminal 和 reservation 字段为空均不能单独证明成功。
+- 等待期间的权威快照继续更新本地 Board/history，只更新待恢复目标。收尾成功后，切换 owner 通过既有 Board/位置确认流程确认最新目标及全部 required position ACK、最终 fence，再一次性消费仍有效的意图。旧目标被后来的权威快照取代时，跟进最新目标确认；当前目标确认失败仍不启动分析。
+- 权威恢复目标通过原物理 terminal capability 在同一 session 锁内接收并返回结果；当前退休的 GmaInFlight 仍可更新目标，exact/runtime 阶段沿用后继恢复，旧/外来 capability 和终态不得接收。该能力不恢复 helper 授权，不产生新 GMA 或点击。路由不得把未接收的目标报告为已处理。
+- 尚未发送或尚未确认的目标责任属于绑定 drain、reader、Board 与主引擎代际的等待上下文，不属于可替换的普通启动意图。再次普通授权复用该责任；停止/暂停只取消自动启动，重新显式授权仍须补齐未确认盘面。仅对应当前目标的成功位置确认清除责任；Board/reader/引擎身份改变时不继承到新实例。成功 fence 不能替代目标 SGF/位置命令的实际发送。
+- 停止、暂停、手动导航、Board/history/helper 替换、引擎切换或重启永久取消旧意图；重新开启或切回不复活旧回调。重新选择 GMA 即使被资源准入拒绝，也取消先前等待中的普通意图。最终分析准入与取消、替换共享串行边界，旧回调不能在取消完成后重新启动。切换等待期间的普通同步恢复与候选落子暂缓，不能绕过该 owner。
+- 显式普通 `play>` 保留主动启动语义，不受后台同步的 `readBoardPonder` 开关抑制；普通同步恢复仍遵守其原设置。GMA 活跃期间不发送普通分析，只有退出 GMA 后的新有效授权可以启动它。
+- 普通候选落子的排他边界覆盖仍在途或恢复中的物理 GMA，不只检查当前模式或待切换意图。再次选择 GMA 被拒绝并取消普通意图后，旧 GMA 的 `info` 仍不得触发普通 `play`；不能将引擎最终已执行的落子重复发送回引擎。
+
 
 ## SGF 会话规则确认（Issue #448）
 

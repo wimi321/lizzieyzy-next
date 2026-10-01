@@ -4868,17 +4868,22 @@ public class Board {
     moveToAnyPosition(targetNode, null, history.getCurrentHistoryNode(), false);
   }
 
-  /** Applies one ordinary ReadBoard sync locally, then confirms only its final engine target. */
-  public synchronized CompletableFuture<Void> applyReadBoardSync(
-      Runnable localChanges, java.util.function.BooleanSupplier requiresConfirmation) {
-    BoardHistoryList sourceHistory = history;
-    BoardHistoryNode source = history.getCurrentHistoryNode();
+  /** Updates the authoritative ReadBoard position without forwarding commands to its engine owner. */
+  public synchronized void applyReadBoardSyncLocally(Runnable localChanges) {
     readBoardSyncThread = Thread.currentThread();
     try {
       localChanges.run();
     } finally {
       readBoardSyncThread = null;
     }
+  }
+
+  /** Applies one ordinary ReadBoard sync locally, then confirms only its final engine target. */
+  public synchronized CompletableFuture<Void> applyReadBoardSync(
+      Runnable localChanges, java.util.function.BooleanSupplier requiresConfirmation) {
+    BoardHistoryList sourceHistory = history;
+    BoardHistoryNode source = history.getCurrentHistoryNode();
+    applyReadBoardSyncLocally(localChanges);
     BoardHistoryNode target = history.getCurrentHistoryNode();
     if (!requiresConfirmation.getAsBoolean() && sourceHistory == history && source == target) {
       return CompletableFuture.completedFuture(null);

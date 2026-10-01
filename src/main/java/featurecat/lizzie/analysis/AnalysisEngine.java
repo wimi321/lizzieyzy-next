@@ -1372,6 +1372,8 @@ public class AnalysisEngine {
   private int startRequestMissingMainlineNow(boolean showProgressDialog) {
     if (!isLoaded || shutdownRequested) return -1;
     prepareRequestState(showProgressDialog);
+    // Background completion also runs on reusable preloaded workers, not just AUTO_QUICK_ANALYSIS.
+    preserveBoardPositionOnCompletion = true;
     captureCurrentGameIdentity();
     if (useRemoteCompute) {
       enqueueRemoteGtpMainlineRequests(
@@ -1539,7 +1541,7 @@ public class AnalysisEngine {
     requestDispatchComplete = false;
     silentProgress = !showProgressDialog;
     preserveExistingAnalysis = false;
-    preserveBoardPositionOnCompletion = false;
+    preserveBoardPositionOnCompletion = isAutomaticBackgroundTask();
     protectForegroundCurrentNode = true;
     explicitRequestTargetVisits = -1;
     explicitRequestOwnershipRequested = false;

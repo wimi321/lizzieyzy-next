@@ -25,8 +25,14 @@ public class VariationTreeBig {
   private Point clickPoint;
   private int curMoveLane = 0;
   private int maxLane = 0;
+  private final BoardHistoryNode displayNode;
 
   public VariationTreeBig() {
+    this(null);
+  }
+
+  VariationTreeBig(BoardHistoryNode displayNode) {
+    this.displayNode = displayNode;
     laneUsageList = new ArrayList<Integer>();
     area = new Rectangle(0, 0, 0, 0);
     clickPoint = new Point(0, 0);
@@ -173,7 +179,7 @@ public class VariationTreeBig {
               g.drawString(
                   String.valueOf(moveNum), moveNum >= 100 ? curposx - 3 : curposx, posy + diff - 5);
           }
-          if (startNode == Lizzie.frame.getDisplayNode()) {
+          if (startNode == curMove) {
             if (blunderColor != Color.WHITE) g.setColor(reverseColor(blunderColor));
             else g.setColor(Color.RED);
             g.fillOval(
@@ -187,7 +193,7 @@ public class VariationTreeBig {
           g.setColor(Color.BLACK);
           g.setStroke(new BasicStroke(1f));
           g.drawRect(curposx - 1, posy - 1, DOT_DIAM + 1, DOT_DIAM + 1);
-          if (cur == Lizzie.frame.getDisplayNode()) {
+          if (cur == curMove) {
             g.setColor(Color.RED);
             g.fillRect(
                 curposx + rectBorder,
@@ -241,7 +247,7 @@ public class VariationTreeBig {
                 RING_DIAM);
           else g.fillOval(curposx + diff, posy + diff, diam, diam);
         }
-        if (cur == Lizzie.board.getHistory().getCurrentHistoryNode()) {
+        if (cur == curMove) {
           if (blunderColor != Color.WHITE) g.setColor(reverseColor(blunderColor));
           else g.setColor(Color.RED);
           g.fillOval(
@@ -337,7 +343,7 @@ public class VariationTreeBig {
     int xoffset = 20;
     laneUsageList.clear();
 
-    curMove = Lizzie.frame.getDisplayNode();
+    curMove = displayNode != null ? displayNode : Lizzie.frame.getDisplayNode();
     // curMove = Lizzie.board.getHistory().getStart();
     // Is current move a variation? If so, find top of variation
     BoardHistoryNode top = curMove.findTop();

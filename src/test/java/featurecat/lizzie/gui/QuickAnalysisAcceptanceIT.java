@@ -31,6 +31,11 @@ public class QuickAnalysisAcceptanceIT {
   }
 
   @Test
+  public void analyzesGamePassedAtProcessStartup() throws Exception {
+    run("startup");
+  }
+
+  @Test
   public void preservesExplicitPauseDuringQuickAnalysis() throws Exception {
     run("pause");
   }
@@ -113,7 +118,7 @@ public class QuickAnalysisAcceptanceIT {
     Files.writeString(fixture, "(;FF[4]GM[1]SZ[19]KM[7.5];B[pd];W[dd];B[qp];W[dq])");
     System.setProperty("lizzie.work.dir", work.toString());
     DesktopProbeProcess.phase(result, "production-startup");
-    Lizzie.main(new String[0]);
+    Lizzie.main(mode.equals("startup") ? new String[] {fixture.toString()} : new String[0]);
     await(
         () ->
             Lizzie.frame != null
@@ -129,6 +134,20 @@ public class QuickAnalysisAcceptanceIT {
           }
         });
     Leelaz primary = Lizzie.leelaz;
+    if (mode.equals("startup")) {
+      await(
+          () -> allMovesAnalyzed()
+              && primary.isPondering()
+              && (Lizzie.frame.analysisEngine == null
+                  || !Lizzie.frame.analysisEngine.hasRequestLifecycleInProgress()),
+          45,
+          "startup SGF quick analysis and foreground handback");
+      ImageIO.write(new Robot().createScreenCapture(Lizzie.frame.getBounds()), "png",
+          result.getParent().resolve("window.png").toFile());
+      primary.normalQuit();
+      Files.writeString(result, "result=PASS\nmode=startup\n");
+      return;
+    }
     await(
         () ->
             primary.isPondering()

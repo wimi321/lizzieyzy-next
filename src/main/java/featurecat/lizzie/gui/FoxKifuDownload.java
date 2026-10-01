@@ -29,6 +29,7 @@ import java.text.DecimalFormat;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.ResourceBundle;
 import javax.imageio.ImageIO;
 import javax.swing.AbstractCellEditor;
 import javax.swing.JButton;
@@ -661,16 +662,8 @@ public class FoxKifuDownload extends JFrame {
         if (kifuInfo.blackUid.equals(myUid)) detectedNickname = kifuInfo.blackName;
         else if (kifuInfo.whiteUid.equals(myUid)) detectedNickname = kifuInfo.whiteName;
       }
-      int bRank = jsonObject.getInt("blackdan") - 17;
-      kifuInfo.blackRank =
-          bRank > 0
-              ? bRank + Lizzie.resourceBundle.getString("FoxKifuDownload.rank.dan")
-              : (Math.abs(bRank) + 1) + Lizzie.resourceBundle.getString("FoxKifuDownload.rank.kyu");
-      int wRank = jsonObject.getInt("whitedan") - 17;
-      kifuInfo.whiteRank =
-          wRank > 0
-              ? wRank + Lizzie.resourceBundle.getString("FoxKifuDownload.rank.dan")
-              : (Math.abs(wRank) + 1) + Lizzie.resourceBundle.getString("FoxKifuDownload.rank.kyu");
+      kifuInfo.blackRank = formatFoxRank(jsonObject.getInt("blackdan"), Lizzie.resourceBundle);
+      kifuInfo.whiteRank = formatFoxRank(jsonObject.getInt("whitedan"), Lizzie.resourceBundle);
       kifuInfo.chessid = jsonObject.getString("chessid");
       kifuInfo.totalMoves = jsonObject.getInt("movenum");
       kifuInfo.isWin = isCurrentUserWin(jsonObject);
@@ -795,6 +788,19 @@ public class FoxKifuDownload extends JFrame {
       result = Lizzie.resourceBundle.getString("FoxKifuDownload.other");
     }
     return result;
+  }
+
+  static String formatFoxRank(int rawRank, ResourceBundle resources) {
+    // Fox uses 100..108 for professional 1..9 dan, separately from online ranks.
+    if (rawRank >= 100) {
+      return resources.getString("FoxKifuDownload.rank.professionalPrefix")
+          + (rawRank - 99)
+          + resources.getString("FoxKifuDownload.rank.dan");
+    }
+    int rank = rawRank - 17;
+    return rank > 0
+        ? rank + resources.getString("FoxKifuDownload.rank.dan")
+        : (Math.abs(rank) + 1) + resources.getString("FoxKifuDownload.rank.kyu");
   }
 
   private String formatPointValue(int point) {

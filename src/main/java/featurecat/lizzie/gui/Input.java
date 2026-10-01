@@ -379,7 +379,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
             Lizzie.board.SpinAndMirror(3);
           } else LizzieFrame.undoNoRefresh(10);
         } else {
-          if (LizzieFrame.boardRenderer.isShowingBranch()) {
+          if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
             Lizzie.frame.doBranch(-1);
           } else {
             LizzieFrame.undoNoRefresh(1);
@@ -388,7 +388,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
         break;
 
       case VK_PAGE_DOWN:
-        if (LizzieFrame.boardRenderer.isShowingBranch()) {
+        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
           Lizzie.frame.doBranch(1);
         } else {
           // Lizzie.frame.noautocounting();
@@ -409,7 +409,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
             Lizzie.board.SpinAndMirror(4);
           } else LizzieFrame.redoNoRefresh(10);
         } else {
-          if (LizzieFrame.boardRenderer.isShowingBranch()) {
+          if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
             Lizzie.frame.doBranch(1);
           } else {
             LizzieFrame.redoNoRefresh(1);
@@ -493,7 +493,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
         break;
 
       case VK_PAGE_UP:
-        if (LizzieFrame.boardRenderer.isShowingBranch()) {
+        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
           Lizzie.frame.doBranch(-1);
         } else {
           // Lizzie.frame.noautocounting();
@@ -865,18 +865,18 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
     if (e.getWhen() - wheelWhen > 0) {
       wheelWhen = e.getWhen();
       if (e.getWheelRotation() > 0) {
-        if (LizzieFrame.boardRenderer.isShowingBranch()
+        if (LizzieFrame.boardRenderer.ownsBranchNavigation()
             || (Lizzie.config.isDoubleEngineMode()
-                && LizzieFrame.boardRenderer2.isShowingBranch())) {
+                && LizzieFrame.boardRenderer2.ownsBranchNavigation())) {
           Lizzie.frame.doBranch(1);
           Lizzie.frame.refresh();
         } else {
           redo();
         }
       } else if (e.getWheelRotation() < 0) {
-        if (LizzieFrame.boardRenderer.isShowingBranch()
+        if (LizzieFrame.boardRenderer.ownsBranchNavigation()
             || (Lizzie.config.isDoubleEngineMode()
-                && LizzieFrame.boardRenderer2.isShowingBranch())) {
+                && LizzieFrame.boardRenderer2.ownsBranchNavigation())) {
           Lizzie.frame.doBranch(-1);
           Lizzie.frame.refresh();
         } else {

@@ -493,25 +493,6 @@ public final class ReadBoardGmaSession {
     }
   }
 
-  /** Updates the latest-wins authoritative restore intent while the GMA request is in flight. */
-  public void updateRestoreIntent(HelperCapability helper, Object restoreIntent) {
-    Objects.requireNonNull(helper, "helper");
-    Objects.requireNonNull(restoreIntent, "restoreIntent");
-    List<Effect> effects;
-    synchronized (lock) {
-      effects = onUpdateRestoreIntent(helper, restoreIntent);
-    }
-    dispatch(effects);
-  }
-
-  private List<Effect> onUpdateRestoreIntent(HelperCapability helper, Object restoreIntent) {
-    if (!isHelperCurrent(helper) || !(state instanceof GmaInFlight gma)) {
-      return List.of();
-    }
-    state = new GmaInFlight(gma.authorization(), restoreIntent);
-    return List.of();
-  }
-
   /**
    * Invalidates the logical GMA authorization (sticky, effect-free). The physical request keeps
    * converging; the terminal is still consumed and the session still reaches its combined terminal.
@@ -638,22 +619,27 @@ public final class ReadBoardGmaSession {
   }
 
   /**
-   * Records the latest authoritative exact restore requested while participant convergence is in
-   * progress. The physical terminal capability binds the request to this session's admitted engine
-   * incarnation; stale or post-terminal requests are rejected.
+   * Accepts the latest authoritative target under the physical request capability, including after
+   * helper retirement. In-flight updates have no physical effect until the terminal is consumed;
+   * updates during restoration defer another exact participant. Never reauthorizes a GMA move.
    */
-  public boolean deferExactRestore(
+  public boolean updateRestoreIntent(
       GmaTerminalCapability capability, Object restoreIntent) {
     Objects.requireNonNull(capability, "capability");
     Objects.requireNonNull(restoreIntent, "restoreIntent");
     synchronized (lock) {
-      if (!isCapabilityCurrent(capability)
-          || capability.attempt != gmaTerminalAttempt
-          || (!(state instanceof RestoringExact) && !(state instanceof RestoringRuntime))) {
+      if (!isCapabilityCurrent(capability) || capability.attempt != gmaTerminalAttempt) {
         return false;
       }
-      deferredExactRestoreIntent = restoreIntent;
-      return true;
+      if (state instanceof GmaInFlight gma) {
+        state = new GmaInFlight(gma.authorization(), restoreIntent);
+        return true;
+      }
+      if (state instanceof RestoringExact || state instanceof RestoringRuntime) {
+        deferredExactRestoreIntent = restoreIntent;
+        return true;
+      }
+      return false;
     }
   }
 

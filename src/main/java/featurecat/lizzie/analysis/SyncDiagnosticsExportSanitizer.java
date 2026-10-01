@@ -36,7 +36,7 @@ public final class SyncDiagnosticsExportSanitizer {
           "(?<![A-Za-z0-9_.<>-])/(?!mnt/[A-Za-z]/Users/|home/|Users/)[^\\s,;]+(?:/[^\\s,;]*)*");
   private static final Pattern RELATIVE_PARENT_PATH =
       Pattern.compile("(?<!/)\\b(?:[A-Za-z0-9_.-]+/)+([A-Za-z0-9_.-]+)\\b");
-  private static final Pattern SECRET_TEXT = Pattern.compile("(?i)[^\\n\\r]*secret[^\\n\\r]*");
+  private static final Pattern SECRET_TEXT = Pattern.compile("(?i)secret");
   private static final Pattern TOKEN_TEXT =
       Pattern.compile("(?i)\\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\\b");
   private static final String REDACTED_PATH = "<redacted-path>";
@@ -81,8 +81,30 @@ public final class SyncDiagnosticsExportSanitizer {
     safe = replaceYikeRoomParameters(safe);
     safe = replacePaths(safe);
     safe = TOKEN_TEXT.matcher(safe).replaceAll("<redacted-token>");
-    safe = SECRET_TEXT.matcher(safe).replaceAll("<redacted-secret>");
+    safe = redactSecretLines(safe);
     return credentials.sanitize(safe);
+  }
+
+  private static String redactSecretLines(String value) {
+    Matcher secret = SECRET_TEXT.matcher(value);
+    StringBuilder out = null;
+    int copiedThrough = 0;
+    int lineStart = 0;
+    for (int end = 0; end <= value.length(); end++) {
+      if (end < value.length() && value.charAt(end) != '\r' && value.charAt(end) != '\n') {
+        continue;
+      }
+      // Search each line once; a leading greedy wildcard retries every suffix on a miss.
+      if (secret.region(lineStart, end).find()) {
+        if (out == null) {
+          out = new StringBuilder(value.length());
+        }
+        out.append(value, copiedThrough, lineStart).append("<redacted-secret>");
+        copiedThrough = end;
+      }
+      lineStart = end + 1;
+    }
+    return out == null ? value : out.append(value, copiedThrough, value.length()).toString();
   }
 
   public String path(String value) {

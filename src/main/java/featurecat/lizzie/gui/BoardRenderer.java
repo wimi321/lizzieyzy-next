@@ -93,6 +93,9 @@ public class BoardRenderer {
   private boolean isMouseOverStoneBlack;
 
   private boolean isShowingBranch = false;
+  // Whether wheel/keyboard navigation steps the hovered candidate variation instead of the game
+  // record. Unlike isShowingBranch it survives the first-move redraw that skips branch rendering.
+  private boolean branchNavigationOwned = false;
   private boolean shouldHideMouseOverInfo = false;
   private String mouseOverCoords = "";
   private Branch branch;
@@ -329,7 +332,10 @@ public class BoardRenderer {
       }
     } else {
       if (!Lizzie.frame.isInScoreMode) drawBranch();
-      else isShowingBranch = false;
+      else {
+        isShowingBranch = false;
+        branchNavigationOwned = false;
+      }
 
       drawStones(displayNode.getData(), displayNode.getData().stones);
       drawEstimate();
@@ -1558,9 +1564,11 @@ public class BoardRenderer {
       return;
     }
     boolean wasShowingBranch = isShowingBranch;
+    boolean ownedBranchNavigation = branchNavigationOwned;
     String previousMouseOverCoords = mouseOverCoords;
     branchOpt = Optional.empty();
     isShowingBranch = false;
+    branchNavigationOwned = false;
     // calculate best moves and branch
     if (this.boardIndex == 1) {
       bestMoves = Lizzie.frame.getDisplayNode().getData().bestMoves2;
@@ -1661,7 +1669,12 @@ public class BoardRenderer {
     if (matchesHistoryMove(getNextHistoryMoveCoords(), coords)) needShow = true;
     if (notChangedMouseOverMove) {
       if (displayedBranchLength == 1) {
-        if (!Lizzie.config.autoReplayBranch) return;
+        if (!Lizzie.config.autoReplayBranch) {
+          // Same node and candidate: stay on the variation's first move instead of falling back
+          // to game-record navigation.
+          branchNavigationOwned = ownedBranchNavigation;
+          return;
+        }
       }
     } else {
       if (!(Lizzie.config.autoReplayBranch
@@ -1685,8 +1698,12 @@ public class BoardRenderer {
     if (displayedBranchLength == 1 && !Lizzie.config.autoReplayBranch) displayedBranchLength = -2;
 
     // List<String>
+    // A first-move redraw keeps navigation ownership without the rendering flag; for the same node
+    // and candidate treat it as the same preview so a frozen no-refresh PV is not replaced.
+    boolean continuesPreview =
+        wasShowingBranch || (ownedBranchNavigation && notChangedMouseOverMove);
     if (!Lizzie.config.noRefreshOnMouseMove
-        || (!wasShowingBranch || !previousMouseOverCoords.equals(suggestedMove.get().coordinate))) {
+        || (!continuesPreview || !previousMouseOverCoords.equals(suggestedMove.get().coordinate))) {
       variation = branchPreviewList(suggestedMove.get().variation);
       pvVistis = branchPreviewList(suggestedMove.get().pvVisits);
     }
@@ -1704,6 +1721,7 @@ public class BoardRenderer {
       branchOpt = Optional.of(branch);
       variationOpt = Optional.of(variation);
       isShowingBranch = true;
+      branchNavigationOwned = true;
       return;
     }
     branch = null;
@@ -1738,6 +1756,7 @@ public class BoardRenderer {
     branchOpt = Optional.of(branch);
     variationOpt = Optional.of(variation);
     isShowingBranch = true;
+    branchNavigationOwned = true;
     if (!changedSize) {
       if (Lizzie.config.noRefreshOnMouseMove) {
         if (variation == cachedVariation
@@ -4707,6 +4726,10 @@ public class BoardRenderer {
     return isShowingBranch;
   }
 
+  public boolean ownsBranchNavigation() {
+    return branchNavigationOwned;
+  }
+
   public void notShowingBranch() {}
 
   public void setDisplayedBranchLength(int n) {
@@ -4734,8 +4757,14 @@ public class BoardRenderer {
     switch (displayedBranchLength) {
       case 1:
         if (Lizzie.config.autoReplayBranch) displayedBranchLength = 2;
-        else if (!isShowingBranch && n == 1) displayedBranchLength = 256;
-        else if (n == 1) displayedBranchLength = 2;
+        else if (branchNavigationOwned) {
+          // An owned preview at its first move steps like any other displayed length, so
+          // multi-move forward input (Page Down) from a secondary renderer is not swallowed.
+          displayedBranchLength = max(2, 1 + n);
+          if (variation != null) {
+            displayedBranchLength = min(displayedBranchLength, variation.size() + 1);
+          }
+        } else if (n == 1) displayedBranchLength = 256;
         return true;
       case SHOW_NORMAL_BOARD:
       case SHOW_RAW_BOARD:
@@ -4757,6 +4786,7 @@ public class BoardRenderer {
 
   public void clearBranch() {
     isShowingBranch = false;
+    branchNavigationOwned = false;
     branchOpt = Optional.empty();
     variationOpt = Optional.empty();
     mouseOverTemp = null;

@@ -39,6 +39,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.ResourceBundle;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -127,26 +129,29 @@ class EngineGameMatchRulesPrepareRestoreTest {
 
   @AfterEach
   void restoreFixture() throws Exception {
-    if (Lizzie.engineGame != null) {
-      Lizzie.engineGame.stop();
+    try {
+      if (Lizzie.engineGame != null) {
+        Lizzie.engineGame.stop();
+      }
+      manager.awaitStartupWorkers();
+    } finally {
+      Lizzie.engineGame.replaceChromeForTest(null);
+      Lizzie.engineGame.installMatchRulesConsentForTest(null);
+      Lizzie.engineGame.resetForTest();
+      EngineManager.resetEngineGameTransactionStateForTest();
+      Lizzie.engineManager = previousManager;
+      EngineManager.isEmpty = previousEmpty;
+      EngineManager.currentEngineNo = previousEngineNo;
+      Lizzie.setPrimaryEngine(previousPrimary);
+      Lizzie.config = previousConfig;
+      Lizzie.frame = previousFrame;
+      LizzieFrame.toolbar = previousToolbar;
+      LizzieFrame.menu = previousMenu;
+      Menu.engineMenu = previousEngineMenu;
+      Lizzie.board = previousBoard;
+      LizzieFrame.winrateGraph = previousWinrateGraph;
+      Lizzie.gtpConsole = previousGtpConsole;
     }
-    Lizzie.engineGame.replaceChromeForTest(null);
-    Lizzie.engineGame.installMatchRulesConsentForTest(null);
-    Lizzie.engineGame.resetForTest();
-    EngineManager.resetEngineGameTransactionStateForTest();
-    Thread.sleep(50L);
-    Lizzie.engineManager = previousManager;
-    EngineManager.isEmpty = previousEmpty;
-    EngineManager.currentEngineNo = previousEngineNo;
-    Lizzie.setPrimaryEngine(previousPrimary);
-    Lizzie.config = previousConfig;
-    Lizzie.frame = previousFrame;
-    LizzieFrame.toolbar = previousToolbar;
-    LizzieFrame.menu = previousMenu;
-    Menu.engineMenu = previousEngineMenu;
-    Lizzie.board = previousBoard;
-    LizzieFrame.winrateGraph = previousWinrateGraph;
-    Lizzie.gtpConsole = previousGtpConsole;
     SwingUtilities.invokeAndWait(() -> {});
   }
 
@@ -392,20 +397,13 @@ class EngineGameMatchRulesPrepareRestoreTest {
   }
 
   private void awaitFailedStart() {
-    long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(8);
-    while (System.nanoTime() < deadline) {
-      if (!observer.failures.isEmpty()
-          || Lizzie.engineGame.current() instanceof EngineGameSnapshot.Idle) {
-        return;
-      }
-      try {
-        Thread.sleep(20L);
-      } catch (InterruptedException interrupted) {
-        Thread.currentThread().interrupt();
-        throw new AssertionError(interrupted);
-      }
+    try {
+      manager.awaitStartupWorkers();
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError(interrupted);
     }
-    throw new AssertionError("did not fail: " + Lizzie.engineGame.current());
+    assertFalse(observer.failures.isEmpty(), () -> "did not fail: " + Lizzie.engineGame.current());
   }
 
   private void awaitRestored() {
@@ -442,6 +440,15 @@ class EngineGameMatchRulesPrepareRestoreTest {
   }
 
   private static final class InlineEngineManager extends EngineManager {
+    private final List<Thread> startupWorkers = new CopyOnWriteArrayList<>();
+
+    private void awaitStartupWorkers() throws InterruptedException {
+      for (Thread worker : startupWorkers) {
+        worker.join(TimeUnit.SECONDS.toMillis(8));
+        assertFalse(worker.isAlive(), () -> "startup worker did not finish: " + worker.getName());
+      }
+    }
+
     private InlineEngineManager(List<Leelaz> engines) {
       super(engines);
     }
@@ -464,7 +471,9 @@ class EngineGameMatchRulesPrepareRestoreTest {
           }
         };
       }
-      return super.createEngineGameWorker(task, name);
+      Thread worker = super.createEngineGameWorker(task, name);
+      startupWorkers.add(worker);
+      return worker;
     }
 
     @Override

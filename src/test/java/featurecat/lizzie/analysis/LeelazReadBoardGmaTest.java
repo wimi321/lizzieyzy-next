@@ -15,6 +15,8 @@ import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.gui.BoardRenderer;
+import featurecat.lizzie.gui.BottomToolbar;
+import featurecat.lizzie.gui.JFontLabel;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Menu;
@@ -43,12 +45,507 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.swing.JCheckBox;
+import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
+import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class LeelazReadBoardGmaTest {
+
+  @ParameterizedTest
+  @CsvSource({"play D4,black,true", "play pass,white,false", "play resign,black,false"})
+  void normalModeWaitsForGmaRestoreAndFinalPositionConfirmation(
+      String terminal, String color, boolean backgroundPonder) throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      installNormalAutoPlayToolbar();
+
+      Lizzie.config.readBoardPonder = backgroundPonder;
+      readBoard.parseLine("play>" + color + ">5 1000 0");
+
+      assertFalse(output.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")),
+          "switching modes must not interrupt the physically outstanding GMA");
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine,
+              c -> c.startsWith("loadsgf ")
+                  ? ExactSnapshotRestoreProtocolFixture.Response.success() : null);
+      invokeParseLine(engine, terminal);
+      assertTrue(waitForFixtureCommandPrefix(
+          transport, "kata-set-param maxVisits 800", 1, TimeUnit.SECONDS));
+      invokeProcessCommandResponseLine(engine, successResponseFor(transport.rawCommands(), "maxTime"));
+      invokeProcessCommandResponseLine(engine, successResponseFor(transport.rawCommands(), "maxVisits"));
+      assertFalse(transport.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")));
+      invokeProcessCommandResponseLine(engine, successResponseFor(transport.rawCommands(), "ponderingEnabled"));
+      assertTrue(waitForFixtureCommandPrefix(transport, "name", 1, TimeUnit.SECONDS));
+      assertFalse(transport.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")),
+          "successful runtime restore cannot replace the final position fence");
+      invokeProcessCommandResponseLine(engine, successResponseForPrefix(transport.rawCommands(), "name"));
+      SwingUtilities.invokeAndWait(() -> {});
+      assertFalse(transport.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")),
+          "name success must not hide an outstanding position response");
+      invokeProcessCommandResponseLine(engine, successResponseForPrefix(transport.rawCommands(), "clear_board"));
+      assertTrue(waitForFixtureCommandPrefix(transport, "kata-analyze", 1, TimeUnit.SECONDS),
+          () -> "commands=" + transport.rawCommands()
+              + " reservation=" + engine.currentReadBoardGmaReservation()
+              + " ready=" + Lizzie.frame.canResumeReadBoardAutoPlayAnalysis());
+      assertEquals(1, transport.commands().stream().filter(c -> c.startsWith("kata-analyze")).count());
+    } finally {
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"play D4", "play pass"})
+  void retiredGmaRestoresRemoteTargetBeforeNormalAnalysis(String terminal) throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = modeSwitchReadBoard();
+      beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, Lizzie.board);
+      readBoard.parseLine("play>black>5 1000 0");
+      acceptSingleBlackSnapshot(readBoard);
+      assertEquals(Stone.BLACK, Lizzie.board.getHistory().getData().stones[Board.getIndex(3, 3)]);
+      AtomicReference<String> restoredSgf = new AtomicReference<>();
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, command -> {
+            if (command.startsWith("loadsgf ")) {
+              restoredSgf.set(Files.readString(Path.of(command.substring(8))));
+            }
+            return ExactSnapshotRestoreProtocolFixture.Response.success();
+          });
+      invokeParseLine(engine, terminal);
+      assertTrue(waitForFixtureCommandPrefix(transport, "kata-analyze", 2, TimeUnit.SECONDS));
+      assertTrue(hasBlackD16(restoredSgf.get()) || transport.commands().contains("play B D16"),
+          () -> "engine must receive the remote target, not merely a successful fence: "
+              + restoredSgf.get() + " " + transport.commands());
+      assertEquals(1, transport.commands().stream().filter(c -> c.startsWith("kata-analyze")).count());
+      assertTrue(transport.commands().contains("kata-analyze W 10"));
+    } finally {
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({"false,false", "true,false", "false,true", "true,true"})
+  void replacementNormalIntentRetainsUnsynchronizedRemoteTarget(
+      boolean overrideSent, boolean restartAfterDrain) throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = modeSwitchReadBoard();
+      setBooleanField(readBoard, "readBoardGmaPending", true);
+      setBooleanField(readBoard, "readBoardGmaAutoPlayActive", true);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      if (overrideSent) {
+        invokeProcessCommandResponseLine(engine,
+            parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      }
+      readBoard.parseLine("play>black>5 1000 0");
+      acceptSingleBlackSnapshot(readBoard);
+      var drained = engine.prepareReadBoardGmaDrain();
+      readBoard.parseLine(restartAfterDrain ? "stopAutoPlay" : "play>white>0 0 0");
+      AtomicReference<String> restoredSgf = new AtomicReference<>();
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, command -> {
+            if (command.startsWith("loadsgf ")) {
+              restoredSgf.set(Files.readString(Path.of(command.substring(8))));
+            }
+            return ExactSnapshotRestoreProtocolFixture.Response.success();
+          });
+      invokeProcessCommandResponseLine(engine, overrideSent
+          ? successResponseFor(output.rawCommands(), "ponderingEnabled")
+          : parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      if (restartAfterDrain) {
+        assertTrue(drained.get(2, TimeUnit.SECONDS));
+        SwingUtilities.invokeAndWait(() -> {});
+        assertFalse(transport.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")));
+        readBoard.parseLine("play>white>0 0 0");
+      }
+      assertTrue(waitForFixtureCommandPrefix(transport, "kata-analyze", 2, TimeUnit.SECONDS));
+      assertTrue(hasBlackD16(restoredSgf.get()) || transport.commands().contains("play B D16"),
+          () -> "replacement must retain the unsynchronized board: " + restoredSgf.get()
+              + " " + transport.commands());
+      assertTrue(LizzieFrame.toolbar.chkAutoPlayWhite.isSelected());
+      assertEquals(1, transport.commands().stream().filter(c -> c.startsWith("kata-analyze")).count());
+    } finally {
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  private static boolean hasBlackD16(String sgf) {
+    return sgf != null && (sgf.contains("AB[dd]") || sgf.contains(";B[dd]"));
+  }
+
+  @ParameterizedTest
+  @CsvSource({"false,false", "true,false", "true,true"})
+  void normalModeAfterPreparationCancellationUsesLatestBoard(
+      boolean overrideSent, boolean remoteAdvance) throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = modeSwitchReadBoard();
+      setBooleanField(readBoard, "readBoardGmaPending", true);
+      setBooleanField(readBoard, "readBoardGmaAutoPlayActive", true);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      if (overrideSent) {
+        invokeProcessCommandResponseLine(engine,
+            parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      }
+      readBoard.parseLine("play>black>5 1000 0");
+      readBoard.parseLine("play>white>0 0 0");
+      assertFalse(output.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")));
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine,
+              c -> c.startsWith("kata-set-param ") ? null
+                  : ExactSnapshotRestoreProtocolFixture.Response.success());
+      if (remoteAdvance) {
+        acceptSingleBlackSnapshot(readBoard);
+        assertEquals(Stone.BLACK, Lizzie.board.getHistory().getData().stones[Board.getIndex(3, 3)]);
+        assertEquals(List.of(), transport.commands(),
+            "remote advancement must remain local until the parameter owner releases");
+      }
+      invokeProcessCommandResponseLine(engine, overrideSent
+          ? successResponseFor(output.rawCommands(), "ponderingEnabled")
+          : parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      if (overrideSent) {
+        assertTrue(transport.commands().contains("kata-set-param ponderingEnabled true"));
+        assertFalse(transport.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")));
+        invokeProcessCommandResponseLine(engine,
+            successResponseFor(transport.rawCommands(), "ponderingEnabled"));
+      }
+      assertTrue(waitForFixtureCommandPrefix(transport, "kata-analyze", 2, TimeUnit.SECONDS),
+          () -> "commands=" + transport.rawCommands());
+      assertEquals(1, transport.commands().stream().filter(c -> c.startsWith("kata-analyze")).count());
+      assertFalse(output.commands().stream().anyMatch(c -> c.startsWith("kata-genmove_analyze")));
+      assertTrue(LizzieFrame.toolbar.chkAutoPlayWhite.isSelected());
+      if (remoteAdvance) {
+        assertTrue(transport.commands().contains("kata-analyze W 10"));
+        List<String> beforeStableFrame = transport.commands();
+        acceptSingleBlackSnapshot(readBoard);
+        SwingUtilities.invokeAndWait(() -> {});
+        assertEquals(beforeStableFrame, transport.commands());
+      }
+    } finally {
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"stopAutoPlay", "noboth", "noponder", "stopsync", "endsync",
+      "pause", "navigation", "history", "board", "helper", "engine"})
+  void cancelledNormalModeCannotResumeAtLateFinalFence(String cancellation) throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = modeSwitchReadBoard();
+      beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, Lizzie.board);
+      readBoard.parseLine("play>black>5 1000 0");
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, c -> c.equals("name")
+              ? null : ExactSnapshotRestoreProtocolFixture.Response.success());
+      invokeParseLine(engine, "play pass");
+      assertTrue(waitForFixtureCommandPrefix(transport, "name", 2, TimeUnit.SECONDS));
+      assertFalse(transport.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")));
+      switch (cancellation) {
+        case "pause":
+          var pause = LizzieFrame.class.getDeclaredMethod("recordUserAnalysisPause", BoardHistoryNode.class);
+          pause.setAccessible(true);
+          pause.invoke(Lizzie.frame, Lizzie.board.getHistory().getCurrentHistoryNode());
+          Field paused = LizzieFrame.class.getDeclaredField("userAnalysisPaused");
+          paused.setAccessible(true);
+          paused.setBoolean(Lizzie.frame, false);
+          break;
+        case "navigation":
+          setObjectField(readBoard, "localNavigationTracker", new SyncLocalNavigationTracker(() -> true));
+          SwingUtilities.invokeAndWait(readBoard::onLocalHistoryNavigation);
+          assertFalse(readBoard.isNormalAutoPlayTransitionPending());
+          break;
+        case "history": Lizzie.board.setHistory(new BoardHistoryList(BoardData.empty(19, 19))); break;
+        case "board": Lizzie.board = new SilentPlacementBoard(); break;
+        case "helper": Lizzie.frame.readBoard = allocate(ReadBoard.class); break;
+        case "engine":
+          Lizzie.setPrimaryEngine(null);
+          Lizzie.setPrimaryEngine(engine);
+          break;
+        default: readBoard.parseLine(cancellation);
+      }
+      // Restoring UI flags cannot restore the identity of the cancelled request.
+      Lizzie.frame.isAnaPlayingAgainstLeelaz = true;
+      LizzieFrame.toolbar.isAutoPlay = true;
+      LizzieFrame.toolbar.chkAutoPlayBlack.setSelected(true);
+      invokeProcessCommandResponseLine(engine, successResponseForPrefix(transport.rawCommands(), "name"));
+      SwingUtilities.invokeAndWait(() -> {});
+      assertFalse(waitForFixtureCommandPrefix(transport, "kata-analyze", 1, TimeUnit.SECONDS),
+          () -> cancellation + ": " + transport.commands());
+    } finally {
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"exact", "runtime"})
+  void failedGmaDrainCannotAuthorizeNormalMode(String failurePhase) throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = modeSwitchReadBoard();
+      beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, Lizzie.board);
+      readBoard.parseLine("play>black>5 1000 0");
+      var drain = engine.prepareReadBoardGmaDrain();
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, c ->
+              (failurePhase.equals("exact") ? c.startsWith("loadsgf ") : c.startsWith("kata-set-param "))
+                  ? ExactSnapshotRestoreProtocolFixture.Response.error("controlled mode-switch restore failure")
+                  : ExactSnapshotRestoreProtocolFixture.Response.success());
+      invokeParseLine(engine, "play pass");
+      assertFalse(drain.get(2, TimeUnit.SECONDS));
+      SwingUtilities.invokeAndWait(() -> {});
+      assertTrue(engine.hasUnrestoredReadBoardGmaState());
+      assertFalse(transport.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")));
+    } finally {
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  @Test
+  void idleGmaRuntimeOverridesAreRestoredBeforeNormalAnalysis() throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = modeSwitchReadBoard();
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, Lizzie.board);
+      invokeParseLine(engine, "play D4");
+      assertInstanceOf(ReadBoardGmaSession.Terminal.class, session.state());
+      assertNull(engine.currentReadBoardGmaReservation());
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, c -> c.startsWith("kata-set-param ")
+              ? null : ExactSnapshotRestoreProtocolFixture.Response.success());
+      readBoard.parseLine("play>white>5 1000 0");
+      assertTrue(waitForFixtureCommandPrefix(transport, "kata-set-param maxVisits 800", 1, TimeUnit.SECONDS));
+      assertFalse(transport.commands().stream().anyMatch(c -> c.startsWith("kata-analyze")));
+      for (String parameter : List.of("ponderingEnabled", "maxTime", "maxVisits")) {
+        invokeProcessCommandResponseLine(engine, successResponseFor(transport.rawCommands(), parameter));
+      }
+      assertTrue(waitForFixtureCommandPrefix(transport, "kata-analyze W", 2, TimeUnit.SECONDS));
+      assertEquals(1, transport.commands().stream().filter(c -> c.startsWith("kata-analyze")).count());
+    } finally {
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  @Test
+  void rejectedGmaReselectionCancelsWaitingNormalMode() throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = modeSwitchReadBoard();
+      beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, Lizzie.board);
+      readBoard.parseLine("play>black>5 1000 0");
+      var drained = engine.prepareReadBoardGmaDrain();
+      readBoard.parseLine("play>black>5 1000 0 gma");
+      engine.parseAnalysisLineForTest(
+          "info move D4 visits 2000 winrate 0.6 prior 0.7 lcb 0.6 scoreMean 1 scoreStdev 2 order 0 pv D4");
+      assertFalse(output.commands().stream().anyMatch(c -> c.startsWith("play ")),
+          () -> "retired GMA info triggered ordinary placement: " + output.commands());
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine,
+              c -> ExactSnapshotRestoreProtocolFixture.Response.success());
+      invokeParseLine(engine, "play pass");
+      assertTrue(drained.get(2, TimeUnit.SECONDS));
+      assertFalse(waitForFixtureCommandPrefix(transport, "kata-analyze", 1, TimeUnit.SECONDS),
+          () -> "rejected GMA reselection retained old ordinary authorization: " + transport.commands());
+    } finally {
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  @Test
+  void newerRemoteTargetDuringModeConfirmationStillStartsOnce() throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = modeSwitchReadBoard();
+      setBooleanField(readBoard, "readBoardGmaPending", true);
+      setBooleanField(readBoard, "readBoardGmaAutoPlayActive", true);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      invokeProcessCommandResponseLine(engine,
+          parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      readBoard.parseLine("play>black>5 1000 0");
+      acceptSingleBlackSnapshot(readBoard);
+      AtomicInteger fences = new AtomicInteger();
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine,
+              c -> c.equals("name") && fences.incrementAndGet() == 1
+                  ? null : ExactSnapshotRestoreProtocolFixture.Response.success());
+      invokeProcessCommandResponseLine(engine,
+          successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      assertTrue(waitForFixtureCommandPrefix(transport, "name", 2, TimeUnit.SECONDS));
+      acceptTwoStoneSnapshot(readBoard);
+      acceptTwoStoneSnapshot(readBoard);
+      invokeProcessCommandResponseLine(engine,
+          successResponseForPrefix(transport.rawCommands(), "name"));
+      assertTrue(waitForFixtureCommandPrefix(transport, "kata-analyze B", 2, TimeUnit.SECONDS),
+          () -> "latest target stranded: " + transport.commands());
+      assertEquals(Stone.WHITE, Lizzie.board.getHistory().getData().stones[Board.getIndex(4, 3)]);
+      assertEquals(1, transport.commands().stream().filter(c -> c.startsWith("kata-analyze")).count());
+    } finally {
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  @Test
+  void stopAfterFinalValidationCannotStartOldMode() throws Exception {
+    BottomToolbar previousToolbar = LizzieFrame.toolbar;
+    BlockingModeSwitchBoard board = null;
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = modeSwitchReadBoard();
+      board = new BlockingModeSwitchBoard();
+      Lizzie.board = board;
+      beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, board);
+      readBoard.parseLine("play>black>5 1000 0");
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, c -> c.equals("name")
+              ? null : ExactSnapshotRestoreProtocolFixture.Response.success());
+      invokeParseLine(engine, "play pass");
+      assertTrue(waitForFixtureCommandPrefix(transport, "name", 2, TimeUnit.SECONDS));
+      board.blockRevision = true;
+      invokeProcessCommandResponseLine(engine,
+          successResponseForPrefix(transport.rawCommands(), "name"));
+      assertTrue(board.revisionEntered.await(2, TimeUnit.SECONDS));
+      readBoard.parseLine("stopAutoPlay");
+      board.releaseRevision.countDown();
+      SwingUtilities.invokeAndWait(() -> {});
+      assertFalse(waitForFixtureCommandPrefix(transport, "kata-analyze", 1, TimeUnit.SECONDS),
+          () -> "cancelled mode started after stop returned: " + transport.commands());
+    } finally {
+      if (board != null) board.releaseRevision.countDown();
+      LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  private static void acceptTwoStoneSnapshot(ReadBoard readBoard) throws Exception {
+    readBoard.parseLine("syncPlatform fox");
+    readBoard.parseLine("foxMoveNumber 2");
+    readBoard.parseLine("liveTitleMove 2");
+    for (int y = 0; y < 19; y++) {
+      List<String> row = new ArrayList<>();
+      for (int x = 0; x < 19; x++)
+        row.add(y == 3 && x == 3 ? "1" : y == 3 && x == 4 ? "4" : "0");
+      readBoard.parseLine("re=" + String.join(",", row));
+    }
+    readBoard.parseLine("end");
+  }
+
+  private static final class BlockingModeSwitchBoard extends Board {
+    private final CountDownLatch revisionEntered = new CountDownLatch(1);
+    private final CountDownLatch releaseRevision = new CountDownLatch(1);
+    private volatile boolean blockRevision;
+
+    @Override
+    public void clearAfterMove() {}
+
+    @Override
+    public long getContextRevision() {
+      if (blockRevision && SwingUtilities.isEventDispatchThread()
+          && java.util.Arrays.stream(Thread.currentThread().getStackTrace())
+              .anyMatch(frame -> frame.getMethodName().equals("finishNormalAutoPlayIntent"))) {
+        revisionEntered.countDown();
+        try {
+          if (!releaseRevision.await(3, TimeUnit.SECONDS))
+            throw new AssertionError("final confirmation was not released");
+        } catch (InterruptedException failure) {
+          Thread.currentThread().interrupt();
+          throw new AssertionError(failure);
+        }
+      }
+      return super.getContextRevision();
+    }
+  }
+
+  private static final class SilentModeSwitchReadBoard extends ReadBoard {
+    private SilentModeSwitchReadBoard() throws Exception { super(true, false); }
+
+    @Override
+    void showForegroundEngineLeaseConflict() {}
+  }
+
+  private static ReadBoard modeSwitchReadBoard() throws Exception {
+    installNormalAutoPlayToolbar();
+    LizzieFrame.menu.byoyomiTime = new JFontLabel();
+    LizzieFrame.boardRenderer = new BoardRenderer(false);
+    Lizzie.board = new SilentPlacementBoard();
+    ReadBoard readBoard = allocate(SilentModeSwitchReadBoard.class);
+    setObjectField(readBoard, "conflictTracker", new SyncConflictTracker());
+    setObjectField(readBoard, "historyJumpTracker", new SyncHistoryJumpTracker());
+    setObjectField(readBoard, "localNavigationTracker", new SyncLocalNavigationTracker());
+    setObjectField(readBoard, "tempcount", new ArrayList<Integer>());
+    readBoard.firstSync = false;
+    Lizzie.frame.readBoard = readBoard;
+    Lizzie.frame.bothSync = true;
+    Lizzie.frame.syncBoard = true;
+    return readBoard;
+  }
+
+  private static void acceptSingleBlackSnapshot(ReadBoard readBoard) throws Exception {
+    readBoard.parseLine("syncPlatform fox");
+    readBoard.parseLine("foxMoveNumber 1");
+    readBoard.parseLine("liveTitleMove 1");
+    for (int y = 0; y < 19; y++) {
+      List<String> row = new ArrayList<>();
+      for (int x = 0; x < 19; x++) row.add(x == 3 && y == 3 ? "3" : "0");
+      readBoard.parseLine("re=" + String.join(",", row));
+    }
+    readBoard.parseLine("end");
+  }
+
+  private static void installNormalAutoPlayToolbar() throws Exception {
+    Lizzie.config.leelazConfig = new JSONObject().put("max-game-thinking-time-seconds", 2);
+    BottomToolbar toolbar = allocate(BottomToolbar.class);
+    for (Field field : BottomToolbar.class.getDeclaredFields()) {
+      if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+      field.setAccessible(true);
+      if (field.getType() == JCheckBox.class) field.set(toolbar, new JCheckBox());
+      if (field.getType() == JTextField.class) field.set(toolbar, new JTextField());
+    }
+    LizzieFrame.toolbar = toolbar;
+  }
 
   @Test
   void retiringActiveReadBoardGmaReleasesReservationAndQuarantinesDirtyRuntimeState()
@@ -4345,9 +4842,9 @@ class LeelazReadBoardGmaTest {
       ReadBoard readBoard, BoardHistoryNode restoreNode) throws Exception {
     java.lang.reflect.Method method =
         ReadBoard.class.getDeclaredMethod(
-            "updateReadBoardGmaRestoreIntent", BoardHistoryNode.class);
+            "routeReadBoardGmaRestoreIntent", BoardHistoryNode.class);
     method.setAccessible(true);
-    method.invoke(readBoard, restoreNode);
+    assertTrue((Boolean) method.invoke(readBoard, restoreNode));
   }
 
   private static void setIntField(Object target, String fieldName, int value) throws Exception {
@@ -4911,6 +5408,9 @@ class LeelazReadBoardGmaTest {
     public void refresh() {}
 
     @Override
+    public void requestAnalysisRefresh() {}
+
+    @Override
     public void reSetLoc() {}
 
     @Override
@@ -4930,6 +5430,9 @@ class LeelazReadBoardGmaTest {
 
     @Override
     public void updateMenuStatusForEngine() {}
+
+    @Override
+    public void toggleDoubleMenuGameStatus() {}
   }
 
   private static final class ShortGmaRestoreTimeoutLeelaz extends Leelaz {

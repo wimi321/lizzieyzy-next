@@ -34,6 +34,10 @@ public class GameInfo {
     Lizzie.frame.setResult(result);
   }
 
+  public void setResultNoUI(String result) {
+    this.result = result;
+  }
+
   public String getPlayerBlack() {
     return playerBlack;
   }

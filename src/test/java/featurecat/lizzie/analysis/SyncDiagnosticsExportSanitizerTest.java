@@ -10,6 +10,39 @@ import org.junit.jupiter.api.Test;
 
 class SyncDiagnosticsExportSanitizerTest {
   @Test
+  void redactsWholeSecretLinesWithoutChangingNeighborsOrLineEndings() {
+    String analysis = "info move D4 visits 100 winrate 0.5 pv " + "D4 Q16 ".repeat(2400);
+    for (String ending : List.of("\n", "\r\n", "\r")) {
+      for (String word : List.of("secret", "SECRET", "SeCrEt", "prefixsecretSuffix")) {
+        String input =
+            analysis + ending + "  " + word + " private detail  " + ending + analysis;
+        String expected = analysis + ending + "<redacted-secret>" + ending + analysis;
+        SyncDiagnosticsExportSanitizer sanitizer = new SyncDiagnosticsExportSanitizer();
+        assertEquals(expected, sanitizer.text(input));
+        assertEquals(expected, sanitizer.text(input));
+      }
+    }
+    assertEquals(analysis, new SyncDiagnosticsExportSanitizer().text(analysis));
+    assertEquals(
+        "\r\n<redacted-secret>\r\n\n<redacted-secret>\r<redacted-secret>",
+        new SyncDiagnosticsExportSanitizer()
+            .text("\r\ndata secret tail\r\n\ndata SECRET tail\rdata SeCrEt tail"));
+    // The existing regex uses ASCII case folding, not Unicode case folding.
+    assertEquals("ſecret", new SyncDiagnosticsExportSanitizer().text("ſecret"));
+  }
+
+  @Test
+  void keepsCredentialPathAndAliasProcessingBeforeWholeLineRedaction() {
+    SyncDiagnosticsExportSanitizer sanitizer = new SyncDiagnosticsExportSanitizer();
+    assertEquals(
+        "password=<redacted>\npath=/home/<user>\n<redacted-secret>\nlive-room#1",
+        sanitizer.text(
+            "password=CANARY_VALUE\npath=/home/alice/log.txt\n"
+                + "SeCrEt live-room:private-42\nlive-room:private-42"));
+    assertEquals("live-room#1", sanitizer.sessionAlias("live-room:private-42"));
+  }
+
+  @Test
   void aliasesCompleteSessionKeysExactlyOnceAndKeepsRegistrationOrder() {
     SyncDiagnosticsExportSanitizer sanitizer = new SyncDiagnosticsExportSanitizer();
 

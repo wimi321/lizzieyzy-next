@@ -174,7 +174,7 @@ public class InputIndependentMainBoard implements KeyListener {
             Lizzie.board.SpinAndMirror(3);
           } else LizzieFrame.undoNoRefresh(10);
         } else {
-          if (Lizzie.frame.independentMainBoard.boardRenderer.isShowingBranch()) {
+          if (Lizzie.frame.independentMainBoard.boardRenderer.ownsBranchNavigation()) {
             Lizzie.frame.independentMainBoard.doBranch(-1);
           } else {
             LizzieFrame.undoNoRefresh(1);
@@ -183,7 +183,7 @@ public class InputIndependentMainBoard implements KeyListener {
         break;
 
       case VK_PAGE_DOWN:
-        if (LizzieFrame.boardRenderer.isShowingBranch()) {
+        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
           Lizzie.frame.doBranch(1);
         } else {
           // Lizzie.frame.noautocounting();
@@ -204,7 +204,7 @@ public class InputIndependentMainBoard implements KeyListener {
             Lizzie.board.SpinAndMirror(4);
           } else LizzieFrame.redoNoRefresh(10);
         } else {
-          if (Lizzie.frame.independentMainBoard.boardRenderer.isShowingBranch()) {
+          if (Lizzie.frame.independentMainBoard.boardRenderer.ownsBranchNavigation()) {
             Lizzie.frame.independentMainBoard.doBranch(1);
           } else {
             LizzieFrame.redoNoRefresh(1);
@@ -282,7 +282,7 @@ public class InputIndependentMainBoard implements KeyListener {
         break;
 
       case VK_PAGE_UP:
-        if (LizzieFrame.boardRenderer.isShowingBranch()) {
+        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
           Lizzie.frame.doBranch(-1);
         } else {
           // Lizzie.frame.noautocounting();

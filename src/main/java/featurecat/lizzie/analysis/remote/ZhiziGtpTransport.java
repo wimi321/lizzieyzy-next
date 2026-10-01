@@ -312,6 +312,11 @@ public class ZhiziGtpTransport implements EngineTransport {
     return RemoteComputeConfig.displayNameForZhiziArgs(args);
   }
 
+  /** The model selected for this connection, not the currently edited/saved settings. */
+  public String modelIdentifier() {
+    return RemoteComputeConfig.kataWeightForArgs(args);
+  }
+
   @Override
   public void close() {
     if (abortStarted.get() || !gracefulCloseStarted.compareAndSet(false, true)) {

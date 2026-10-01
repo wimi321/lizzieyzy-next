@@ -22,6 +22,16 @@ import org.junit.jupiter.api.Test;
 
 class ZhiziGtpTransportTest {
   @Test
+  void modelIdentifierBelongsToTheConnectionNotLaterEditedSettings() throws Exception {
+    try (ZhiziGtpTransport b11 = new ZhiziGtpTransport(null, "", "--kata-weight 11b768t");
+        ZhiziGtpTransport b10 = new ZhiziGtpTransport(null, "", "--kata-weight 10b512t")) {
+      assertEquals("11b768t", b11.modelIdentifier());
+      assertEquals("10b512t", b10.modelIdentifier());
+      assertEquals("11b768t", b11.modelIdentifier());
+    }
+  }
+
+  @Test
   void abortEscalatesWhileGracefulZhiziDisposalIsBlocked() throws Exception {
     BlockingTerminationTransport transport = new BlockingTerminationTransport();
     AtomicReference<Throwable> gracefulFailure = new AtomicReference<>();

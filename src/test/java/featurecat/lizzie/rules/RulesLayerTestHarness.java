@@ -196,6 +196,7 @@ final class RulesLayerTestHarness implements AutoCloseable {
   }
 
   static final class TrackingFrame extends LizzieFrame {
+    int resultPublications;
     @Override
     public void refresh() {}
 
@@ -215,7 +216,10 @@ final class RulesLayerTestHarness implements AutoCloseable {
     public void tryToResetByoTime() {}
 
     @Override
-    public void setResult(String result) {}
+    public void setResult(String result) {
+      resultPublications++;
+      super.setResult(result);
+    }
 
     @Override
     public void requestProblemListRefresh() {}

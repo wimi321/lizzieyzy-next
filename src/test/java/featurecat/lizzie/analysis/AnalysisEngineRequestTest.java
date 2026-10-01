@@ -1472,6 +1472,29 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void missingMainlineCompletionOnPreloadedWorkerPreservesRoot() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryNode move = singleUnanalyzedMoveNode();
+      BoardHistoryNode root = Lizzie.board.getHistory().getStart();
+      Lizzie.board.getHistory().toStart();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "isPreLoad", true);
+      setField(AnalysisEngine.class, engine, "persistentPreload", true);
+      AtomicInteger completed = new AtomicInteger();
+      engine.setCompletionCallback(completed::incrementAndGet);
+
+      assertEquals(1, engine.startRequestMissingMainline(false));
+      engine.parseResult(analysisResult(1, 200, 62.0));
+      waitForMovelistRefreshThreads();
+
+      assertEquals(1, completed.get());
+      assertEquals(200, move.getData().getPlayouts());
+      assertSame(root, Lizzie.board.getHistory().getCurrentHistoryNode());
+      assertEquals(0, engine.normalQuitCount);
+    }
+  }
+
+  @Test
   void missingMainlineResponseIsRejectedAfterAnotherKifuLoads() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList firstHistory =

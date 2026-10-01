@@ -90,6 +90,11 @@ public class SGFParser {
 
       boolean returnValue;
       try {
+        value = normalizeStructuralNewlines(value);
+        if (value == null) {
+          SgfObservation.record("open", "failed", filename, null);
+          return false;
+        }
         returnValue = parse(value);
       } catch (RuntimeException invalidSgf) {
         SgfObservation.record("open", "failed", filename, invalidSgf);
@@ -159,6 +164,11 @@ public class SGFParser {
   }
 
   public static boolean loadFromString(String sgfString, boolean syncPrimaryEngine) {
+    sgfString = normalizeStructuralNewlines(sgfString);
+    if (sgfString == null) {
+      SgfObservation.record("import", "failed", null, null);
+      return false;
+    }
     isExtraMode2 = false;
     Board.ClearStateSnapshot rollbackState = Lizzie.board.captureClearState();
     boolean result = false;
@@ -398,6 +408,11 @@ public class SGFParser {
   }
 
   public static boolean loadFromStringforedit(String sgfString) {
+    sgfString = normalizeStructuralNewlines(sgfString);
+    if (sgfString == null) {
+      SgfObservation.record("import", "failed", null, null);
+      return false;
+    }
     BoardHistoryList.SessionRulesTarget sessionRules =
         Lizzie.board.getHistory().captureSessionRules();
     Lizzie.board.clearforedit();
@@ -463,6 +478,81 @@ public class SGFParser {
       }
     }
     return true;
+  }
+
+  /** Accept escaped LF/CRLF only between SGF tokens, never inside property values. */
+  private static String normalizeStructuralNewlines(String value) {
+    int start = value.indexOf('(');
+    if (start < 0) {
+      return value;
+    }
+    StringBuilder normalized = null;
+    int copied = 0;
+    int depth = 0;
+    boolean inValue = false;
+    boolean escaped = false;
+    char previous = 0;
+    for (int i = start; i < value.length(); i++) {
+      char c = value.charAt(i);
+      // Keep legacy surrounding-text tolerance, but inspect every adjacent collection tree.
+      if (depth == 0 && c != '(' && c != '\\' && !Character.isWhitespace(c)) {
+        break;
+      }
+      if (inValue) {
+        if (escaped) {
+          escaped = false;
+        } else if (c == '\\') {
+          escaped = true;
+        } else if (c == ']') {
+          inValue = false;
+          previous = c;
+        }
+        continue;
+      }
+      if (c == '\\') {
+        int end;
+        if (value.startsWith("\\r\\n", i)) {
+          end = i + 4;
+        } else if (value.startsWith("\\n", i)) {
+          end = i + 2;
+        } else {
+          return null;
+        }
+        int next = end;
+        while (next < value.length() && Character.isWhitespace(value.charAt(next))) {
+          next++;
+        }
+        if (Character.isLetter(previous)
+            && next < value.length() && Character.isLetter(value.charAt(next))) {
+          return null;
+        }
+        if (normalized == null) {
+          normalized = new StringBuilder(value.length());
+        }
+        normalized.append(value, copied, i).append('\n');
+        copied = end;
+        i = end - 1;
+        continue;
+      }
+      if (c == '[') {
+        inValue = true;
+      } else if (c == '(') {
+        depth++;
+      } else if (c == ')') {
+        depth--;
+      }
+      if (!Character.isWhitespace(c)) {
+        previous = c;
+      }
+    }
+    if (normalized == null) {
+      return value;
+    }
+    // Compatibility must not turn a truncated escaped tree into a successful partial import.
+    if (depth != 0 || inValue) {
+      return null;
+    }
+    return normalized.append(value, copied, value.length()).toString();
   }
 
   private static boolean parse(String value) {
@@ -3669,6 +3759,10 @@ public class SGFParser {
   }
 
   public static BoardHistoryList parseSgf(String value, boolean first) {
+    value = normalizeStructuralNewlines(value);
+    if (value == null) {
+      return null;
+    }
     BoardHistoryList history = null;
 
     // Drop anything outside "(;...)"
@@ -4060,6 +4154,8 @@ public class SGFParser {
           } else if (tag.equals("PW")) {
             whitePlayer = tagContent;
             history.getGameInfo().setPlayerWhite(whitePlayer);
+          } else if (tag.equals("RE")) {
+            history.getGameInfo().setResultNoUI(tagContent);
           } else if (tag.equals("KM")) {
             if (firstTime) {
               try {
@@ -4186,10 +4282,6 @@ public class SGFParser {
     if (isBranch) {
       history.toBranchTop();
     } else {
-      if (!Utils.isBlank(gameProperties.get("RE")) && Utils.isBlank(history.getData().comment)) {
-        history.getData().comment = gameProperties.get("RE");
-      }
-
       // Rewind to game start
       while (history.previous().isPresent())
         ;

@@ -471,14 +471,14 @@ public class IndependentMainBoard extends JFrame {
             // TODO Auto-generated method stub
 
             if (e.getWheelRotation() > 0) {
-              if (boardRenderer.isShowingBranch()) {
+              if (boardRenderer.ownsBranchNavigation()) {
                 doBranch(1);
                 refresh();
               } else {
                 Input.redo();
               }
             } else if (e.getWheelRotation() < 0) {
-              if (boardRenderer.isShowingBranch()) {
+              if (boardRenderer.ownsBranchNavigation()) {
                 doBranch(-1);
                 refresh();
               } else {

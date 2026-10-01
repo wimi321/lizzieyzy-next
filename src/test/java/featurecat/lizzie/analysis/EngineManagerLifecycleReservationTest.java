@@ -61,18 +61,36 @@ import org.junit.jupiter.api.Test;
 
 class EngineManagerLifecycleReservationTest {
   private JFontMenu previousEngineMenu;
+  private Config previousFixtureConfig;
+  private Board previousFixtureBoard;
+  private boolean previousFixtureEmpty;
+  private int previousFixtureEngineNo;
+  private int previousFixtureEngineNo2;
 
   @BeforeEach
   void installHeadlessEngineMenu() {
     previousEngineMenu = Menu.engineMenu;
-    if (Menu.engineMenu == null) {
-      Menu.engineMenu = new SilentJFontMenu();
-    }
+    previousFixtureConfig = Lizzie.config;
+    previousFixtureBoard = Lizzie.board;
+    previousFixtureEmpty = EngineManager.isEmpty;
+    previousFixtureEngineNo = EngineManager.currentEngineNo;
+    previousFixtureEngineNo2 = EngineManager.currentEngineNo2;
+    Menu.engineMenu = new SilentJFontMenu();
+    Lizzie.config = null;
+    Lizzie.board = null;
+    EngineManager.isEmpty = false;
+    EngineManager.currentEngineNo = 0;
+    EngineManager.currentEngineNo2 = -1;
   }
 
   @AfterEach
   void restoreHeadlessEngineMenu() {
     Menu.engineMenu = previousEngineMenu;
+    Lizzie.config = previousFixtureConfig;
+    Lizzie.board = previousFixtureBoard;
+    EngineManager.isEmpty = previousFixtureEmpty;
+    EngineManager.currentEngineNo = previousFixtureEngineNo;
+    EngineManager.currentEngineNo2 = previousFixtureEngineNo2;
   }
 
 

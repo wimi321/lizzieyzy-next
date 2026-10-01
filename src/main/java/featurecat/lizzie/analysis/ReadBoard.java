@@ -326,6 +326,47 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   private BoardHistoryNode collectedSyncResumeTarget;
   private String lastProtocolLineSummary;
   private long lastProtocolTimestampMillis;
+  private volatile NormalAutoPlayIntent normalAutoPlayIntent;
+  private volatile Object normalAutoPlayIntentLock;
+  private NormalAutoPlayRestore pendingNormalAutoPlayRestore;
+
+  private static final class NormalAutoPlayRestore {
+    private final Board board = Lizzie.board;
+    private final Leelaz engine = Lizzie.leelaz;
+    private final Object incarnation = engine.currentEngineIncarnation();
+    private final long generation = Lizzie.capturePrimaryEngineGeneration(engine);
+    private final CompletableFuture<Boolean> drained;
+    private volatile boolean required;
+
+    private NormalAutoPlayRestore(CompletableFuture<Boolean> drained) {
+      this.drained = drained;
+    }
+
+    private boolean isCurrent() {
+      return Lizzie.board == board && Lizzie.leelaz == engine
+          && engine.currentEngineIncarnation() == incarnation
+          && Lizzie.capturePrimaryEngineGeneration(engine) == generation;
+    }
+  }
+
+  private static final class NormalAutoPlayIntent {
+    private final NormalAutoPlayRestore restore;
+    private final Board board;
+    private final Leelaz engine;
+    private final Object incarnation;
+    private final long generation;
+    private final Stone color;
+    private boolean confirming;
+
+    private NormalAutoPlayIntent(Stone color, NormalAutoPlayRestore restore) {
+      this.color = color;
+      this.restore = restore;
+      board = restore.board;
+      engine = restore.engine;
+      incarnation = restore.incarnation;
+      generation = restore.generation;
+    }
+  }
 
   private enum CompleteSnapshotRecoveryOutcome {
     NO_CHANGE,
@@ -885,6 +926,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
         releaseFailedLocalMoveObservationIfTimedOut("sync-line");
       }
       if (!readBoardGmaAutoPlayActive
+          && normalAutoPlayIntent == null
           && isReadBoardAnalysisEngineAvailable()
           && !Lizzie.leelaz.isPondering()) {
         Lizzie.leelaz.togglePonder();
@@ -960,6 +1002,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
         int firstPlayouts = Integer.parseInt(playParams[2]);
         int time = Integer.parseInt(playParams[0]);
         boolean useGma = isReadBoardGmaPlayMode(playParams);
+        invalidatePendingSyncAnalysisResume();
         boolean alreadyArmedGma = useGma && readBoardGmaAutoPlayActive;
         Leelaz currentForegroundEngine = useGma ? Lizzie.leelaz : null;
         if (!alreadyArmedGma
@@ -974,7 +1017,6 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
             && autoPlayColor != readBoardGmaAutoPlayColor) {
           invalidateReadBoardGmaPhysicalRequestIfPending("play-color-switch");
         }
-        invalidatePendingSyncAnalysisResume();
         clearFailedLocalMoveStateIfAutoPlaySideChanged(autoPlayColor);
         if (hasFailedLocalMoveStateToPreserve()) {
           localMoveSyncDebug(
@@ -996,6 +1038,10 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
         readBoardGmaTimeSeconds = Math.max(0, time);
         readBoardGmaMaxVisits = Math.max(0, playouts);
         readBoardGmaAwaitingSyncedBoard = useGma;
+        NormalAutoPlayRestore restore = useGma ? null : prepareNormalAutoPlayRestore();
+        NormalAutoPlayIntent intent =
+            restore == null ? null : new NormalAutoPlayIntent(autoPlayColor, restore);
+        replaceNormalAutoPlayIntent(intent);
         if (!useGma) {
           readBoardGmaAwaitingSyncedBoard = false;
           invalidateReadBoardGmaPhysicalRequestIfPending("play-mode-switch");
@@ -1038,7 +1084,14 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
           Lizzie.frame.discardWRNRestoreSnapshot();
         }
         if (!readBoardGmaAutoPlayActive) {
-          Lizzie.leelaz.ponder();
+          if (intent == null) {
+            Lizzie.leelaz.ponder();
+          } else {
+            restore.drained.whenComplete((restored, failure) -> SwingUtilities.invokeLater(() -> {
+              if (failure != null || !Boolean.TRUE.equals(restored)) return;
+              confirmNormalAutoPlayIntent(intent);
+            }));
+          }
         }
       }
     }
@@ -1104,7 +1157,8 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     if (line.trim().equals("resumeponder")) {
       runOnEdtAndWait(
           () -> {
-            if (isReadBoardAnalysisEngineAvailable() && !Lizzie.leelaz.isPondering()) {
+            if (normalAutoPlayIntent == null && !isReadBoardGmaEngineBusy()
+                && isReadBoardAnalysisEngineAvailable() && !Lizzie.leelaz.isPondering()) {
               Lizzie.frame.togglePonderMannul();
             }
           });
@@ -1601,6 +1655,11 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       trackingFrameProcessing = processing;
     }
     try {
+      NormalAutoPlayIntent intent = normalAutoPlayIntent;
+      if (intent != null && intent.engine.isReadBoardGmaDraining()) {
+        applySyncWhileNormalAutoPlayWaits(intent, isSecondTime, processing);
+        return;
+      }
       if (readBoardGmaAutoPlayActive
           || isReadBoardGmaEngineBusy()
           || Lizzie.frame.isPlayingAgainstLeelaz) {
@@ -1633,6 +1692,33 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     } finally {
       synchronized (this) {
         trackingFrameProcessing = null;
+      }
+    }
+  }
+
+  private void applySyncWhileNormalAutoPlayWaits(
+      NormalAutoPlayIntent intent, boolean isSecondTime, TrackingFrameProcessing processing) {
+    synchronized (intent.board) {
+      if (Lizzie.board != intent.board || normalAutoPlayIntent != intent) return;
+      BoardHistoryList history = intent.board.getHistory();
+      BoardHistoryNode source = history.getCurrentHistoryNode();
+      long revision = intent.board.getContextRevision();
+      syncRecoveryThread = Thread.currentThread();
+      localNavigationTracker.beginReadBoardNavigation();
+      try {
+        intent.board.applyReadBoardSyncLocally(() -> {
+          applySyncBoardStones(isSecondTime);
+          publishAcceptedTrackingEligibility(processing);
+        });
+        BoardHistoryNode target = intent.board.getHistory().getCurrentHistoryNode();
+        if (history != intent.board.getHistory() || source != target
+            || revision != intent.board.getContextRevision()) {
+          if (!routeReadBoardGmaRestoreIntent(target)) intent.restore.required = true;
+        }
+      } finally {
+        syncRecoveryThread = null;
+        localNavigationTracker.clear();
+        isSyncing = false;
       }
     }
   }
@@ -3095,12 +3181,12 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       pendingRemoteContext = SyncRemoteContext.generic(false);
       readBoardTurnTrusted = false;
       awaitingFirstSyncFrame = true;
-      invalidatePendingSyncAnalysisResume();
+      SYNC_ANALYSIS_EPOCH.incrementAndGet(this);
     }
   }
 
   private void clearResumeState() {
-    invalidatePendingSyncAnalysisResume();
+    SYNC_ANALYSIS_EPOCH.incrementAndGet(this);
     resumeState = null;
     lastResolvedSnapshotNode = null;
     clearConfirmedLocalMove();
@@ -3140,7 +3226,125 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   }
 
   public void invalidatePendingSyncAnalysisResume() {
-    SYNC_ANALYSIS_EPOCH.incrementAndGet(this);
+    synchronized (normalAutoPlayIntentLock()) {
+      normalAutoPlayIntent = null;
+      SYNC_ANALYSIS_EPOCH.incrementAndGet(this);
+    }
+  }
+
+  private Object normalAutoPlayIntentLock() {
+    Object lock = normalAutoPlayIntentLock;
+    if (lock != null) return lock;
+    synchronized (this) {
+      if (normalAutoPlayIntentLock == null) normalAutoPlayIntentLock = new Object();
+      return normalAutoPlayIntentLock;
+    }
+  }
+
+  private NormalAutoPlayRestore prepareNormalAutoPlayRestore() {
+    // A remote frame changes the local board and records its unsent target under this monitor.
+    synchronized (Lizzie.board) {
+      CompletableFuture<Boolean> drained = Lizzie.leelaz.prepareReadBoardGmaDrain();
+      synchronized (normalAutoPlayIntentLock()) {
+        NormalAutoPlayRestore previous = pendingNormalAutoPlayRestore;
+        boolean samePositionOwner = previous != null && previous.isCurrent();
+        if (samePositionOwner
+            && (drained == previous.drained || (drained == null && previous.required))) {
+          return previous;
+        }
+        NormalAutoPlayRestore next = drained == null ? null : new NormalAutoPlayRestore(drained);
+        if (next != null && samePositionOwner) next.required = previous.required;
+        pendingNormalAutoPlayRestore = next;
+        return next;
+      }
+    }
+  }
+
+  private void replaceNormalAutoPlayIntent(NormalAutoPlayIntent intent) {
+    synchronized (normalAutoPlayIntentLock()) {
+      normalAutoPlayIntent = intent;
+    }
+  }
+
+  private void discardNormalAutoPlayIntent(NormalAutoPlayIntent intent) {
+    synchronized (normalAutoPlayIntentLock()) {
+      if (normalAutoPlayIntent == intent) normalAutoPlayIntent = null;
+    }
+  }
+
+  private boolean isCurrentNormalAutoPlayIntent(NormalAutoPlayIntent intent) {
+    return normalAutoPlayIntent == intent && !shutdownStarted
+        && Lizzie.frame != null && Lizzie.frame.readBoard == this
+        && Lizzie.frame.canResumeReadBoardAutoPlayAnalysis()
+        && !readBoardGmaAutoPlayActive && readBoardGmaAutoPlayColor == intent.color
+        && Lizzie.board == intent.board
+        && Lizzie.leelaz == intent.engine
+        && intent.engine.currentEngineIncarnation() == intent.incarnation
+        && Lizzie.capturePrimaryEngineGeneration(intent.engine) == intent.generation
+        && isReadBoardAnalysisEngineAvailable();
+  }
+
+  private void confirmNormalAutoPlayIntent(NormalAutoPlayIntent intent) {
+    synchronized (intent.board) {
+      if (!isCurrentNormalAutoPlayIntent(intent)) {
+        discardNormalAutoPlayIntent(intent);
+        return;
+      }
+      if (intent.confirming) return;
+      intent.confirming = true;
+      BoardHistoryNode target = intent.board.getHistory().getCurrentHistoryNode();
+      if (intent.restore.required) {
+        restoreNormalAutoPlayTarget(intent, target);
+        return;
+      }
+      long revision = intent.board.getContextRevision();
+      intent.engine.confirmBoardSynchronization(
+          intent.engine.resolveLoadSgfMirrorEngine(),
+          () -> SwingUtilities.invokeLater(() -> finishNormalAutoPlayIntent(intent, target, revision, true)),
+          detail -> SwingUtilities.invokeLater(() -> finishNormalAutoPlayIntent(intent, target, revision, false)));
+    }
+  }
+
+  private void restoreNormalAutoPlayTarget(
+      NormalAutoPlayIntent intent, BoardHistoryNode target) {
+    CompletableFuture<Void> confirmed;
+    localNavigationTracker.beginReadBoardNavigation();
+    try {
+      confirmed = intent.board.applyReadBoardSync(() -> {}, () -> true);
+    } finally {
+      localNavigationTracker.endReadBoardNavigation();
+    }
+    long revision = intent.board.getContextRevision();
+    confirmed.whenComplete((ignored, failure) -> SwingUtilities.invokeLater(
+        () -> finishNormalAutoPlayIntent(intent, target, revision, failure == null)));
+  }
+
+  private void finishNormalAutoPlayIntent(
+      NormalAutoPlayIntent intent, BoardHistoryNode target, long revision, boolean confirmed) {
+    synchronized (intent.board) {
+      intent.confirming = false;
+      if (!isCurrentNormalAutoPlayIntent(intent)) {
+        discardNormalAutoPlayIntent(intent);
+        return;
+      }
+      if (intent.board.getHistory().getCurrentHistoryNode() != target
+          || intent.board.getContextRevision() != revision) {
+        confirmNormalAutoPlayIntent(intent);
+        return;
+      }
+      if (!confirmed) return;
+      synchronized (normalAutoPlayIntentLock()) {
+        // Cancellation and replacement share this boundary with the final analysis admission.
+        if (!isCurrentNormalAutoPlayIntent(intent)) return;
+        intent.restore.required = false;
+        if (pendingNormalAutoPlayRestore == intent.restore) pendingNormalAutoPlayRestore = null;
+        normalAutoPlayIntent = null;
+        SYNC_ANALYSIS_EPOCH.incrementAndGet(this);
+        if (shouldSkipResumeTargetBeforeConfirmedLocalMove(target)
+            || (hasFailedLocalMoveStateToPreserve() && !failedLocalMoveAwaitingRemoteObservation)) return;
+        Lizzie.runIfPrimaryEngine(intent.engine, intent.generation, intent.engine::ponder);
+      }
+    }
   }
 
 
@@ -3227,7 +3431,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     conflictTracker.clear();
     historyJumpTracker.clear();
     awaitingFirstSyncFrame = false;
-    invalidatePendingSyncAnalysisResume();
+    SYNC_ANALYSIS_EPOCH.incrementAndGet(this);
     localMoveSyncDebug(
         "syncBoardStones ack caught up; skip stale recovery target="
             + historyNodeSummary(acknowledgedNode)
@@ -3246,7 +3450,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     conflictTracker.clear();
     historyJumpTracker.clear();
     awaitingFirstSyncFrame = false;
-    invalidatePendingSyncAnalysisResume();
+    SYNC_ANALYSIS_EPOCH.incrementAndGet(this);
     localMoveSyncDebug(
         "placeComplete confirmed local move; protect against stale recovery target="
             + historyNodeSummary(confirmedNode)
@@ -3951,12 +4155,17 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     return readBoardGmaAutoPlayActive;
   }
 
+  public boolean isNormalAutoPlayTransitionPending() {
+    return normalAutoPlayIntent != null;
+  }
+
   public boolean isReadBoardGmaEngineBusy() {
     return readBoardGmaAutoPlayActive
         || readBoardGmaPending
         || readBoardGmaEngineRestorePending
         || readBoardGmaEngineRestoreInProgress
-        || isReadBoardGmaSessionBusy();
+        || isReadBoardGmaSessionBusy()
+        || (Lizzie.leelaz != null && Lizzie.leelaz.isReadBoardGmaDraining());
   }
 
   /** Whether an admitted GMA session has not yet reached its terminal. */
@@ -4206,6 +4415,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
 
     @Override
     public void handleFailure(ReadBoardGmaSession.ParticipantFailure firstFailure) {
+      engine.invalidateReadBoardGmaDrain(boundSession.reservationReleaseCapability());
       handleReadBoardGmaFailure(engine, firstFailure);
     }
 
@@ -4465,31 +4675,6 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   }
 
   /**
-   * Updates the session's latest-wins authoritative restore intent from the current engine
-   * reservation. A capture conflict keeps the previously frozen intent; the next sync frame
-   * converges any mismatch.
-   */
-  private void updateReadBoardGmaRestoreIntent(BoardHistoryNode restoreNode) {
-    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
-    ReadBoardGmaSession session = binding == null ? null : binding.session;
-    Leelaz engine = binding == null ? null : binding.engine;
-    if (session == null || engine == null) {
-      return;
-    }
-    Object reservation = engine.currentReadBoardGmaReservation();
-    if (reservation == null) {
-      return;
-    }
-    try {
-      session.updateRestoreIntent(
-          session.helperCapability(),
-          captureReadBoardGmaRestoreIntent(engine, reservation, restoreNode));
-    } catch (RuntimeException failure) {
-      localMoveSyncDebug("ReadBoard GMA restore intent update failed: " + failure.getMessage());
-    }
-  }
-
-  /**
    * Routes an authoritative board change to the active GMA session: while the request is in flight
    * the latest-wins restore intent is updated (the restore itself runs after the terminal is
    * consumed); while the session restore is already converging the newer node is deferred and
@@ -4507,11 +4692,8 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       // failure quarantine is being applied.
       return true;
     }
-    if (session.state() instanceof ReadBoardGmaSession.GmaInFlight) {
-      updateReadBoardGmaRestoreIntent(restoreNode);
-      return true;
-    }
-    if (session.state() instanceof ReadBoardGmaSession.RestoringExact
+    if (session.state() instanceof ReadBoardGmaSession.GmaInFlight
+        || session.state() instanceof ReadBoardGmaSession.RestoringExact
         || session.state() instanceof ReadBoardGmaSession.RestoringRuntime) {
       try {
         Object restoreIntent =
@@ -4519,7 +4701,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
                 binding.engine,
                 session.reservationReleaseCapability().reservationOwner(),
                 restoreNode);
-        boolean deferred = session.deferExactRestore(binding.terminalCapability, restoreIntent);
+        boolean deferred = session.updateRestoreIntent(binding.terminalCapability, restoreIntent);
         if (deferred) {
           return true;
         }
@@ -5234,9 +5416,10 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     }
     historyJumpTracker.clear();
     moveToAnyPositionWithoutTracking(syncStartNode);
-    if (readBoardGmaPending
-        || readBoardGmaEngineRestorePending
-        || readBoardGmaEngineRestoreInProgress) {
+    if (!isCollectingSyncRecovery()
+        && (readBoardGmaPending
+            || readBoardGmaEngineRestorePending
+            || readBoardGmaEngineRestoreInProgress)) {
       Lizzie.board.getHistory().place(move.x, move.y, move.color, false);
       BoardHistoryNode resolvedNode = Lizzie.board.getHistory().getMainEnd();
       rememberResolvedSnapshotNode(resolvedNode);
@@ -5277,6 +5460,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   }
 
   private void scheduleResumeAnalysisAfterSync(BoardHistoryNode targetNode) {
+    if (normalAutoPlayIntent != null) return;
     if (isCollectingSyncRecovery()) {
       collectedSyncResumeTarget = targetNode;
       return;
@@ -5293,6 +5477,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
 
   private void scheduleResumeAnalysisAfterSync(
       BoardHistoryNode targetNode, CompletableFuture<Void> confirmed) {
+    if (normalAutoPlayIntent != null) return;
     if (Lizzie.frame == null || targetNode == null || !isReadBoardAnalysisEngineAvailable()) {
       localMoveSyncDebug(
           "scheduleResumeAnalysisAfterSync skip frame="
@@ -5613,6 +5798,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
 
   private boolean resumeAutoPlayAnalysisAfterSyncIfNeeded(
       String reason, BoardHistoryNode targetNode, boolean confirmed) {
+    if (normalAutoPlayIntent != null) return true;
     if (Lizzie.frame == null || !Lizzie.frame.isAnaPlayingAgainstLeelaz) {
       return false;
     }
@@ -6203,6 +6389,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     if (shouldSuppressHistoryOverwriteInvalidation()) {
       return;
     }
+    replaceNormalAutoPlayIntent(null);
     synchronized (this) {
       trackingFrameEpoch++;
       acceptedTrackingEvidence = null;

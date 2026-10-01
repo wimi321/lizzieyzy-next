@@ -14,6 +14,7 @@ import featurecat.lizzie.enginegame.EngineGamePlans;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.gui.Menu;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -23,6 +24,7 @@ import java.nio.file.Files;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
 class LeelazEngineRulesProtocolTest {
@@ -32,6 +34,167 @@ class LeelazEngineRulesProtocolTest {
   private static final String POSITIONAL_CHINESE =
       "{\"ko\":\"POSITIONAL\",\"scoring\":\"AREA\",\"tax\":\"NONE\",\"suicide\":false,"
           + "\"hasButton\":false,\"whiteHandicapBonus\":\"N\",\"friendlyPassOk\":true}";
+
+  @Test
+  void parameterReadbackPublishesTheCompletePairRegardlessOfRulesResponseOrder() throws Exception {
+    for (String order : List.of("RPW", "PRW", "PWR", "WPR", "WRP", "RWP")) {
+      try (Fixture fixture = Fixture.ordinary()) {
+        Menu toolbar = fixture.installParameterToolbar();
+        fixture.engine.queryEngineRules();
+        fixture.engine.readKataParameters(TimeUnit.MINUTES.toMillis(1));
+        for (char response : order.toCharArray()) {
+          String command = response == 'R' ? "kata-get-rules"
+              : "kata-get-param " + (response == 'P' ? "playoutDoublingAdvantage" : "analysisWideRootNoise");
+          String value = response == 'R' ? CHINESE : response == 'P' ? "1.75" : "0.35";
+          fixture.engine.dispatchReaderLineForTest(
+              "=" + commandIdFor(fixture.output.toString(), command) + " " + value);
+        }
+        SwingUtilities.invokeAndWait(() -> {
+          assertEquals("1.75", toolbar.txtGfPDA.getText(), order);
+          assertEquals("0.35", toolbar.txtWRN.getText(), order);
+        });
+        assertEquals(1.75, fixture.engine.pda);
+        assertEquals(0.35, fixture.engine.wrn);
+        assertTrue(fixture.engine.engineRulesResult().isConfirmed());
+        assertEquals(0, Lizzie.board.getHistory().getMoveNumber());
+      }
+    }
+  }
+
+  @Test
+  void rejectedOrInvalidParameterDoesNotPublishAPartialPair() throws Exception {
+    for (String response : List.of("?%d unsupported", "=%d malformed", "=%d NaN")) {
+      try (Fixture fixture = Fixture.controlledParameters()) {
+        Menu toolbar = fixture.installParameterToolbar();
+        fixture.engine.readKataParameters(30_000);
+        fixture.reply("kata-get-param playoutDoublingAdvantage", "1.75");
+        int wrnId = commandIdFor(fixture.output.toString(), "kata-get-param analysisWideRootNoise");
+        fixture.engine.dispatchReaderLineForTest(String.format(response, wrnId));
+        fixture.reply("kata-get-rules", CHINESE);
+        assertParameterToolbar(toolbar, "", "");
+        assertTrue(fixture.engine.engineRulesResult().isConfirmed());
+      }
+    }
+  }
+
+  @Test
+  void failedRulesQueryDoesNotBlockZeroParameterReadback() throws Exception {
+    try (Fixture fixture = Fixture.controlledParameters()) {
+      Menu toolbar = fixture.installParameterToolbar();
+      fixture.engine.readKataParameters(30_000);
+      int rulesId = commandIdFor(fixture.output.toString(), "kata-get-rules");
+      fixture.engine.dispatchReaderLineForTest("?" + rulesId + " unsupported rules");
+      fixture.reply("kata-get-param analysisWideRootNoise", "0");
+      assertParameterToolbar(toolbar, "", "");
+      fixture.reply("kata-get-param playoutDoublingAdvantage", "0");
+      assertParameterToolbar(toolbar, "0", "0");
+      assertEquals(EngineRulesResult.Status.QUERY_FAILED, fixture.engine.engineRulesResult().status());
+    }
+  }
+
+  @Test
+  void expiredReadCannotPublishLateParametersOrCancelItsSuccessor() throws Exception {
+    try (Fixture fixture = Fixture.controlledParameters()) {
+      Menu toolbar = fixture.installParameterToolbar();
+      ControlledParameterLeelaz engine = (ControlledParameterLeelaz) fixture.engine;
+      engine.readKataParameters(30_000);
+      int oldWrnId = commandIdFor(fixture.output.toString(), "kata-get-param analysisWideRootNoise");
+      Runnable oldTimeout = engine.timeout;
+      fixture.reply("kata-get-param playoutDoublingAdvantage", "1.75");
+      fixture.reply("kata-get-rules", CHINESE);
+      oldTimeout.run();
+      engine.dispatchReaderLineForTest("=" + oldWrnId + " 0.35");
+      assertParameterToolbar(toolbar, "", "");
+
+      engine.readKataParameters(30_000);
+      fixture.reply("kata-get-param analysisWideRootNoise", "0.25");
+      oldTimeout.run();
+      fixture.reply("kata-get-param playoutDoublingAdvantage", "2");
+      assertParameterToolbar(toolbar, "2", "0.25");
+      assertEquals(2, engine.pda);
+      assertEquals(0.25, engine.wrn);
+    }
+  }
+
+  @Test
+  void newReadDoesNotCombineOldResponsesWithItsOwnPair() throws Exception {
+    try (Fixture fixture = Fixture.controlledParameters()) {
+      Menu toolbar = fixture.installParameterToolbar();
+      fixture.engine.readKataParameters(30_000);
+      int oldPdaId = commandIdFor(fixture.output.toString(), "kata-get-param playoutDoublingAdvantage");
+      int oldWrnId = commandIdFor(fixture.output.toString(), "kata-get-param analysisWideRootNoise");
+      fixture.engine.readKataParameters(30_000);
+      fixture.engine.dispatchReaderLineForTest("=" + oldPdaId + " 8");
+      fixture.reply("kata-get-param analysisWideRootNoise", "0.25");
+      fixture.engine.dispatchReaderLineForTest("=" + oldWrnId + " 0.9");
+      assertParameterToolbar(toolbar, "", "");
+      fixture.reply("kata-get-param playoutDoublingAdvantage", "2");
+      assertParameterToolbar(toolbar, "2", "0.25");
+    }
+  }
+
+  @Test
+  void cancelledReadCannotPublishQueuedToolbarUpdate() throws Exception {
+    try (Fixture fixture = Fixture.controlledParameters()) {
+      Menu toolbar = fixture.installParameterToolbar();
+      fixture.engine.readKataParameters(30_000);
+      SwingUtilities.invokeAndWait(() -> {
+        fixture.reply("kata-get-param playoutDoublingAdvantage", "1.75");
+        fixture.reply("kata-get-param analysisWideRootNoise", "0.35");
+        fixture.engine.cancelParameterRead();
+      });
+      assertParameterToolbar(toolbar, "", "");
+      fixture.engine.readKataParameters(30_000);
+      fixture.reply("kata-get-param playoutDoublingAdvantage", "0");
+      fixture.reply("kata-get-param analysisWideRootNoise", "0");
+      assertParameterToolbar(toolbar, "0", "0");
+    }
+  }
+
+  @Test
+  void readerReplacementCannotPublishQueuedToolbarUpdate() throws Exception {
+    try (Fixture fixture = Fixture.controlledParameters()) {
+      Menu toolbar = fixture.installParameterToolbar();
+      fixture.engine.readKataParameters(30_000);
+      SwingUtilities.invokeAndWait(() -> {
+        fixture.reply("kata-get-param playoutDoublingAdvantage", "1.75");
+        fixture.reply("kata-get-param analysisWideRootNoise", "0.35");
+        fixture.engine.installFreshCommandOutputForTest(new ByteArrayOutputStream());
+      });
+      assertParameterToolbar(toolbar, "", "");
+    }
+  }
+
+  @Test
+  void foregroundReplacementRejectsOldPairBeforeEdtPublication() throws Exception {
+    try (Fixture fixture = Fixture.controlledParameters()) {
+      Menu toolbar = fixture.installParameterToolbar();
+      Leelaz replacement = fixture.secondEngine();
+      fixture.engine.readKataParameters(30_000);
+      SwingUtilities.invokeAndWait(() -> {
+        fixture.reply("kata-get-param playoutDoublingAdvantage", "1.75");
+        fixture.reply("kata-get-param analysisWideRootNoise", "0.35");
+        Lizzie.setPrimaryEngine(replacement);
+      });
+      assertParameterToolbar(toolbar, "", "");
+      replacement.readKataParameters(30_000);
+      replacement.dispatchReaderLineForTest("=" + commandIdFor(fixture.secondOutput.toString(),
+          "kata-get-param playoutDoublingAdvantage") + " 2");
+      replacement.dispatchReaderLineForTest("=" + commandIdFor(fixture.secondOutput.toString(),
+          "kata-get-param analysisWideRootNoise") + " 0.25");
+      assertParameterToolbar(toolbar, "2", "0.25");
+      replacement.cancelParameterRead();
+    }
+  }
+
+  private static void assertParameterToolbar(Menu toolbar, String pda, String wrn) throws Exception {
+    SwingUtilities.invokeAndWait(() -> {
+      if (pda.isEmpty()) assertEquals("", toolbar.txtGfPDA.getText());
+      else assertEquals(Double.parseDouble(pda), Double.parseDouble(toolbar.txtGfPDA.getText()));
+      if (wrn.isEmpty()) assertEquals("", toolbar.txtWRN.getText());
+      else assertEquals(Double.parseDouble(wrn), Double.parseDouble(toolbar.txtWRN.getText()));
+    });
+  }
 
   @Test
   void successfulReadbackBecomesConfirmedActualRulesNotTheRequest() throws Exception {
@@ -266,7 +429,7 @@ class LeelazEngineRulesProtocolTest {
       fixture.confirm(CHINESE);
       String previousRulesLine = fixture.engine.recentRulesLine;
       String previousConfigRules = Lizzie.config.currentKataGoRules;
-      fixture.engine.getParameterScadule(true);
+      fixture.engine.readKataParameters(TimeUnit.SECONDS.toMillis(30));
 
       int queryId = commandIdFor(fixture.output.toString(), "kata-get-rules");
       fixture.engine.dispatchReaderLineForTest("=" + queryId + " {\"ko\":");
@@ -633,6 +796,19 @@ class LeelazEngineRulesProtocolTest {
     throw new AssertionError("missing " + command + " in " + commands);
   }
 
+  private static <T> T allocate(Class<T> type) throws Exception {
+    Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+    field.setAccessible(true);
+    return type.cast(((sun.misc.Unsafe) field.get(null)).allocateInstance(type));
+  }
+
+  private static final class ParameterFrame extends LizzieFrame {
+    private ParameterFrame() throws IOException { super(); }
+
+    @Override
+    public void refresh() {}
+  }
+
   private static final class SilentGtpConsole extends GtpConsolePane {
     private SilentGtpConsole() {
       super(null);
@@ -700,12 +876,26 @@ class LeelazEngineRulesProtocolTest {
     }
   }
 
+  private static final class ControlledParameterLeelaz extends Leelaz {
+    private Runnable timeout;
+
+    private ControlledParameterLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    void scheduleParameterReadTimeout(Runnable timeout, long timeoutMillis) {
+      this.timeout = timeout;
+    }
+  }
+
   private static final class Fixture implements AutoCloseable {
     private final Config previousConfig;
     private final Leelaz previousLeelaz;
     private final GtpConsolePane previousConsole;
     private final Board previousBoard;
     private final LizzieFrame previousFrame;
+    private final Menu previousMenu;
     private final EngineManager previousManager;
     final Leelaz engine;
     final ByteArrayOutputStream output;
@@ -721,6 +911,7 @@ class LeelazEngineRulesProtocolTest {
       previousConsole = Lizzie.gtpConsole;
       previousBoard = Lizzie.board;
       previousFrame = Lizzie.frame;
+      previousMenu = LizzieFrame.menu;
       previousManager = Lizzie.engineManager;
       Lizzie.config = ConfigTestHelper.createForTests(Files.createTempDirectory("engine-rules"));
       Lizzie.gtpConsole = null;
@@ -736,6 +927,13 @@ class LeelazEngineRulesProtocolTest {
       return new Fixture();
     }
 
+    static Fixture controlledParameters() throws Exception {
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      ControlledParameterLeelaz engine = new ControlledParameterLeelaz();
+      liveEngine(engine, output);
+      return new Fixture(engine, output);
+    }
+
     static Fixture controlledResponse() throws Exception {
       ByteArrayOutputStream output = new ByteArrayOutputStream();
       ControlledRulesResponseLeelaz engine = new ControlledRulesResponseLeelaz();
@@ -748,6 +946,33 @@ class LeelazEngineRulesProtocolTest {
       ControlledOwnerLeelaz engine = new ControlledOwnerLeelaz();
       liveEngine(engine, output);
       return new Fixture(engine, output);
+    }
+
+    Menu installParameterToolbar() throws Exception {
+      ParameterFrame frame = allocate(ParameterFrame.class);
+      Menu toolbar = allocate(Menu.class);
+      SwingUtilities.invokeAndWait(() -> {
+        try {
+          for (String name : List.of("txtGfPDA", "txtWRN", "chkPDA", "chkWRN")) {
+            Field field = Menu.class.getDeclaredField(name);
+            field.setAccessible(true);
+            field.set(toolbar, field.getType().getConstructor().newInstance());
+          }
+        } catch (ReflectiveOperationException failure) {
+          throw new AssertionError(failure);
+        }
+      });
+      LizzieFrame.menu = toolbar;
+      Lizzie.frame = frame;
+      return toolbar;
+    }
+
+    void reply(String command, String payload) {
+      try {
+        engine.dispatchReaderLineForTest("=" + commandIdFor(output.toString(), command) + " " + payload);
+      } catch (IOException failure) {
+        throw new AssertionError(failure);
+      }
     }
 
     void confirm(String payload) throws Exception {
@@ -785,12 +1010,14 @@ class LeelazEngineRulesProtocolTest {
 
     @Override
     public void close() {
+      engine.cancelParameterRead();
       EngineManager.resetEngineGameTransactionStateForTest();
       Lizzie.config = previousConfig;
       Lizzie.leelaz = previousLeelaz;
       Lizzie.gtpConsole = previousConsole;
       Lizzie.board = previousBoard;
       Lizzie.frame = previousFrame;
+      LizzieFrame.menu = previousMenu;
       Lizzie.engineManager = previousManager;
     }
   }
