@@ -75,6 +75,9 @@ final class ChatGptSessions {
   }
 
   synchronized ChatGptSignIn signIn(String profile) throws IOException {
+    // Core-only updates can still be running inside an older, trimmed portable runtime.
+    if (ModuleLayer.boot().findModule("jdk.httpserver").isEmpty())
+      throw ChatGptHttp.error("runtime");
     if (pending != null && !pending.result.isDone()) return pending;
     pending = new ChatGptSignIn(this, profile, Duration.ofMinutes(5));
     return pending;

@@ -366,7 +366,7 @@ jpackage_runtime_args() {
   if (( ${#JPACKAGE_RUNTIME_ARGS[@]} > 0 )); then
     printf '%s\0' "${JPACKAGE_RUNTIME_ARGS[@]}"
   else
-    printf '%s\0' --jlink-options "--strip-debug --no-man-pages --no-header-files --add-modules jdk.accessibility"
+    printf '%s\0' --add-modules ALL-MODULE-PATH --jlink-options "--strip-debug --no-man-pages --no-header-files"
   fi
 }
 
@@ -835,6 +835,9 @@ build_app_image() {
     return 1
   fi
   local accessibility_file=""
+  "$app_image_dir/$app_name/runtime/bin/java.exe" \
+    -cp "$app_image_dir/$app_name/app/$MAIN_JAR" \
+    featurecat.lizzie.teacher.ChatGptRuntimeSmoke >&2 || return $?
   for accessibility_file in \
     runtime/bin/jabswitch.exe \
     runtime/bin/javaaccessbridge.dll \

@@ -341,6 +341,9 @@ jobs:
             test -f "$app_dir/runtime/bin/javaaccessbridge.dll"
             test -f "$app_dir/runtime/bin/windowsaccessbridge-64.dll"
             "$app_dir/runtime/bin/java.exe" --list-modules | grep -q '^jdk.accessibility@'
+            "$app_dir/runtime/bin/java.exe" --list-modules | grep -q '^jdk.httpserver@'
+            "$app_dir/runtime/bin/java.exe" -cp "$app_dir/app/lizzie-yzy2.5.3-shaded.jar" \
+              featurecat.lizzie.teacher.ChatGptRuntimeSmoke
             "$app_dir/runtime/bin/java.exe" \
               -Xshare:auto \
               -XX:InitialRAMPercentage=1.0 \

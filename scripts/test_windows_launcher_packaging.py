@@ -114,7 +114,11 @@ def main() -> None:
     if "SharedArchiveFile" in package_script:
         raise AssertionError("Portable Windows launchers must not use path-bound AppCDS archives")
     require(runtime_tools, '"jdk.accessibility",', "package_runtime_tools.py")
-    require(package_script, "--add-modules jdk.accessibility", "package_windows_exe.sh")
+    require(runtime_tools, '"jdk.httpserver",', "package_runtime_tools.py")
+    require(runtime_tools, 'verify_chatgpt_runtime(tmp, jar_path)', "package_runtime_tools.py")
+    require(package_script, "--add-modules ALL-MODULE-PATH --jlink-options", "package_windows_exe.sh")
+    require(package_script, "featurecat.lizzie.teacher.ChatGptRuntimeSmoke", "package_windows_exe.sh")
+    require(workflow, "featurecat.lizzie.teacher.ChatGptRuntimeSmoke", "build-windows-release.yml")
     require(package_script, "runtime/bin/jabswitch.exe", "package_windows_exe.sh")
     require(package_script, "runtime/bin/javaaccessbridge.dll", "package_windows_exe.sh")
     require(package_script, "runtime/bin/windowsaccessbridge-64.dll", "package_windows_exe.sh")

@@ -24,6 +24,8 @@ import xml.etree.ElementTree as ET
 REPO_ROOT = Path(__file__).resolve().parents[1]
 JAVA_REQUIRED_TESTS = (
     ("featurecat.lizzie.logging.LoggingProviderSmokeIT", "shadedArtifactWritesOneProviderEvent"),
+    ("featurecat.lizzie.teacher.ChatGptRuntimeSmokeIT", "shadedArtifactAcceptsLoopbackAndCancelsWithoutCredentials"),
+    ("featurecat.lizzie.teacher.ChatGptRuntimeSmokeIT", "oldRuntimeReportsIncompletePackageInsteadOfNetworkFailure"),
 )
 DESKTOP_REQUIRED_TESTS = (
     *tuple(
@@ -177,6 +179,7 @@ PY_COMPILE_FILES = (
 )
 
 DIRECT_PYTHON_TESTS = (
+    "scripts/test_package_runtime_tools.py",
     "scripts/test_measure_analysis.py",
     "scripts/test_audit_katago_source_bundle.py",
     "scripts/test_audit_katago_linux_compatibility.py",

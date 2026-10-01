@@ -28,6 +28,7 @@ SAFE_DESKTOP_MODULES = {
     "jdk.accessibility",
     "jdk.charsets",
     "jdk.crypto.ec",
+    "jdk.httpserver",
     "jdk.jfr",
     "jdk.localedata",
     "jdk.management",
@@ -164,6 +165,18 @@ def create_base_cds(runtime: Path) -> dict:
     return payload
 
 
+def verify_chatgpt_runtime(runtime: Path, jar: Path) -> None:
+    """Use the shipped JVM, not the build JDK, for the offline login callback gate."""
+    java = runtime / "bin" / ("java.exe" if os.name == "nt" else "java")
+    result = run(
+        [str(java), "-cp", str(jar), "featurecat.lizzie.teacher.ChatGptRuntimeSmoke"],
+        timeout=30,
+    )
+    if "CHATGPT_LOOPBACK_SMOKE_OK" not in result.stdout:
+        raise RuntimeError("Packaged Java did not pass the ChatGPT loopback smoke")
+    log("Packaged ChatGPT loopback callback, rejection, retry and cancellation passed.")
+
+
 def optimize_runtime(args: argparse.Namespace) -> int:
     output = Path(args.output).resolve()
     manifest = Path(args.manifest).resolve() if args.manifest else output.with_suffix(".manifest.json")
@@ -224,6 +237,11 @@ def optimize_runtime(args: argparse.Namespace) -> int:
             reason += ": " + exc.stderr.strip().splitlines()[-1]
         return runtime_fallback(args, output, manifest, reason)
 
+    try:
+        verify_chatgpt_runtime(tmp, jar_path)
+    except (OSError, subprocess.SubprocessError, RuntimeError):
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
     if output.exists():
         shutil.rmtree(output)
     shutil.move(str(tmp), str(output))
@@ -258,6 +276,8 @@ def runtime_fallback(args: argparse.Namespace, output: Path, manifest: Path, rea
     }
     if source and source.is_dir():
         log(f"Falling back to existing runtime: {source} ({reason})")
+        if host_can_jlink_platform(args.platform):
+            verify_chatgpt_runtime(source, Path(args.jar).resolve())
         copy_runtime(source, output)
         payload["sourceRuntime"] = str(source)
         payload["sizeBytes"] = directory_size(output)

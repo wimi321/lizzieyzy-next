@@ -48,9 +48,9 @@ security settings and proxy settings are not modified.
    recursive glyph assertions cover labels, buttons and text components, rather
    than treating correctly sized boxes as readable text.
 
-## Validation status
+## Validation status before runtime follow-up
 
-Final full local verification passed: all 65 steps of
+The pre-follow-up local verification passed: all 65 steps of
 `python scripts/run_local_ci.py --profile all` passed in 643.2 seconds, including
 the complete Windows Maven `verify`, shaded packaging, logging-provider smoke,
 launcher/JCEF/NVIDIA packaging checks, release checks, script syntax, Markdown,
@@ -99,8 +99,69 @@ opened from the actual toolbar. The process loaded
 B11 CUDA analysis and visible candidate moves. No system Java is needed for this
 product launch. The unconnected form screenshot contains no account details.
 
-The final packaged JAR and the installed QA-copy JAR have matching SHA-256:
+The pre-follow-up packaged JAR and installed QA-copy JAR had matching SHA-256:
 `c5b69c276355559cff31085d1a0deccfd24f336de169de070817812887adfcf4`.
+
+## Follow-up: connection failed before browser launch
+
+The account owner then clicked Continue and saw the generic network error. The
+earlier JAR-only portable acceptance missed a required runtime dependency: the
+old Temurin 21.0.12.1 image omitted `jdk.httpserver`. Running the actual sign-in
+constructor with that packaged Java reproduced `NoClassDefFoundError` for
+`com/sun/net/httpserver/HttpServer`, before any OpenAI request.
+
+The shared trimmed runtime now explicitly retains the module. Runtime construction
+and Windows/macOS final app-image packaging exercise the production loopback flow
+with packaged Java, including invalid state, denial, retry and cancellation. A
+missing-module core-only update gets a localized complete-package repair message,
+not a suggestion to keep retrying the network.
+
+The QA portable runtime was rebuilt with the same Temurin 21.0.12.1+1, preserving
+the old runtime for reproduction. Its offline callback probe and launcher-only
+EXE smoke both passed. The visible EXE loaded the corrected bundled `jvm.dll`,
+ran B11 CUDA analysis, and reopened the connection page for the account owner.
+This does not yet prove official authorization, model retrieval or commentary.
+
+Evidence under the QA root: `runtime-before-network-error.png`,
+`runtime-after-connection-ready.png`, `runtime-build21.log`,
+`runtime-fixed21-manifest.json`, `old-runtime-actionable-error.log`, and
+`runtime-exe-smoke.log`. The first new full local run failed one of the 29 Windows
+process-cleanup fixtures before reaching Maven; its standalone recheck passed.
+That failed run is retained in `runtime-local-ci.log`, not counted as a pass.
+The next run completed 4,681 Surefire tests with one failure: the new offline
+probe did not use the repository's shared connection helper. It now uses that
+helper (the standalone probe has no loaded user proxy configuration). The test
+guard was not bypassed or weakened.
+
+An actual fallback `jpackage` invocation also rejected the old script's nested
+`--jlink-options --add-modules`. Windows and macOS fallback arguments now use
+top-level `--add-modules ALL-MODULE-PATH`; optimized packages retain the explicit
+small desktop module set. A newly generated Windows fallback app-image passed
+the same offline callback probe. Logs: `fallback-build.log` (failure) and
+`fallback-build-fixed.log` (successful build). macOS packaging is not claimed as
+physically tested here.
+
+Final follow-up verification: **66/66 local All steps passed** in 655.625 seconds
+with the follow-up changes atop `44de5f92`. Surefire: 4,681 tests, 0 failures,
+0 errors, 120 skips. Failsafe: 10 tests, 0 failures, 0 errors, 7 skips. Combined:
+**4,691 tests, 0 failures/errors, 127 skips**. Both new runtime integration cases
+executed, as did the logging-provider smoke. The 29 Windows process fixtures,
+five new runtime-script tests, shaded packaging and repository checks passed.
+The full log is `runtime-local-ci-final.log`; structured summary is
+`target/pr575-runtime-local-ci-final/local-ci-summary.json` in the PR worktree.
+
+The final shaded JAR SHA-256 is
+`5dbd5d052ce45a3dbee24060dac18dfeb399bd316330c33876261ac1745abc89`.
+It passed the callback smoke using the actual QA portable's corrected Java.
+The still-open user preview uses JAR
+`3951628a2947e9afa95da7e8888810560cda733eb5a459f46c5ace895beca0e4`.
+ZIP-entry comparison found only `ChatGptRuntimeSmoke.class` different after the
+probe's network-helper correction; every login/UI class and resource is identical.
+The active preview is not overwritten or restarted during the owner's authorization.
+
+![Before: missing runtime module misreported as network failure](chatgpt-windows-20261001/runtime-before-network-error.png)
+
+![Corrected runtime: isolated EXE connection entry before owner authorization](chatgpt-windows-20261001/runtime-after-connection-ready.png)
 
 ## Remaining release gates
 

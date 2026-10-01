@@ -24,6 +24,7 @@ final class ChatGptText {
             "credentialsUnavailable",
             "modelRemoved",
             "limit",
+            "runtime",
             "browser")
         .stream()
         .anyMatch(code -> ChatGptHttp.error(code).getMessage().equals(message));

@@ -141,6 +141,18 @@ metadata, even though it contains no plaintext tokens. Existing API-key settings
 
 ## Verification
 
+Complete packages must include `jdk.httpserver` for the loopback callback. A core-only
+JAR update cannot add this module to an older trimmed runtime; the sign-in action
+reports an incomplete installation and asks for the latest complete package instead
+of misreporting a network failure. No system Java installation is required.
+
+Runtime construction and Windows/macOS packaging run the offline
+`featurecat.lizzie.teacher.ChatGptRuntimeSmoke` using the bundled Java and shaded JAR.
+It starts the production callback, rejects a bad state, handles a synthetic denial,
+then cancels a retry. It does not open a browser, contact OpenAI or create credentials.
+`ChatGptRuntimeSmokeIT` also verifies the actionable error under a JVM without
+`jdk.httpserver`. This gate is not evidence of real account authorization.
+
 Automated fake-service tests exercise authorization, signature checks, forged callbacks,
 denial, deadlines, scope changes, reconsent, model ordering, concurrent refresh, restart,
 secure-store failure, revocation, incomplete streams and provider isolation.
