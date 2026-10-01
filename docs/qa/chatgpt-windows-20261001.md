@@ -163,12 +163,78 @@ The active preview is not overwritten or restarted during the owner's authorizat
 
 ![Corrected runtime: isolated EXE connection entry before owner authorization](chatgpt-windows-20261001/runtime-after-connection-ready.png)
 
+## Logged-in follow-up and Codex effort labels
+
+The account owner completed the official browser authorization on October 1.
+The following checks used that authorized session only in the isolated QA
+portable and its isolated APPDATA, never another application's credentials:
+
+- The actual NVIDIA EXE listed five account-available models. GPT-6 Astra and
+  GPT-5.6 Sol/Terra advertised `low`, `medium`, `high`, `xhigh`, `max`, `ultra`;
+  GPT-5.6 Luna stopped at `max`, and GPT-5.5 stopped at `xhigh`.
+- A real current-position explanation streamed, completed, and displayed the
+  SGF-comment write-back confirmation. A second request was stopped from the
+  visible window; the UI returned to its stopped state without reporting success.
+- After normal EXE exit and replacement of the QA JAR, the EXE restarted with
+  bundled Java and B11 CUDA analysis (about 320 visits/s observed). No new login
+  was required. The saved model and `low` effort reappeared in settings.
+- A separate JVM restored the same DPAPI session (`sessionOnly=false`), fetched
+  the model catalog, and completed a bounded, two-sentence synthetic request
+  (105 output characters). Only model capabilities and completion metadata were
+  printed; no credentials, account identifiers or real game records were logged.
+- The updated EXE then completed another visible current-position explanation.
+  This is transport/lifecycle evidence, not a claim that all generated Go advice
+  is correct: the existing grounding check flagged unsupported coordinates and
+  its warning remained visible. That content-quality limitation is not hidden.
+
+The label mismatch was in display strings, not the transmitted effort: the old
+Chinese UI called `low` "较浅" and `high` "深入". Labels now use concise levels
+with the canonical Codex identifier, such as "低 (low)", "高 (high)",
+"超高 (xhigh)", "最大 (max)" and "极限 (ultra)". The model default, server-provided
+options/order, per-model preferences and pre-request validation remain unchanged.
+The real-account six-level picker was inspected in the updated EXE.
+
+Targeted automation: 60 tests, 0 failures/errors/skips. Actual Swing settings
+tests at JVM 100% and 150%: 6 tests each, 0 failures/errors/skips. At JVM 200%,
+the settings plus commentary lifecycle suites ran 17 tests with no failures,
+errors or skips, covering all six languages plus zh_HK, all advertised effort
+labels, saved preferences, model changes, interrupted streams, follow-ups and
+stale-result write protection. An earlier 150% invocation skipped the 11
+commentary cases because its opt-in flag was absent; it is not counted as a
+commentary pass. These are JVM scaling tests, not Windows system-DPI changes.
+
+Final local `All` gate: **66/66 steps passed** in **622.500 seconds**. Surefire:
+**4,688** tests, 0 failures, 0 errors, 120 skipped. Failsafe: **10** tests,
+0 failures, 0 errors, 7 skipped. Combined: **4,698** tests, **0 failures/errors**,
+127 skipped. Packaging, Windows launcher checks, release-script tests, line
+endings, Markdown links and `git diff --check` passed. The packaged Java callback
+probe again printed `CHATGPT_LOOPBACK_SMOKE_OK`; the running EXE's `jvm.dll` was
+verified under the QA portable's own `runtime/bin/server` directory.
+
+Final built JAR and the actually tested QA-copy JAR share SHA-256:
+`112e97632b3fee94c25bcee625451e77b14624bcd02cde6dd2765ec41351301a`.
+Full logs and JSON summary are at `.qa/pr575/reasoning-local-ci.log` in the primary
+workspace and `target/pr575-reasoning-local-ci/local-ci-summary.json` in the PR
+worktree. Native screenshots are in `.qa/pr575/reasoning-native-{100,150,200}`.
+
+The desktop controller cannot retain child-window keyboard focus consistently;
+the real EXE dropdown choices could be inspected, but reliable cross-model
+selection/keyboard traversal is covered by the native Swing fixture rather than
+claimed as a complete manual keyboard pass. Screenshots containing real account
+identity are not included. The settings evidence below uses synthetic accounts.
+
+![Codex effort identifiers in Chinese](chatgpt-windows-20261001/reasoning-codex-zh-CN.png)
+
+![Thai labels at JVM 200 percent](chatgpt-windows-20261001/reasoning-codex-th-TH-200.png)
+
+![Real EXE completion with grounding warning retained](chatgpt-windows-20261001/reasoning-live-completed.png)
+
 ## Remaining release gates
 
-Real Windows ChatGPT authorization requires the account owner to complete the
-official browser flow. Real plan-backed commentary, secure restart, actual token
-refresh and remote revocation have not yet been accepted in this Windows run.
-Mock OAuth/SSE tests and native DPAPI canaries do not substitute for those gates.
+Real Windows authorization, model discovery, plan-backed commentary and secure
+restart have now passed as described above. Actual expiry-triggered refresh and
+remote revocation remain unverified; the owner's active grant was intentionally
+not revoked. Mock OAuth/SSE tests do not substitute for those remaining gates.
 The PR must not be merged or published on the basis of this report alone.
 
 The latest changes have not been physically tested on macOS or Linux. Prior

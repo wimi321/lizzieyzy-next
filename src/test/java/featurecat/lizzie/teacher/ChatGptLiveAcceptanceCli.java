@@ -11,13 +11,18 @@ import javax.swing.SwingUtilities;
 /** Explicit local acceptance only. Uses an isolated registration and never prints credentials. */
 public final class ChatGptLiveAcceptanceCli {
   public static void main(String[] args) throws Exception {
-    if (args.length != 2 || !List.of("settings", "check", "generate", "logout").contains(args[0])) {
+    boolean appSession = args.length == 3 && "--app-session".equals(args[2]);
+    if ((args.length != 2 && !appSession)
+        || !List.of("settings", "check", "generate", "logout").contains(args[0])
+        || (appSession && !List.of("check", "generate").contains(args[0]))) {
       throw new IllegalArgumentException(
-          "Usage: settings|check|generate|logout isolated-directory");
+          "Usage: settings|check|generate|logout isolated-directory [--app-session (check/generate only)]");
     }
     Path directory = Path.of(args[1]).toAbsolutePath();
     var store = PlatformCredentialStore.create(directory.resolve("credentials"));
-    var sessions = new ChatGptSessions(directory.resolve("registration"), store, new ChatGptHttp());
+    var sessions =
+        new ChatGptSessions(
+            appSession ? directory : directory.resolve("registration"), store, new ChatGptHttp());
     var settings = new TeacherSettings(directory.resolve("teacher.properties"), store, sessions);
     Lizzie.resourceBundle =
         ResourceBundle.getBundle("l10n.DisplayStrings", Locale.SIMPLIFIED_CHINESE);

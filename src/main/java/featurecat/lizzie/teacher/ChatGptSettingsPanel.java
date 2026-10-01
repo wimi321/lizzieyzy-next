@@ -447,12 +447,14 @@ final class ChatGptSettingsPanel extends JPanel {
     }
   }
 
-  private record Effort(String value) {
+  record Effort(String value) {
     @Override
     public String toString() {
-      return text(
-          "reasoning." + (value.isEmpty() ? "default" : value),
-          value.isEmpty() ? "Model default" : value);
+      String label =
+          text(
+              "reasoning." + (value.isEmpty() ? "default" : value),
+              value.isEmpty() ? "Model default" : value);
+      return value.isEmpty() || label.equalsIgnoreCase(value) ? label : label + " (" + value + ")";
     }
   }
 

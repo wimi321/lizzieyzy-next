@@ -276,13 +276,13 @@ class ChatGptSettingsNativeTest {
             assertTrue(efforts.isShowing());
             assertTrue(efforts.isEnabled());
             assertEquals(5, efforts.getItemCount());
-            assertEquals("深入", efforts.getSelectedItem().toString());
+            assertEquals("高 (high)", efforts.getSelectedItem().toString());
             efforts.setSelectedIndex(1);
             models.setSelectedIndex(1);
             assertFalse(efforts.isEnabled());
             assertEquals(1, efforts.getItemCount());
             models.setSelectedIndex(0);
-            assertEquals("较浅", efforts.getSelectedItem().toString());
+            assertEquals("低 (low)", efforts.getSelectedItem().toString());
             assertButtonsFit(dialog[0], "signed-in");
             capture(dialog[0], "zh-CN-signed-in");
             assertNoDefaultScroll(dialog[0]);
@@ -476,7 +476,23 @@ class ChatGptSettingsNativeTest {
     try {
       var account = fixture.login(null);
       fixture.sessions.welcomed(account.id);
-      fixture.modelList = ChatGptIntegrationTest.reasoningCatalog();
+      var levels = new org.json.JSONArray();
+      for (String value :
+          List.of(
+              "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent")) {
+        levels.put(new org.json.JSONObject().put("effort", value));
+      }
+      fixture.modelList =
+          new org.json.JSONObject()
+              .put(
+                  "models",
+                  new org.json.JSONArray()
+                      .put(
+                          new org.json.JSONObject()
+                              .put("slug", "m2")
+                              .put("visibility", "list")
+                              .put("supported_reasoning_levels", levels)))
+              .toString();
       for (String locale : List.of("zh-CN", "zh-TW", "zh-HK", "en-US", "ja-JP", "ko", "th-TH")) {
         fixture.sessions.model(account.id, "m2", "high");
         var settings =
@@ -499,22 +515,23 @@ class ChatGptSettingsNativeTest {
                   named(dialog[0], "chatGptReasoning").isEnabled()
                       && ((javax.swing.JComboBox<?>) named(dialog[0], "chatGptReasoning"))
                               .getItemCount()
-                          == 5);
+                          == 10);
           SwingUtilities.invokeAndWait(
               () -> {
                 var efforts = (javax.swing.JComboBox<?>) named(dialog[0], "chatGptReasoning");
-                assertEquals(2, efforts.getSelectedIndex());
+                assertEquals(5, efforts.getSelectedIndex());
                 assertButtonsFit(dialog[0], locale);
                 assertNoDefaultScroll(dialog[0]);
                 assertNotNull(efforts.getAccessibleContext().getAccessibleName());
-                assertTrue(
-                    efforts.getWidth()
-                        > efforts
-                                .getFontMetrics(efforts.getFont())
-                                .stringWidth(efforts.getSelectedItem().toString())
-                            + 30);
+                for (int i = 0; i < efforts.getItemCount(); i++) {
+                  String label = efforts.getItemAt(i).toString();
+                  assertTrue(
+                      efforts.getWidth()
+                          > efforts.getFontMetrics(efforts.getFont()).stringWidth(label) + 30,
+                      locale + ": " + label);
+                }
                 capture(dialog[0], locale + "-thinking-depth");
-                efforts.setSelectedIndex(1);
+                efforts.setSelectedIndex(3);
                 ((AbstractButton) named(dialog[0], "saveSettings")).doClick();
               });
           await(() -> !dialog[0].isShowing());

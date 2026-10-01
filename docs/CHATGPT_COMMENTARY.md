@@ -14,9 +14,11 @@
 打开 **AI 解说 → 设置 → 连接服务**，在并列的 **ChatGPT 登录 / API Key** 中自行选择。
 ChatGPT 登录通过系统浏览器完成，软件不收集密码；登录并授权后选择模型并保存。
 模型旁的 **思考深度** 只展示当前账号目录中该模型支持的档位，默认使用模型默认设置。
+档位与 Codex 的标准值对应：低 `low`、中 `medium`、高 `high`、超高 `xhigh`、
+最大 `max`、极限 `ultra`；本地化名称旁保留标准标识，不会为模型补上不支持的档位。
 思考越深入，通常等待越久，也可能消耗更多套餐额度；每个账号与模型分别记住选择。
 
-![模型与思考深度（测试账号）](qa/chatgpt-settings/zh-CN-thinking-depth.png)
+![模型与思考深度（测试账号）](qa/chatgpt-windows-20261001/reasoning-codex-zh-CN.png)
 
 两种方式分别保留配置，切换不会清除另一种方式的凭据，也不会自动切换计费方式。
 KataGo 仍负责棋局计算，ChatGPT 只根据分析证据讲解；套餐资格和共享额度以 OpenAI 为准。
@@ -74,6 +76,11 @@ use more plan allowance. Choices are remembered independently per account and mo
 efforts are revalidated before inference; a removed option asks you to refresh and choose again,
 rather than silently substituting a different level. Missing capability metadata leaves only
 the default, not a guessed list based on the model name.
+
+Labels retain the canonical Codex effort identifier (for example, `high` or `xhigh`)
+alongside translated names. Supported choices remain model-dependent, as documented in
+the [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+Changing a display label does not change a saved effort or the value sent to inference.
 
 With **API Key**, the existing server URL, key, model discovery and secure-storage options
 remain available. API-key billing is separate. A failed ChatGPT request never falls back to
