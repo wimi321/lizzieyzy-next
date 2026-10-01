@@ -277,6 +277,13 @@ class ChatGptSettingsNativeTest {
             assertTrue(efforts.isEnabled());
             assertEquals(5, efforts.getItemCount());
             assertEquals("高 (high)", efforts.getSelectedItem().toString());
+            assertEquals("跟随模型默认: 低 (low)", efforts.getItemAt(0).toString());
+            efforts.setSelectedIndex(0);
+            models.setSelectedIndex(1);
+            assertEquals("模型默认（未公布）", efforts.getSelectedItem().toString());
+            models.setSelectedIndex(0);
+            assertEquals(0, efforts.getSelectedIndex());
+            assertEquals("跟随模型默认: 低 (low)", efforts.getSelectedItem().toString());
             efforts.setSelectedIndex(1);
             models.setSelectedIndex(1);
             assertFalse(efforts.isEnabled());
@@ -491,6 +498,7 @@ class ChatGptSettingsNativeTest {
                           new org.json.JSONObject()
                               .put("slug", "m2")
                               .put("visibility", "list")
+                              .put("default_reasoning_level", "medium")
                               .put("supported_reasoning_levels", levels)))
               .toString();
       for (String locale : List.of("zh-CN", "zh-TW", "zh-HK", "en-US", "ja-JP", "ko", "th-TH")) {
@@ -520,6 +528,11 @@ class ChatGptSettingsNativeTest {
               () -> {
                 var efforts = (javax.swing.JComboBox<?>) named(dialog[0], "chatGptReasoning");
                 assertEquals(5, efforts.getSelectedIndex());
+                assertTrue(
+                    efforts
+                        .getItemAt(0)
+                        .toString()
+                        .endsWith(new ChatGptSettingsPanel.Effort("medium").toString()));
                 assertButtonsFit(dialog[0], locale);
                 assertNoDefaultScroll(dialog[0]);
                 assertNotNull(efforts.getAccessibleContext().getAccessibleName());
@@ -530,7 +543,8 @@ class ChatGptSettingsNativeTest {
                           > efforts.getFontMetrics(efforts.getFont()).stringWidth(label) + 30,
                       locale + ": " + label);
                 }
-                capture(dialog[0], locale + "-thinking-depth");
+                efforts.setSelectedIndex(0);
+                capture(dialog[0], locale + "-default-depth");
                 efforts.setSelectedIndex(3);
                 ((AbstractButton) named(dialog[0], "saveSettings")).doClick();
               });

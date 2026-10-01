@@ -608,16 +608,18 @@ class ChatGptIntegrationTest {
     return """
         {"models":[
           {"slug":"m2","display_name":"Model Two","visibility":"list",
+           "default_reasoning_level":"low",
            "supported_reasoning_levels":[{"effort":"low"},{"effort":"high"},{"effort":"high"},
               {"effort":"ultra"},{"effort":"future-depth"},{"effort":"<html>bad"},null,5,{}]},
           {"slug":"m1","visibility":"list"}]}
         """;
   }
 
-  @Test
-  void inferenceUsesTheCredentialRotatedDuringModelLookup() throws Exception {
+  @ParameterizedTest
+  @ValueSource(strings = {"", "high"})
+  void inferenceUsesTheCredentialRotatedDuringModelLookup(String effort) throws Exception {
     var account = login(null);
-    sessions.model(account.id, "m2", "high");
+    sessions.model(account.id, "m2", effort);
     server.removeContext("/v1/models");
     server.createContext(
         "/v1/models",
@@ -654,7 +656,9 @@ class ChatGptIntegrationTest {
     modelList = reasoningCatalog();
     var models = new ChatGptCommentaryClient(sessions, account.id, "m2").models();
     assertEquals(List.of("low", "high", "ultra", "future-depth"), models.get(0).reasoningEfforts);
+    assertEquals("low", models.get(0).defaultReasoningEffort);
     assertTrue(models.get(1).reasoningEfforts.isEmpty());
+    assertEquals("", models.get(1).defaultReasoningEffort);
     sessions.model(account.id, "m2", "high");
     sessions.model(account.id, "m1", "");
     var restarted = new ChatGptSessions(directory, store, http);
@@ -667,6 +671,32 @@ class ChatGptIntegrationTest {
     sessions.model(other.id, "m2", "low");
     assertEquals("high", sessions.reasoningEffort(account.id, "m2"));
     assertEquals("low", sessions.reasoningEffort(other.id, "m2"));
+  }
+
+  @Test
+  void followingDefaultUsesFreshCatalogWithoutPinningThePreference() throws Exception {
+    var account = login(null);
+    modelList = reasoningCatalog();
+    sessions.model(account.id, "m2", "");
+    var client = new ChatGptCommentaryClient(sessions, account.id, "m2");
+    var messages = List.of(new TeacherLlmClient.Message("system", "Explain the supplied evidence"));
+    for (String value : List.of("low", "ultra", "future-depth")) {
+      var catalog = new JSONObject(reasoningCatalog());
+      catalog.getJSONArray("models").getJSONObject(0).put("default_reasoning_level", value);
+      modelList = catalog.toString();
+      client.stream(messages, new TeacherLlmClient.Cancellation(), ignored -> {});
+      assertEquals(value, lastResponseBody.getJSONObject("reasoning").getString("effort"));
+      assertEquals("", sessions.reasoningEffort(account.id, "m2"));
+    }
+    assertEquals("", new ChatGptSessions(directory, store, http).reasoningEffort(account.id, "m2"));
+    modelList = "{\"models\":[{\"slug\":\"m2\",\"visibility\":\"list\"}]}";
+    client.stream(messages, new TeacherLlmClient.Cancellation(), ignored -> {});
+    assertFalse(lastResponseBody.has("reasoning"), "Unknown defaults must not be guessed");
+    modelList = "{\"models\":[{\"slug\":\"other\",\"visibility\":\"list\"}]}";
+    assertThrows(
+        IOException.class,
+        () -> client.stream(messages, new TeacherLlmClient.Cancellation(), ignored -> {}));
+    assertEquals(4, responseCalls.get(), "A removed model must not start inference");
   }
 
   @Test

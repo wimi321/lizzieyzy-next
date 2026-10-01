@@ -229,6 +229,55 @@ identity are not included. The settings evidence below uses synthetic accounts.
 
 ![Real EXE completion with grounding warning retained](chatgpt-windows-20261001/reasoning-live-completed.png)
 
+## Displaying account-advertised defaults
+
+A metadata-only query through the same authorized QA session confirmed that the
+public account model catalog supplies `default_reasoning_level`. On October 1,
+GPT-6 Astra, GPT-5.6 Terra/Luna and GPT-5.5 advertised `medium`; GPT-5.6 Sol
+advertised `low`. These are account-catalog observations, not universal API
+defaults or hard-coded mappings. No inference or user game upload was needed
+for this query, and no token or account identity was printed.
+
+The picker now shows **Follow model default: Medium** (localized with the
+canonical identifier). It accepts a default only when it is a valid advertised
+supported effort. Unknown/invalid defaults explicitly show **not published**.
+Following the default keeps the saved preference automatic; inference resolves
+the current catalog default and sends it explicitly. This avoids mistaking a
+client recommendation for the value that an omitted API parameter would use.
+An unknown default still omits the parameter; explicit user preferences remain
+unchanged. Model switches and refreshes update the label, without pinning a
+previous model's default.
+
+The first 200% native check caught clipping in the old narrow, side-by-side
+selector. A stacked-label attempt then exposed unnecessary vertical scrolling.
+The final compact two-row form puts labels beside full-width controls; it passed
+all six native settings cases at JVM 200%, including six languages plus zh_HK.
+Focused metadata/request/label tests passed **63 cases, no failures/errors/skips**.
+These scale checks use JVM scaling, not physical Windows display changes.
+
+Final verification for this follow-up: Maven `verify` succeeded (including the
+shaded package). Surefire: **4,691**, 0 failures/errors, 120 skipped; Failsafe:
+**10**, 0 failures/errors, 7 skipped. Total **4,701**, 127 skipped. The six native
+settings cases also passed at JVM 100% and 150% with no skips. Windows launcher
+packaging, line-ending and whitespace guards passed. JaCoCo warned about stale
+MacKeychainStore execution data from earlier specialized tests; this run is not
+a fresh coverage baseline.
+
+A separate settings-only EXE preview used the candidate JAR and bundled runtime
+without closing the owner's existing game. Real UI clicks selected the default
+for GPT-6 Astra and showed **medium**; switching to GPT-5.6 Sol showed **low**.
+Those form changes were cancelled, not saved. The preview deliberately had no
+engine and is not new engine-analysis acceptance; earlier engine evidence
+remains separate. Real account screenshots were inspected but not committed.
+Candidate JAR SHA-256:
+`45ecfc36467129978864edae020a04c27fe605ef3322b5c405a43ae0a9b6a2f0`.
+Logs: primary workspace `.qa/pr575/default-effort-verify.log` and
+`.qa/pr575/default-effort-final-{100,150,200}.log`.
+
+![Published default in Chinese, synthetic account](chatgpt-windows-20261001/default-effort-zh-CN.png)
+
+![Published default in Thai at JVM 200 percent, synthetic account](chatgpt-windows-20261001/default-effort-th-TH-200.png)
+
 ## Remaining release gates
 
 Real Windows authorization, model discovery, plan-backed commentary and secure

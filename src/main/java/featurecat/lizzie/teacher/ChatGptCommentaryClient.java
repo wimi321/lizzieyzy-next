@@ -75,14 +75,13 @@ final class ChatGptCommentaryClient implements CommentaryClient {
       throws IOException, InterruptedException {
     checkCurrent(cancellation);
     String effort = sessions.reasoningEffort(accountId, model);
-    if (!effort.isEmpty()) {
-      Model selected =
-          models().stream()
-              .filter(item -> item.slug.equals(model))
-              .findFirst()
-              .orElseThrow(() -> ChatGptHttp.error("models"));
-      if (!selected.reasoningEfforts.contains(effort)) throw ChatGptHttp.error("reasoning");
-    }
+    Model selected =
+        models().stream()
+            .filter(item -> item.slug.equals(model))
+            .findFirst()
+            .orElseThrow(() -> ChatGptHttp.error("models"));
+    if (effort.isEmpty()) effort = selected.defaultReasoningEffort;
+    else if (!selected.reasoningEfforts.contains(effort)) throw ChatGptHttp.error("reasoning");
     JSONObject body = requestBody(model, messages, effort);
     // Capability lookup can refresh a token; use the current credential for inference.
     String token = sessions.accessToken(accountId);
@@ -237,6 +236,7 @@ final class ChatGptCommentaryClient implements CommentaryClient {
     final String slug;
     final String name;
     final List<String> reasoningEfforts;
+    final String defaultReasoningEffort;
 
     Model(String slug, String name) {
       this(slug, name, new JSONObject());
@@ -255,6 +255,9 @@ final class ChatGptCommentaryClient implements CommentaryClient {
         }
       }
       reasoningEfforts = List.copyOf(efforts);
+      Object advertisedDefault = metadata.opt("default_reasoning_level");
+      defaultReasoningEffort =
+          advertisedDefault instanceof String value && efforts.contains(value) ? value : "";
     }
 
     @Override

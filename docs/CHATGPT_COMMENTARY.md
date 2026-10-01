@@ -13,12 +13,15 @@
 
 打开 **AI 解说 → 设置 → 连接服务**，在并列的 **ChatGPT 登录 / API Key** 中自行选择。
 ChatGPT 登录通过系统浏览器完成，软件不收集密码；登录并授权后选择模型并保存。
-模型旁的 **思考深度** 只展示当前账号目录中该模型支持的档位，默认使用模型默认设置。
+模型旁的 **思考深度** 只展示当前账号目录中该模型支持的档位。
+**跟随模型默认** 会显示接口公布的具体档位，例如 **跟随模型默认: 中 (medium)**。
+开始解说时重新读取当前账号的模型默认值并发送该档位，不会将它保存成固定的手动选择。
+接口没有公布有效默认档位时，显示 **模型默认（未公布）** 并省略强度参数，不猜测档位。
 档位与 Codex 的标准值对应：低 `low`、中 `medium`、高 `high`、超高 `xhigh`、
 最大 `max`、极限 `ultra`；本地化名称旁保留标准标识，不会为模型补上不支持的档位。
 思考越深入，通常等待越久，也可能消耗更多套餐额度；每个账号与模型分别记住选择。
 
-![模型与思考深度（测试账号）](qa/chatgpt-windows-20261001/reasoning-codex-zh-CN.png)
+![模型与默认思考深度（测试账号）](qa/chatgpt-windows-20261001/default-effort-zh-CN.png)
 
 两种方式分别保留配置，切换不会清除另一种方式的凭据，也不会自动切换计费方式。
 KataGo 仍负责棋局计算，ChatGPT 只根据分析证据讲解；套餐资格和共享额度以 OpenAI 为准。
@@ -71,8 +74,12 @@ this is not unlimited free inference. An app-specific limit does not necessarily
 entire ChatGPT plan is exhausted.
 
 **Thinking depth**, next to the model, lists only efforts advertised by that model in the
-account catalog. **Model default** omits the parameter. Deeper thinking may take longer and
-use more plan allowance. Choices are remembered independently per account and model. Explicit
+account catalog. **Follow model default** displays the catalog's `default_reasoning_level`
+when it is one of the advertised supported efforts. Each request resolves that default again
+and sends it explicitly, while the saved preference remains automatic. An absent or invalid
+default is shown as **Model default (not published)** and leaves the parameter unset; no
+model-name heuristic supplies a value. Deeper thinking may take longer and use more plan
+allowance. Choices are remembered independently per account and model. Explicit
 efforts are revalidated before inference; a removed option asks you to refresh and choose again,
 rather than silently substituting a different level. Missing capability metadata leaves only
 the default, not a guessed list based on the model name.

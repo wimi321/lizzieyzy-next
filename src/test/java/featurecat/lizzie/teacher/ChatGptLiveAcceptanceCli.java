@@ -43,7 +43,12 @@ public final class ChatGptLiveAcceptanceCli {
             "MODEL_CATALOG_OK count=" + models.size() + " sessionOnly=" + account.sessionOnly);
         for (var model : models) {
           System.out.println(
-              "MODEL_CAPABILITY slug=" + model.slug + " reasoning=" + model.reasoningEfforts);
+              "MODEL_CAPABILITY slug="
+                  + model.slug
+                  + " reasoning="
+                  + model.reasoningEfforts
+                  + " default="
+                  + model.defaultReasoningEffort);
         }
         System.out.println(
             "SELECTED_MODEL="

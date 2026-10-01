@@ -124,23 +124,25 @@ final class ChatGptSettingsPanel extends JPanel {
     JPanel selectors = TeacherSettingsStyle.panel(new GridBagLayout());
     GridBagConstraints selector = new GridBagConstraints();
     selector.fill = GridBagConstraints.HORIZONTAL;
-    selector.weightx = 0.68;
+    selector.weightx = 0;
     selector.gridx = 0;
     selector.gridy = 0;
-    selector.insets = new Insets(0, 0, 5, 12);
-    selectors.add(modelLabel, selector);
-    selector.gridy = 1;
     selector.insets = new Insets(0, 0, 0, 12);
+    selectors.add(modelLabel, selector);
+    selector.gridx = 1;
+    selector.weightx = 1;
+    selector.insets = new Insets(0, 0, 0, 0);
     modelRow.setMinimumSize(new java.awt.Dimension(0, modelRow.getPreferredSize().height));
     selectors.add(modelRow, selector);
-    selector.gridx = 1;
-    selector.gridy = 0;
-    selector.weightx = 0.32;
-    selector.insets = new Insets(0, 0, 5, 0);
-    selectors.add(effortLabel, selector);
+    selector.gridx = 0;
     selector.gridy = 1;
-    selector.insets = new Insets(0, 0, 0, 0);
-    reasoning.setPreferredSize(new java.awt.Dimension(180, reasoning.getPreferredSize().height));
+    selector.weightx = 0;
+    selector.insets = new Insets(8, 0, 0, 12);
+    selectors.add(effortLabel, selector);
+    selector.gridx = 1;
+    selector.weightx = 1;
+    selector.insets = new Insets(8, 0, 0, 0);
+    reasoning.setMinimumSize(new java.awt.Dimension(0, reasoning.getPreferredSize().height));
     selectors.add(reasoning, selector);
     modelFields.add(selectors, BorderLayout.NORTH);
     modelFields.add(reasoningHint, BorderLayout.SOUTH);
@@ -414,9 +416,9 @@ final class ChatGptSettingsPanel extends JPanel {
     updatingEffort = true;
     try {
       reasoning.removeAllItems();
-      reasoning.addItem(new Effort(""));
       ChatGptCommentaryClient.Model model =
           (ChatGptCommentaryClient.Model) models.getSelectedItem();
+      reasoning.addItem(new Effort("", model == null ? "" : model.defaultReasoningEffort));
       ChatGptSessions.Account account = selected();
       String saved =
           account == null || model == null
@@ -447,14 +449,20 @@ final class ChatGptSettingsPanel extends JPanel {
     }
   }
 
-  record Effort(String value) {
+  record Effort(String value, String modelDefault) {
+    Effort(String value) {
+      this(value, "");
+    }
+
     @Override
     public String toString() {
-      String label =
-          text(
-              "reasoning." + (value.isEmpty() ? "default" : value),
-              value.isEmpty() ? "Model default" : value);
-      return value.isEmpty() || label.equalsIgnoreCase(value) ? label : label + " (" + value + ")";
+      if (value.isEmpty()) {
+        if (modelDefault.isEmpty())
+          return text("reasoning.defaultUnknown", "Model default (not published)");
+        return text("reasoning.default", "Follow model default") + ": " + new Effort(modelDefault);
+      }
+      String label = text("reasoning." + value, value);
+      return label.equalsIgnoreCase(value) ? label : label + " (" + value + ")";
     }
   }
 
