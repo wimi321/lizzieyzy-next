@@ -251,7 +251,7 @@ public final class TeacherLlmClient implements CommentaryClient {
         String data = line.substring("data:".length()).trim();
         if (data.isEmpty() || "[DONE]".equals(data)) {
           if ("[DONE]".equals(data)) {
-            finished = true;
+            finished = !responses;
             break;
           }
           continue;

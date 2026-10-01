@@ -145,7 +145,8 @@ final class TeacherSettingsDialog extends JDialog {
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     setContentPane(buildContent());
     loadValues();
-    setPreferredSize(new Dimension(880, 650));
+    // Native title bars differ by platform; reserve the same usable form area on each.
+    getContentPane().setPreferredSize(new Dimension(880, 650));
     pack();
     setMinimumSize(new Dimension(740, 530));
     java.awt.Rectangle usable =
@@ -224,7 +225,14 @@ final class TeacherSettingsDialog extends JDialog {
     saveButton.setText(design("save", "Save settings"));
     saveButton.setName("saveSettings");
     cancelButton.setPreferredSize(
-        new Dimension(Math.max(96, cancelButton.getPreferredSize().width), 42));
+        new Dimension(
+            Math.max(
+                96,
+                cancelButton.getFontMetrics(cancelButton.getFont()).stringWidth(cancelButton.getText())
+                    + cancelButton.getInsets().left
+                    + cancelButton.getInsets().right
+                    + 8),
+            42));
     saveButton.setPreferredSize(
         new Dimension(
             Math.max(
@@ -237,7 +245,8 @@ final class TeacherSettingsDialog extends JDialog {
                             .getFontMetrics(saveButton.getFont())
                             .stringWidth(design("savePreferences", "Save preferences")))
                     + saveButton.getInsets().left
-                    + saveButton.getInsets().right),
+                    + saveButton.getInsets().right
+                    + 8),
             42));
     status.setFont(TeacherSettingsStyle.font(13, false));
     status.setForeground(TeacherSettingsStyle.muted());

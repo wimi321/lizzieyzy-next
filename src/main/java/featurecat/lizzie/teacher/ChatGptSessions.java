@@ -84,6 +84,10 @@ final class ChatGptSessions {
     return locked(() -> state.getString("host"));
   }
 
+  long authorizationRevision() throws IOException {
+    return locked(() -> state.optLong("authorizationRevision", 0));
+  }
+
   String registrationClient() throws IOException {
     return locked(() -> state.optString("pendingRegistration", "dynamic_agent_client"));
   }
@@ -116,10 +120,18 @@ final class ChatGptSessions {
         token, keys.toString(), http.auth.toString(), client, nonce, subject, Instant.now());
   }
 
-  Account accept(String priorId, String client, ChatGptIdentity identity, JSONObject tokens)
+  Account accept(
+      String priorId,
+      String client,
+      ChatGptIdentity identity,
+      JSONObject tokens,
+      long authorizationRevision)
       throws IOException {
     return locked(
         () -> {
+          // A logout in any app instance invalidates callbacks from earlier authorizations.
+          if (state.optLong("authorizationRevision", 0) != authorizationRevision)
+            throw ChatGptHttp.error("loginRequired");
           String id = priorId;
           if (id == null) {
             id = UUID.randomUUID().toString();
@@ -323,6 +335,7 @@ final class ChatGptSessions {
           }
           boolean interrupted = Thread.interrupted();
           try {
+            state.put("authorizationRevision", state.optLong("authorizationRevision", 0) + 1);
             entry(id).put("signedOut", true);
             sessionOnly.remove(id);
             persist(); // Tombstone first: an unavailable keychain must not resurrect this login.

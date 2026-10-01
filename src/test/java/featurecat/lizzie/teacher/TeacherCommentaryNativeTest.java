@@ -302,6 +302,7 @@ class TeacherCommentaryNativeTest {
                 for (var mode : TeacherDialogView.Mode.values()) {
                   view.selectMode(mode);
                   dialog.validate();
+                  TeacherDialogViewTest.assertGlyphs(view);
                   for (var button :
                       List.of(
                           view.start(),

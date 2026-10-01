@@ -42,10 +42,12 @@ final class ChatGptSignIn implements AutoCloseable {
   private final String verifier = random();
   private final String callback;
   private final String clientId;
+  private final long authorizationRevision;
 
   ChatGptSignIn(ChatGptSessions sessions, String profile, Duration timeout) throws IOException {
     this.sessions = sessions;
     this.profile = profile;
+    authorizationRevision = sessions.authorizationRevision();
     clientId = profile == null ? sessions.registrationClient() : sessions.clientId(profile);
     String hostId = sessions.hostId();
     boolean reconsent = profile != null && !sessions.planAuthorized(profile);
@@ -71,10 +73,7 @@ final class ChatGptSignIn implements AutoCloseable {
     server.setExecutor(workers);
     server.start();
     ScheduledFuture<?> deadline =
-        workers.schedule(
-            () -> result.completeExceptionally(ChatGptHttp.error("timeout")),
-            timeout.toMillis(),
-            TimeUnit.MILLISECONDS);
+        workers.schedule(this::expire, timeout.toMillis(), TimeUnit.MILLISECONDS);
     result.whenComplete(
         (account, error) -> {
           server.stop(0);
@@ -141,7 +140,7 @@ final class ChatGptSignIn implements AutoCloseable {
               profile == null ? null : sessions.subject(profile));
       synchronized (this) {
         if (result.isDone() || Thread.currentThread().isInterrupted()) return;
-        result.complete(sessions.accept(profile, issued, identity, tokens));
+        result.complete(sessions.accept(profile, issued, identity, tokens, authorizationRevision));
       }
     } catch (InterruptedException interrupted) {
       Thread.currentThread().interrupt();
@@ -200,5 +199,10 @@ final class ChatGptSignIn implements AutoCloseable {
   @Override
   public synchronized void close() {
     result.cancel(false);
+  }
+
+  private synchronized void expire() {
+    // Once credential persistence starts, its outcome must also be the UI outcome.
+    result.completeExceptionally(ChatGptHttp.error("timeout"));
   }
 }

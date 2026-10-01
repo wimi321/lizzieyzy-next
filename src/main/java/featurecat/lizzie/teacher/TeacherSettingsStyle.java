@@ -1,5 +1,6 @@
 package featurecat.lizzie.teacher;
 
+import featurecat.lizzie.util.LocaleFontSupport;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -21,6 +22,8 @@ import javax.swing.plaf.basic.BasicButtonUI;
 /** Shared, theme-aware settings controls; no authentication or persisted state. */
 final class TeacherSettingsStyle {
   private static final String FONT_FAMILY = settingsFontFamily();
+  private static final java.util.Map<java.util.Locale, String> LOCALE_FONTS =
+      new java.util.concurrent.ConcurrentHashMap<>();
 
   private TeacherSettingsStyle() {}
 
@@ -29,7 +32,11 @@ final class TeacherSettingsStyle {
   }
 
   static Font font(float size, boolean bold) {
-    return new Font(FONT_FAMILY, bold ? Font.BOLD : Font.PLAIN, Math.round(size));
+    String family =
+        LOCALE_FONTS.computeIfAbsent(
+            TeacherStrings.locale(),
+            locale -> LocaleFontSupport.resolveLanguageFontName(FONT_FAMILY, locale));
+    return new Font(family, bold ? Font.BOLD : Font.PLAIN, Math.round(size));
   }
 
   private static String settingsFontFamily() {
@@ -232,6 +239,19 @@ final class TeacherSettingsStyle {
             sidebar ? 14 : 10, sidebar ? 22 : 16, sidebar ? 14 : 10, sidebar ? 22 : 16));
     button.setUI(
         new BasicButtonUI() {
+          @Override
+          public Dimension getPreferredSize(JComponent component) {
+            Dimension size = super.getPreferredSize(component);
+            Font selectedFont = font(16, true);
+            int width = button.getFontMetrics(selectedFont).stringWidth(button.getText());
+            if (button.getIcon() != null)
+              width += button.getIcon().getIconWidth() + button.getIconTextGap();
+            // Sidebar selection changes weight, not the room reserved for its label.
+            size.width =
+                Math.max(size.width, width + button.getInsets().left + button.getInsets().right + 4);
+            return size;
+          }
+
           @Override
           public void paint(Graphics graphics, JComponent component) {
             boolean selected = button.isSelected();

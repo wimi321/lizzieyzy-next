@@ -14,6 +14,45 @@ import org.junit.jupiter.api.Test;
 
 class TeacherDialogViewTest {
   @Test
+  @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
+  void localizedControlsRenderTheirActualGlyphs() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          var previous = featurecat.lizzie.Lizzie.resourceBundle;
+          try {
+            for (String tag :
+                new String[] {"zh-CN", "zh-TW", "zh-HK", "en-US", "ja-JP", "ko", "th-TH"}) {
+              featurecat.lizzie.Lizzie.resourceBundle =
+                  java.util.ResourceBundle.getBundle(
+                      "l10n.DisplayStrings", java.util.Locale.forLanguageTag(tag));
+              TeacherDialogView view = new TeacherDialogView();
+              view.setChatGptUsageVisible(true);
+              assertGlyphs(view);
+            }
+          } finally {
+            featurecat.lizzie.Lizzie.resourceBundle = previous;
+          }
+        });
+  }
+
+  static void assertGlyphs(Component component) {
+    String text = null;
+    if (component instanceof javax.swing.AbstractButton)
+      text = ((javax.swing.AbstractButton) component).getText();
+    else if (component instanceof javax.swing.JLabel)
+      text = ((javax.swing.JLabel) component).getText();
+    else if (component instanceof javax.swing.text.JTextComponent)
+      text = ((javax.swing.text.JTextComponent) component).getText();
+    if (text != null && !text.isBlank())
+      assertEquals(
+          -1,
+          component.getFont().canDisplayUpTo(text),
+          component.getClass().getSimpleName() + ": " + text);
+    if (component instanceof Container)
+      for (Component child : ((Container) component).getComponents()) assertGlyphs(child);
+  }
+
+  @Test
   void localizedModeLabelsFitWithoutEllipsis() throws Exception {
     SwingUtilities.invokeAndWait(
         () -> {

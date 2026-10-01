@@ -611,6 +611,16 @@ class ChatGptSettingsNativeTest {
 
   private static void assertButtonsFit(Container root, String locale) {
     for (Component child : children(root)) {
+      if (child.isShowing() && child.getFont() != null) {
+        String text =
+            child instanceof javax.swing.text.JTextComponent input
+                ? input.getText()
+                : child instanceof javax.swing.JLabel label
+                    ? label.getText()
+                    : child instanceof AbstractButton button ? button.getText() : null;
+        if (text != null && !text.isBlank())
+          assertEquals(-1, child.getFont().canDisplayUpTo(text), locale + ": missing glyphs: " + text);
+      }
       if (child instanceof javax.swing.JTextArea && child.isShowing()) {
         assertFalse(child.getFont().isBold(), locale + ": helper text must not be bold");
       }
@@ -619,6 +629,8 @@ class ChatGptSettingsNativeTest {
           && button.getText() != null
           && !button.getText().isBlank()) {
         int width = button.getFontMetrics(button.getFont()).stringWidth(button.getText());
+        if (button.getIcon() != null)
+          width += button.getIcon().getIconWidth() + button.getIconTextGap();
         assertTrue(
             button.getWidth() - button.getInsets().left - button.getInsets().right >= width,
             locale + ": " + button.getText());

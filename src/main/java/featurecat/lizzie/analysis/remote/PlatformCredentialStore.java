@@ -292,7 +292,10 @@ public final class PlatformCredentialStore {
       try {
         encrypted = Base64.getDecoder().decode(encoded);
         plaintext = protector.unprotect(encrypted);
-        return nonEmptySecret(new String(plaintext, StandardCharsets.UTF_8));
+        // DPAPI returns exact bytes, unlike CLI output; whitespace can be part of a secret.
+        return plaintext.length == 0
+            ? Optional.empty()
+            : Optional.of(new String(plaintext, StandardCharsets.UTF_8));
       } catch (RuntimeException e) {
         throw CommandCredentialStore.failure("read");
       } finally {

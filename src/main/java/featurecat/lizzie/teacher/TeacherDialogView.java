@@ -99,6 +99,7 @@ final class TeacherDialogView extends JPanel {
     add(buildHeader(), BorderLayout.NORTH);
     add(buildWorkspace(), BorderLayout.CENTER);
     add(buildComposer(), BorderLayout.SOUTH);
+    TeacherDialogStyle.localizeFonts(this);
     selectMode(Mode.NEXT);
     showEmpty();
   }
@@ -338,6 +339,7 @@ final class TeacherDialogView extends JPanel {
 
   private JScrollPane buildOutput() {
     output.setContentType("text/html");
+    TeacherDialogStyle.localizeFonts(output);
     output.setEditable(false);
     output.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
     output.setForeground(TeacherDialogStyle.text());

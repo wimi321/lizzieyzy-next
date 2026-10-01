@@ -875,6 +875,81 @@ class ChatGptIntegrationTest {
     }
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void signOutInvalidatesAnEarlierAuthorizationEvenFromAnotherInstance(boolean separateInstance)
+      throws Exception {
+    var account = login(null);
+    try (var attempt = sessions.signIn(account.id)) {
+      auth = ChatGptSignIn.query(attempt.authorization.getRawQuery());
+      var signingOut = separateInstance ? new ChatGptSessions(directory, store, http) : sessions;
+      assertTrue(signingOut.signOut(account.id));
+      completeCallback("oaiapp_subject-one");
+      assertThrows(
+          java.util.concurrent.ExecutionException.class,
+          () -> attempt.result.get(5, TimeUnit.SECONDS));
+      assertFalse(sessions.active().signedIn);
+      assertTrue(store.values.isEmpty());
+    }
+    // A new, explicitly initiated login after sign-out must still work.
+    assertTrue(login(account.id).signedIn);
+  }
+
+  @Test
+  void timeoutCannotReportFailureWhileTheCredentialCommitSucceeds() throws Exception {
+    var entered = new java.util.concurrent.CountDownLatch(1);
+    var release = new java.util.concurrent.CountDownLatch(1);
+    MemoryStore slowStore =
+        new MemoryStore() {
+          @Override
+          public void write(Kind kind, String account, String secret) throws IOException {
+            entered.countDown();
+            try {
+              if (!release.await(5, TimeUnit.SECONDS)) throw new IOException("fixture timeout");
+            } catch (InterruptedException interrupted) {
+              Thread.currentThread().interrupt();
+              throw new IOException("fixture interrupted");
+            }
+            super.write(kind, account, secret);
+          }
+        };
+    sessions = new ChatGptSessions(directory, slowStore, http);
+    var attempt = new ChatGptSignIn(sessions, null, Duration.ofMillis(1500));
+    try {
+      auth = ChatGptSignIn.query(attempt.authorization.getRawQuery());
+      completeCallback("oaiapp_subject-one");
+      assertTrue(entered.await(1, TimeUnit.SECONDS));
+      Thread.sleep(1700);
+      assertFalse(attempt.result.isDone(), "A committing login must not report a timeout");
+      release.countDown();
+      assertTrue(attempt.result.get(3, TimeUnit.SECONDS).signedIn);
+      assertTrue(new ChatGptSessions(directory, slowStore, http).active().signedIn);
+    } finally {
+      release.countDown();
+      attempt.close();
+    }
+  }
+
+  private void completeCallback(String client) throws Exception {
+    HttpClient.newHttpClient()
+        .send(
+            HttpRequest.newBuilder(
+                    URI.create(
+                        auth.get("redirect_uri")
+                            + "?"
+                            + ChatGptHttp.form(
+                                Map.of(
+                                    "state",
+                                    auth.get("state"),
+                                    "code",
+                                    "one-use",
+                                    "client_id",
+                                    client))))
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.discarding());
+  }
+
   @Test
   void identityOnlyGrantIsRetainedWithoutPretendingPlanAccess() throws Exception {
     server.removeContext("/api/accounts/oauth/token");
@@ -945,7 +1020,7 @@ class ChatGptIntegrationTest {
     }
   }
 
-  static final class MemoryStore implements CredentialStore {
+  static class MemoryStore implements CredentialStore {
     final Map<String, String> values = new ConcurrentHashMap<>();
     boolean available = true, failWrite, failDelete, truncate;
     volatile boolean failRead;

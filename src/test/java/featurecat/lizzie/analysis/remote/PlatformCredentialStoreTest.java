@@ -243,6 +243,38 @@ class PlatformCredentialStoreTest {
     assertFalse(store.isAvailable());
   }
 
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void windowsDpapiPreservesLongChatGptTokensAndSeparatesProviders(
+      @org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+    String account = "chatgpt-regression-" + java.util.UUID.randomUUID();
+    CredentialStore writer = PlatformCredentialStore.create(directory);
+    assertTrue(writer.isAvailable());
+    writer.write(CredentialStore.Kind.API_KEY, account, "independent-api-key");
+    for (int size : new int[] {32, 128, 129, 4096, 12000, 65536}) {
+      String secret = "synthetic-" + "x".repeat(size) + "\u4e2d\u6587\n trailing space ";
+      writer.write(CredentialStore.Kind.CHATGPT_SESSION, account, secret);
+      CredentialStore reopened = PlatformCredentialStore.create(directory);
+      assertEquals(
+          secret, reopened.read(CredentialStore.Kind.CHATGPT_SESSION, account).orElseThrow());
+      assertEquals(
+          "independent-api-key", reopened.read(CredentialStore.Kind.API_KEY, account).orElseThrow());
+      try (var files = Files.list(directory)) {
+        for (Path file : files.toList()) {
+          String encoded = Files.readString(file, StandardCharsets.US_ASCII);
+          assertFalse(encoded.contains("synthetic-"));
+          assertFalse(
+              new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8)
+                  .contains("synthetic-"));
+        }
+      }
+    }
+    writer.delete(CredentialStore.Kind.CHATGPT_SESSION, account);
+    assertTrue(writer.read(CredentialStore.Kind.CHATGPT_SESSION, account).isEmpty());
+    assertEquals(
+        "independent-api-key", writer.read(CredentialStore.Kind.API_KEY, account).orElseThrow());
+  }
+
   private static final class RecordingRunner
       implements PlatformCredentialStore.CredentialCommandRunner {
     final List<List<String>> commands = new ArrayList<>();

@@ -115,6 +115,12 @@ an interrupted stream remains visibly incomplete.
 - Logout cancels active requests, attempts official refresh-token revocation, and clears
   local credentials even when remote revocation cannot be confirmed. In that case disconnect
   the application in ChatGPT settings as well.
+- Signing out invalidates older pending authorizations across application instances. A late
+  callback cannot restore the signed-out account; a new explicit login is required. Once
+  credential persistence starts, its result wins over the login deadline, avoiding a timeout
+  message followed by a silently connected account.
+- Windows DPAPI reads preserve the exact decrypted bytes, including long token sets and
+  trailing whitespace. ChatGPT, API-key and remote-compute entries remain separate.
 - The Responses request uses the account's listed model, `store: false`, `stream: true`, an
   input array and developer/user/assistant roles. No private ChatGPT endpoints, unsupported
   generation parameters, tools or server-side conversation persistence are used.

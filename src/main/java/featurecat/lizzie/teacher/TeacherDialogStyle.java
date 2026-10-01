@@ -1,6 +1,7 @@
 package featurecat.lizzie.teacher;
 
 import featurecat.lizzie.gui.AppleStyleSupport;
+import featurecat.lizzie.util.LocaleFontSupport;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Component;
@@ -101,6 +102,7 @@ final class TeacherDialogStyle {
   }
 
   static void styleModeButton(AbstractButton button, ModeGlyph glyph) {
+    localizeFonts(button);
     button.setUI(new ModeButtonUI());
     button.setContentAreaFilled(false);
     button.setOpaque(false);
@@ -129,6 +131,7 @@ final class TeacherDialogStyle {
   }
 
   static void styleInput(JComponent component) {
+    localizeFonts(component);
     if (component instanceof javax.swing.JComboBox) {
       AppleStyleSupport.installComboBoxStyle((javax.swing.JComboBox<?>) component);
     }
@@ -179,6 +182,7 @@ final class TeacherDialogStyle {
   }
 
   static void styleButton(AbstractButton button, Color fill, Color foreground, Color outline) {
+    localizeFonts(button);
     button.setUI(new FlatButtonUI(fill, outline));
     button.setContentAreaFilled(false);
     button.setOpaque(false);
@@ -188,6 +192,19 @@ final class TeacherDialogStyle {
     button.setForeground(foreground);
     button.setFont(button.getFont().deriveFont(java.awt.Font.BOLD));
     button.setBorder(BorderFactory.createEmptyBorder(7, 14, 7, 14));
+  }
+
+  static void localizeFonts(Component component) {
+    java.awt.Font font = component.getFont();
+    if (font != null) {
+      String family =
+          LocaleFontSupport.resolveLanguageFontName(font.getFamily(), TeacherStrings.locale());
+      if (!family.equals(font.getFamily()))
+        component.setFont(
+            new java.awt.Font(family, font.getStyle(), font.getSize()).deriveFont(font.getSize2D()));
+    }
+    if (component instanceof java.awt.Container)
+      for (Component child : ((java.awt.Container) component).getComponents()) localizeFonts(child);
   }
 
   private static Color uiColor(String key, Color fallback) {

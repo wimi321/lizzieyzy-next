@@ -127,6 +127,7 @@ class TeacherLlmClientTest {
     for (String invalid :
         List.of(
             "",
+            "data: [DONE]\n\n",
             "data: {broken\n\ndata: [DONE]\n\n",
             "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"incomplete\"}}\n\n")) {
       ending.set(invalid);
@@ -259,6 +260,7 @@ class TeacherLlmClientTest {
               exchange,
               "event: response.output_text.delta\n"
                   + "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Fallback works\"}\n\n"
+                  + "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"
                   + "data: [DONE]\n\n");
         });
     server.start();
