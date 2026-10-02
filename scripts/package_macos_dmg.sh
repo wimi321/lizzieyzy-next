@@ -195,7 +195,7 @@ rm -rf "$INPUT_DIR" "$APP_IMAGE_DIR"
 mkdir -p "$INPUT_DIR" "$APP_IMAGE_DIR" "$META_DIR"
 
 CUSTOM_RUNTIME_DIR="$DIST_DIR/custom-runtime/$PUBLIC_ARCH_TAG"
-JPACKAGE_RUNTIME_ARGS=()
+JPACKAGE_RUNTIME_ARGS=(--add-modules ALL-MODULE-PATH --jlink-options "--strip-debug --no-man-pages --no-header-files")
 
 prepare_custom_runtime() {
   if [[ "${LIZZIE_PACKAGE_OPTIMIZE_RUNTIME:-1}" != "1" ]]; then
@@ -255,6 +255,10 @@ jpackage \
   --java-options "-Xmx4096m" \
   --java-options "-Xshare:auto" \
   --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION"
+
+"$APP_IMAGE_DIR/$APP_NAME.app/Contents/runtime/Contents/Home/bin/java" \
+  -cp "$APP_IMAGE_DIR/$APP_NAME.app/Contents/app/$MAIN_JAR" \
+  featurecat.lizzie.teacher.ChatGptRuntimeSmoke
 
 # jpackage ad-hoc signs embedded Mach-O files even without --mac-sign.
 # Restore the audited bytes first; the release signing stage signs them once.

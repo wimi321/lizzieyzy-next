@@ -38,7 +38,7 @@ class TeacherEvidenceTest {
   }
 
   @Test
-  void wholeGameSelectsAtMostFortyKeyPositionsInChronologicalOrder() {
+  void wholeGameSelectsFiveSpacedTeachingMomentsInChronologicalOrder() {
     BoardHistoryNode root = new BoardHistoryNode(BoardData.empty(19, 19));
     BoardHistoryNode parent = root;
     for (int moveNumber = 1; moveNumber <= 45; moveNumber++) {
@@ -55,12 +55,12 @@ class TeacherEvidenceTest {
     TeacherEvidence.Range range = TeacherEvidence.wholeGame(root);
 
     assertEquals(45, range.analyzedPositions);
-    assertEquals(40, range.positions.size());
-    assertEquals(5, range.omittedPositions);
-    assertEquals(0, range.positions.get(0).moveNumber);
-    assertEquals(44, range.positions.get(range.positions.size() - 1).moveNumber);
+    assertEquals(5, range.positions.size());
+    assertEquals(40, range.omittedPositions);
+    assertTrue(range.positions.stream().allMatch(p -> p.board != null));
     for (int index = 1; index < range.positions.size(); index++) {
-      assertTrue(range.positions.get(index - 1).moveNumber < range.positions.get(index).moveNumber);
+      assertTrue(
+          range.positions.get(index).moveNumber - range.positions.get(index - 1).moveNumber >= 3);
     }
   }
 

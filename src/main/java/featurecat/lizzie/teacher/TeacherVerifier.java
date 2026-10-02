@@ -100,6 +100,25 @@ public final class TeacherVerifier {
         continue;
       }
       addCoordinate(allowed, position.actualMove);
+      if (position.board != null) {
+        for (TeacherBoardContext.Group group : position.board.groups) {
+          allowed.addAll(group.stones());
+          allowed.addAll(group.liberties());
+        }
+        for (TeacherBoardContext.Line line : position.board.lines) {
+          allowed.addAll(line.moves());
+          for (TeacherBoardContext.Group group :
+              TeacherBoardContext.groups(
+                  line.frames().get(line.frames().size() - 1).stones(),
+                  position.board.width,
+                  position.board.height)) {
+            if (group.liberties().size() <= 2) allowed.addAll(group.liberties());
+          }
+        }
+        for (TeacherEvidence.Candidate candidate : position.candidates)
+          addCoordinate(allowed, candidate.coordinate);
+        continue;
+      }
       for (String move : position.playedContinuation) {
         addCoordinate(allowed, move);
       }

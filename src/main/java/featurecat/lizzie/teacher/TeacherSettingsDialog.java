@@ -1,18 +1,21 @@
 package featurecat.lizzie.teacher;
 
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Component;
 import java.awt.Dialog;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.Window;
 import java.awt.event.KeyEvent;
 import java.util.Arrays;
 import java.util.List;
 import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -21,19 +24,43 @@ import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
-import javax.swing.UIManager;
 
 /** Modal settings editor; network discovery runs outside the EDT. */
 final class TeacherSettingsDialog extends JDialog {
   private final TeacherSettings settings;
-  private final JTextField baseUrlField = new JTextField(34);
+  private final JToggleButton chatGptTab =
+      new JToggleButton(ChatGptSettingsPanel.text("tab", "ChatGPT login"));
+  private final JToggleButton apiTab = new JToggleButton("API Key");
+  private final JPanel providers =
+      new JPanel(new CardLayout()) {
+        @Override
+        public Dimension getPreferredSize() {
+          for (Component child : getComponents())
+            if (child.isVisible()) return child.getPreferredSize();
+          return new Dimension(0, 0);
+        }
+      };
+  private final JPanel pages = new JPanel(new CardLayout());
+  private final JToggleButton connectionPage =
+      new JToggleButton(design("connection", "Connection"));
+  private final JToggleButton preferencesPage =
+      new JToggleButton(design("preferences", "Commentary preferences"));
+  private boolean preferencesVisible;
+  private final ChatGptSettingsPanel chatGptPanel;
+  private final JTextField baseUrlField =
+      new TeacherExampleField(
+          TeacherStrings.get(
+              "Teacher.settings.addressExample", "Example: https://api.example.com/v1"),
+          34);
   private final JPasswordField apiKeyField = new JPasswordField(28);
   private final char passwordEchoChar = apiKeyField.getEchoChar();
   private final JComboBox<String> modelBox = new JComboBox<>();
@@ -48,6 +75,7 @@ final class TeacherSettingsDialog extends JDialog {
             TeacherStrings.get("Teacher.settings.rank.dan", "Dan")
           });
   private final JSpinner rankNumSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 18, 1));
+  private final JComboBox<RankChoice> rankChoice = new JComboBox<>();
   private final JComboBox<String> styleBox =
       new JComboBox<>(
           new String[] {
@@ -78,7 +106,7 @@ final class TeacherSettingsDialog extends JDialog {
             TeacherStrings.get("Teacher.settings.variation.moderate", "Moderate"),
             TeacherStrings.get("Teacher.settings.variation.many", "Many")
           });
-  private final JLabel status = new JLabel(" ");
+  private final JTextArea status = TeacherSettingsStyle.note(" ", 2);
   private final JButton refreshModels =
       new JButton(TeacherStrings.get("Teacher.settings.refreshModels", "Refresh models"));
   private final JButton saveButton =
@@ -88,6 +116,10 @@ final class TeacherSettingsDialog extends JDialog {
   private final JButton reloadKnowledge =
       new JButton(TeacherStrings.get("Teacher.settings.reloadKnowledge", "Reload knowledge"));
   private boolean saved;
+  private long providerGeneration;
+  private SwingWorker<?, ?> apiModelWorker;
+  private SwingWorker<?, ?> apiCredentialWorker;
+  private boolean apiCredentialLoaded;
 
   static boolean show(Component parent, TeacherSettings settings) {
     Window owner = parent == null ? null : SwingUtilities.getWindowAncestor(parent);
@@ -97,17 +129,31 @@ final class TeacherSettingsDialog extends JDialog {
     return dialog.saved;
   }
 
-  private TeacherSettingsDialog(Window owner, TeacherSettings settings) {
+  TeacherSettingsDialog(Window owner, TeacherSettings settings) {
     super(
         owner,
         TeacherStrings.get("Teacher.settings.title", "AI commentary settings"),
         Dialog.ModalityType.APPLICATION_MODAL);
     this.settings = settings;
+    chatGptPanel = new ChatGptSettingsPanel(settings.chatGpt());
+    chatGptPanel.addPropertyChangeListener(
+        "connectionReady",
+        event -> {
+          if (Boolean.TRUE.equals(event.getNewValue())
+              && ChatGptText.isKnownError(status.getText())) status.setText(" ");
+        });
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     setContentPane(buildContent());
     loadValues();
+    // Native title bars differ by platform; reserve the same usable form area on each.
+    getContentPane().setPreferredSize(new Dimension(880, 650));
     pack();
-    setMinimumSize(new Dimension(Math.max(560, getWidth()), getHeight()));
+    setMinimumSize(new Dimension(740, 530));
+    java.awt.Rectangle usable =
+        java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+    setSize(
+        Math.min(getWidth(), usable.width),
+        Math.min(getHeight(), Math.max(460, usable.height - 60)));
     getRootPane()
         .registerKeyboardAction(
             event -> {
@@ -120,81 +166,114 @@ final class TeacherSettingsDialog extends JDialog {
   }
 
   private JPanel buildContent() {
-    JPanel form = new JPanel(new GridBagLayout());
-    form.setBorder(BorderFactory.createEmptyBorder(18, 20, 10, 20));
-    GridBagConstraints constraints = new GridBagConstraints();
-    constraints.insets = new Insets(5, 4, 5, 4);
-    constraints.anchor = GridBagConstraints.WEST;
-    constraints.fill = GridBagConstraints.HORIZONTAL;
+    JPanel content = new JPanel(new BorderLayout());
+    content.setBackground(TeacherSettingsStyle.surface());
+    JPanel header = TeacherSettingsStyle.panel(new BorderLayout(0, 6));
+    header.setOpaque(true);
+    header.setBackground(TeacherSettingsStyle.fieldSurface());
+    header.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 0, 1, 0, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(13, 24, 9, 24)));
+    header.add(TeacherSettingsStyle.label(getTitle(), 32, true), BorderLayout.NORTH);
+    header.add(
+        TeacherSettingsStyle.note(design("subtitle", "Make every review easier to understand"), 1),
+        BorderLayout.CENTER);
+    content.add(header, BorderLayout.NORTH);
 
-    JLabel baseUrlLabel =
-        new JLabel(TeacherStrings.get("Teacher.settings.baseUrl", "API base URL"));
-    JLabel apiKeyLabel = new JLabel(TeacherStrings.get("Teacher.settings.apiKey", "API key"));
-    JLabel modelLabel = new JLabel(TeacherStrings.get("Teacher.settings.model", "Model"));
-    baseUrlLabel.setLabelFor(baseUrlField);
-    apiKeyLabel.setLabelFor(apiKeyField);
-    modelLabel.setLabelFor(modelBox);
+    ButtonGroup navigation = new ButtonGroup();
+    navigation.add(connectionPage);
+    navigation.add(preferencesPage);
+    connectionPage.setName("connectionPage");
+    preferencesPage.setName("preferencesPage");
+    TeacherSettingsStyle.selection(connectionPage, true);
+    TeacherSettingsStyle.selection(preferencesPage, true);
+    connectionPage.setIcon(TeacherSettingsStyle.icon("link", 22));
+    preferencesPage.setIcon(TeacherSettingsStyle.icon("sliders-horizontal", 22));
+    JPanel rail = new JPanel(new GridBagLayout());
+    rail.setBackground(TeacherSettingsStyle.railSurface());
+    rail.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 0, 0, 1, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(26, 10, 12, 10)));
+    GridBagConstraints nav = new GridBagConstraints();
+    nav.gridx = 0;
+    nav.gridy = 0;
+    nav.weightx = 1;
+    nav.fill = GridBagConstraints.HORIZONTAL;
+    nav.insets = new Insets(0, 0, 12, 0);
+    rail.add(connectionPage, nav);
+    nav.gridy++;
+    rail.add(preferencesPage, nav);
+    nav.gridy++;
+    nav.weighty = 1;
+    rail.add(TeacherSettingsStyle.panel(new BorderLayout()), nav);
+    rail.setPreferredSize(new Dimension(Math.max(210, rail.getPreferredSize().width), 100));
+    content.add(rail, BorderLayout.WEST);
 
-    addRow(form, constraints, 0, baseUrlLabel, baseUrlField);
+    pages.setOpaque(false);
+    pages.add(scrollPage(buildConnectionPage()), "connection");
+    pages.add(scrollPage(buildPreferencesPage()), "preferences");
+    content.add(pages, BorderLayout.CENTER);
+    connectionPage.addActionListener(event -> showPage(false));
+    preferencesPage.addActionListener(event -> showPage(true));
+    connectionPage.setSelected(true);
+    showPage(false);
 
-    JPanel keyRow = new JPanel(new BorderLayout(8, 0));
-    keyRow.add(apiKeyField, BorderLayout.CENTER);
-    keyRow.add(showApiKey, BorderLayout.EAST);
-    addRow(form, constraints, 1, apiKeyLabel, keyRow);
-
-    modelBox.setEditable(true);
-    JPanel modelRow = new JPanel(new BorderLayout(8, 0));
-    modelRow.add(modelBox, BorderLayout.CENTER);
-    modelRow.add(refreshModels, BorderLayout.EAST);
-    addRow(form, constraints, 2, modelLabel, modelRow);
-
-    JLabel rankLabel = new JLabel(TeacherStrings.get("Teacher.settings.rankLevel", "Level"));
-    JLabel styleLabel = new JLabel(TeacherStrings.get("Teacher.settings.style", "Style"));
-    JLabel terminologyLabel =
-        new JLabel(TeacherStrings.get("Teacher.settings.terminology", "Terminology"));
-    JLabel paceLabel = new JLabel(TeacherStrings.get("Teacher.settings.pace", "Pace"));
-    JLabel variationLabel =
-        new JLabel(TeacherStrings.get("Teacher.settings.variation", "Variation"));
-    rankLabel.setLabelFor(rankNumSpinner);
-    styleLabel.setLabelFor(styleBox);
-    terminologyLabel.setLabelFor(densityBox);
-    paceLabel.setLabelFor(paceBox);
-    variationLabel.setLabelFor(variationBox);
-
-    JPanel rankRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-    rankRow.add(rankModeBox);
-    rankRow.add(rankNumSpinner);
-    addRow(form, constraints, 3, rankLabel, rankRow);
-    addRow(form, constraints, 4, styleLabel, styleBox);
-    addRow(form, constraints, 5, terminologyLabel, densityBox);
-    addRow(form, constraints, 6, paceLabel, paceBox);
-    addRow(form, constraints, 7, variationLabel, variationBox);
-
-    constraints.gridx = 1;
-    constraints.gridy = 8;
-    constraints.weightx = 1.0;
-    form.add(rememberApiKey, constraints);
-
-    JTextArea privacy =
-        note(
-            TeacherStrings.get(
-                    "Teacher.settings.privacy",
-                    "The API key is never written to the normal configuration file.")
-                + "\n"
-                + TeacherStrings.get(
-                    "Teacher.settings.dataNotice",
-                    "Only the selected KataGo analysis summary and your question are sent to this API; the complete SGF is not uploaded."));
-    constraints.gridy = 9;
-    form.add(privacy, constraints);
-
-    constraints.gridy = 10;
-    form.add(status, constraints);
-
-    JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
-    buttons.add(reloadKnowledge);
+    TeacherSettingsStyle.button(saveButton, true);
+    TeacherSettingsStyle.button(cancelButton, false);
+    saveButton.setText(design("save", "Save settings"));
+    saveButton.setName("saveSettings");
+    cancelButton.setPreferredSize(
+        new Dimension(
+            Math.max(
+                96,
+                cancelButton.getFontMetrics(cancelButton.getFont()).stringWidth(cancelButton.getText())
+                    + cancelButton.getInsets().left
+                    + cancelButton.getInsets().right
+                    + 8),
+            42));
+    saveButton.setPreferredSize(
+        new Dimension(
+            Math.max(
+                126,
+                Math.max(
+                        saveButton
+                            .getFontMetrics(saveButton.getFont())
+                            .stringWidth(design("save", "Save settings")),
+                        saveButton
+                            .getFontMetrics(saveButton.getFont())
+                            .stringWidth(design("savePreferences", "Save preferences")))
+                    + saveButton.getInsets().left
+                    + saveButton.getInsets().right
+                    + 8),
+            42));
+    status.setFont(TeacherSettingsStyle.font(13, false));
+    status.setForeground(TeacherSettingsStyle.muted());
+    status.setName("settingsStatus");
+    status
+        .getAccessibleContext()
+        .setAccessibleName(TeacherStrings.get("Teacher.settings.title", "AI commentary settings"));
+    JPanel footer = TeacherSettingsStyle.panel(new BorderLayout(12, 0));
+    footer.setOpaque(true);
+    footer.setBackground(TeacherSettingsStyle.fieldSurface());
+    footer.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(10, 20, 10, 10)));
+    JPanel buttons = TeacherSettingsStyle.panel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
     buttons.add(cancelButton);
     buttons.add(saveButton);
+    footer.add(status, BorderLayout.CENTER);
+    footer.add(buttons, BorderLayout.EAST);
+    content.add(footer, BorderLayout.SOUTH);
 
+    showApiKey.setOpaque(false);
+    rememberApiKey.setOpaque(false);
+    showApiKey.setFont(TeacherSettingsStyle.font(14, false));
+    rememberApiKey.setFont(TeacherSettingsStyle.font(14, false));
+    showApiKey.setForeground(TeacherSettingsStyle.text());
+    rememberApiKey.setForeground(TeacherSettingsStyle.text());
     showApiKey.addActionListener(
         event -> apiKeyField.setEchoChar(showApiKey.isSelected() ? (char) 0 : passwordEchoChar));
     rankModeBox.addActionListener(event -> updateRankBounds());
@@ -208,35 +287,371 @@ final class TeacherSettingsDialog extends JDialog {
     cancelButton.addActionListener(event -> dispose());
     saveButton.addActionListener(event -> save());
     getRootPane().setDefaultButton(saveButton);
-
-    JPanel content = new JPanel(new BorderLayout());
-    content.add(form, BorderLayout.CENTER);
-    content.add(buttons, BorderLayout.SOUTH);
     return content;
   }
 
-  private static JTextArea note(String text) {
-    JTextArea note = new JTextArea(text, 3, 34);
-    note.setEditable(false);
-    note.setFocusable(false);
-    note.setLineWrap(true);
-    note.setWrapStyleWord(true);
-    note.setOpaque(false);
-    note.setBorder(null);
-    note.setFont(UIManager.getFont("Label.font"));
-    note.setForeground(UIManager.getColor("Label.disabledForeground"));
-    return note;
+  private JPanel buildConnectionPage() {
+    JPanel page = TeacherSettingsStyle.panel(new BorderLayout(0, 8));
+    page.add(
+        TeacherSettingsStyle.heading(
+            design("connection", "Connection"),
+            design("connectionHint", "Choose how to connect AI commentary")),
+        BorderLayout.NORTH);
+    ButtonGroup group = new ButtonGroup();
+    group.add(chatGptTab);
+    group.add(apiTab);
+    JPanel tabs = TeacherSettingsStyle.panel(new GridLayout(1, 2, 0, 0));
+    tabs.setBorder(new TeacherDialogStyle.RoundedBorder(TeacherSettingsStyle.border(), 8));
+    for (JToggleButton button : List.of(chatGptTab, apiTab)) {
+      TeacherSettingsStyle.selection(button, false);
+      tabs.add(button);
+    }
+    chatGptTab.setName("chatGptProvider");
+    apiTab.setName("apiKeyProvider");
+    providers.setOpaque(false);
+    providers.add(buildConnectionWelcome(), "UNSELECTED");
+    providers.add(buildApiForm(), "API_KEY");
+    providers.add(chatGptPanel, "CHATGPT");
+    chatGptTab.addActionListener(event -> chooseProvider(TeacherSettings.Provider.CHATGPT));
+    apiTab.addActionListener(event -> chooseProvider(TeacherSettings.Provider.API_KEY));
+    JPanel providerContent = TeacherSettingsStyle.panel(new BorderLayout(0, 18));
+    providerContent.add(tabs, BorderLayout.NORTH);
+    providerContent.add(providers, BorderLayout.CENTER);
+    page.add(providerContent, BorderLayout.CENTER);
+    return page;
   }
 
-  private static void addRow(
-      JPanel form, GridBagConstraints constraints, int row, JLabel label, Component component) {
-    constraints.gridy = row;
-    constraints.gridx = 0;
-    constraints.weightx = 0.0;
-    form.add(label, constraints);
-    constraints.gridx = 1;
-    constraints.weightx = 1.0;
-    form.add(component, constraints);
+  private JPanel buildConnectionWelcome() {
+    JPanel page = TeacherSettingsStyle.panel(new BorderLayout());
+    JPanel welcome = TeacherSettingsStyle.panel(new BorderLayout(36, 0));
+    welcome.setBorder(BorderFactory.createEmptyBorder(17, 20, 6, 0));
+    JLabel icon = new JLabel(TeacherSettingsStyle.icon("browser-globe", 86));
+    icon.setName("connectionWelcomeIcon");
+    icon.setVerticalAlignment(javax.swing.SwingConstants.TOP);
+    welcome.add(icon, BorderLayout.WEST);
+    JPanel intro = TeacherSettingsStyle.panel(new BorderLayout(0, 10));
+    intro.add(
+        TeacherSettingsStyle.label(design("setupTitle", "Connect an AI service"), 21, true),
+        BorderLayout.NORTH);
+    intro.add(
+        TeacherSettingsStyle.note(
+            ChatGptSettingsPanel.text("choose", "Choose a connection method and finish setup."), 2),
+        BorderLayout.CENTER);
+    welcome.add(intro, BorderLayout.CENTER);
+    page.add(welcome, BorderLayout.NORTH);
+    JPanel privacy = TeacherSettingsStyle.panel(new BorderLayout(10, 0));
+    privacy.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(14, 0, 26, 0)));
+    privacy.add(new JLabel(TeacherSettingsStyle.icon("lock-keyhole", 22)), BorderLayout.WEST);
+    privacy.add(
+        TeacherSettingsStyle.note(
+            design(
+                "privacy",
+                "Only selected analysis and questions are sent; the full game is not uploaded."),
+            1),
+        BorderLayout.CENTER);
+    page.add(privacy, BorderLayout.SOUTH);
+    return page;
+  }
+
+  private JPanel buildApiForm() {
+    JPanel api = TeacherSettingsStyle.panel(new GridBagLayout());
+    GridBagConstraints row = new GridBagConstraints();
+    row.insets = new Insets(8, 0, 8, 0);
+    row.anchor = GridBagConstraints.WEST;
+    row.fill = GridBagConstraints.HORIZONTAL;
+    for (JComponent component : List.of(baseUrlField, apiKeyField, modelBox)) {
+      TeacherSettingsStyle.input(component);
+    }
+    baseUrlField.setName("apiBaseUrl");
+    apiKeyField.setName("apiSecret");
+    modelBox.setName("apiModel");
+    modelBox.setEditable(true);
+    modelBox.setEditor(
+        new javax.swing.plaf.basic.BasicComboBoxEditor() {
+          @Override
+          protected JTextField createEditorComponent() {
+            var field =
+                new TeacherExampleField(
+                    TeacherStrings.get("Teacher.settings.modelExample", "Example: gpt-5.4-mini"),
+                    18);
+            field.setName("apiModelInput");
+            field.setBorder(BorderFactory.createEmptyBorder());
+            field.setFont(TeacherSettingsStyle.font(15, false));
+            field.setForeground(TeacherSettingsStyle.text());
+            field.setBackground(TeacherSettingsStyle.fieldSurface());
+            field
+                .getAccessibleContext()
+                .setAccessibleName(TeacherStrings.get("Teacher.settings.model", "Model"));
+            return field;
+          }
+        });
+    TeacherSettingsStyle.button(refreshModels, false);
+    JPanel keyRow = TeacherSettingsStyle.panel(new BorderLayout(8, 0));
+    keyRow.add(apiKeyField, BorderLayout.CENTER);
+    keyRow.add(showApiKey, BorderLayout.EAST);
+    JPanel modelRow = TeacherSettingsStyle.panel(new BorderLayout(8, 0));
+    modelRow.add(modelBox, BorderLayout.CENTER);
+    modelRow.add(refreshModels, BorderLayout.EAST);
+    apiRow(
+        api,
+        row,
+        0,
+        TeacherStrings.get("Teacher.settings.baseUrl", "Service address"),
+        baseUrlField,
+        baseUrlField);
+    apiRow(
+        api,
+        row,
+        1,
+        TeacherStrings.get("Teacher.settings.keyLabel", "Access key"),
+        keyRow,
+        apiKeyField);
+    apiRow(api, row, 2, TeacherStrings.get("Teacher.settings.model", "Model"), modelRow, modelBox);
+    row.gridx = 1;
+    row.gridy = 3;
+    api.add(rememberApiKey, row);
+    row.gridx = 0;
+    row.gridy = 4;
+    row.gridwidth = 2;
+    api.add(
+        TeacherSettingsStyle.note(
+            TeacherStrings.get(
+                "Teacher.settings.privacy", "The key is not stored in normal configuration files."),
+            1),
+        row);
+    row.gridy = 5;
+    api.add(
+        TeacherSettingsStyle.note(
+            design(
+                "privacy",
+                "Only selected analysis and questions are sent; the full game is not uploaded."),
+            1),
+        row);
+    row.gridy = 6;
+    row.weighty = 1;
+    api.add(TeacherSettingsStyle.panel(new BorderLayout()), row);
+    JPanel page = TeacherSettingsStyle.panel(new BorderLayout(0, 8));
+    page.add(
+        TeacherSettingsStyle.note(
+            TeacherStrings.get(
+                "Teacher.settings.apiHint",
+                "Enter the address and key from your provider, then choose a commentary model."),
+            1),
+        BorderLayout.NORTH);
+    page.add(api, BorderLayout.CENTER);
+    return page;
+  }
+
+  private static void apiRow(
+      JPanel form,
+      GridBagConstraints row,
+      int y,
+      String text,
+      JComponent component,
+      JComponent field) {
+    JLabel label = TeacherSettingsStyle.label(text, 15, false);
+    label.setLabelFor(field);
+    row.gridy = y;
+    row.gridx = 0;
+    row.weightx = 0;
+    row.insets = new Insets(5, 0, 5, 14);
+    form.add(label, row);
+    row.gridx = 1;
+    row.weightx = 1;
+    row.insets = new Insets(5, 0, 5, 0);
+    form.add(component, row);
+  }
+
+  private JPanel buildPreferencesPage() {
+    JPanel page = TeacherSettingsStyle.panel(new BorderLayout());
+    page.add(
+        TeacherSettingsStyle.heading(
+            design("preferences", "Commentary preferences"),
+            design("preferencesHint", "Shared by ChatGPT and API Key")),
+        BorderLayout.NORTH);
+    JPanel rows = TeacherSettingsStyle.panel(new GridBagLayout());
+    for (int number = 18; number >= 1; number--) rankChoice.addItem(new RankChoice(false, number));
+    for (int number = 1; number <= 9; number++) rankChoice.addItem(new RankChoice(true, number));
+    TeacherSettingsStyle.input(rankChoice);
+    rankChoice.addActionListener(
+        event -> {
+          RankChoice selected = (RankChoice) rankChoice.getSelectedItem();
+          if (selected != null) {
+            rankModeBox.setSelectedIndex(selected.dan ? 1 : 0);
+            updateRankBounds();
+            rankNumSpinner.setValue(selected.number);
+          }
+        });
+    for (JComponent component : List.of(styleBox, densityBox, paceBox, variationBox)) {
+      TeacherSettingsStyle.input(component);
+    }
+    rankChoice.setName("rankPreference");
+    styleBox.setName("stylePreference");
+    preferenceRow(
+        rows,
+        0,
+        design("level", "My level"),
+        design("levelHint", "Adjust explanation depth to your playing level"),
+        rankChoice,
+        rankChoice);
+    preferenceRow(
+        rows,
+        1,
+        TeacherStrings.get("Teacher.settings.style", "Style"),
+        design("styleHint", "Choose how you like things explained"),
+        styleBox,
+        styleBox);
+    preferenceRow(
+        rows,
+        2,
+        TeacherStrings.get("Teacher.settings.terminology", "Terminology"),
+        design("termsHint", "How often Go terminology is used"),
+        densityBox,
+        densityBox);
+    preferenceRow(
+        rows,
+        3,
+        TeacherStrings.get("Teacher.settings.pace", "Pace"),
+        design("paceHint", "Choose a concise or detailed explanation"),
+        paceBox,
+        paceBox);
+    preferenceRow(
+        rows,
+        4,
+        TeacherStrings.get("Teacher.settings.variation", "Variation"),
+        design("variationHint", "How deeply to explore follow-up moves"),
+        variationBox,
+        variationBox);
+    TeacherSettingsStyle.link(reloadKnowledge);
+    reloadKnowledge.setIcon(TeacherSettingsStyle.icon("book-open", 22));
+    reloadKnowledge.setIconTextGap(8);
+    GridBagConstraints reload = new GridBagConstraints();
+    reload.gridx = 0;
+    reload.gridy = 7;
+    reload.weightx = 1;
+    reload.gridwidth = 2;
+    reload.anchor = GridBagConstraints.WEST;
+    reload.insets = new Insets(0, 0, 0, 0);
+    rows.add(reloadKnowledge, reload);
+    JPanel top = TeacherSettingsStyle.panel(new BorderLayout());
+    top.add(rows, BorderLayout.NORTH);
+    page.add(top, BorderLayout.CENTER);
+    return page;
+  }
+
+  private static void preferenceRow(
+      JPanel rows, int index, String title, String hint, JComponent control, JComponent field) {
+    if (index == 0 || index == 2) {
+      JLabel section =
+          TeacherSettingsStyle.label(
+              index == 0
+                  ? design("personal", "For your level")
+                  : design("details", "Explanation details"),
+              14,
+              true);
+      section.setForeground(TeacherSettingsStyle.muted());
+      GridBagConstraints sectionRow = new GridBagConstraints();
+      sectionRow.gridx = 0;
+      sectionRow.gridy = index == 0 ? 0 : 3;
+      sectionRow.gridwidth = 2;
+      sectionRow.anchor = GridBagConstraints.WEST;
+      sectionRow.insets = new Insets(index == 0 ? 0 : 12, 0, 4, 0);
+      rows.add(section, sectionRow);
+    }
+    JPanel description = TeacherSettingsStyle.panel(new BorderLayout(0, 4));
+    JLabel label = TeacherSettingsStyle.label(title, 16, true);
+    label.setLabelFor(field);
+    field.getAccessibleContext().setAccessibleName(title);
+    field.getAccessibleContext().setAccessibleDescription(hint);
+    description.add(label, BorderLayout.NORTH);
+    description.add(TeacherSettingsStyle.note(hint, 1), BorderLayout.CENTER);
+    JPanel line = TeacherSettingsStyle.panel(new BorderLayout(22, 0));
+    line.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 0, 1, 0, TeacherSettingsStyle.border()),
+            BorderFactory.createEmptyBorder(4, 0, 4, 0)));
+    line.add(description, BorderLayout.CENTER);
+    control.setPreferredSize(new Dimension(220, 38));
+    JPanel right = TeacherSettingsStyle.panel(new java.awt.GridBagLayout());
+    right.add(control);
+    line.add(right, BorderLayout.EAST);
+    GridBagConstraints row = new GridBagConstraints();
+    row.gridy = index + (index < 2 ? 1 : 2);
+    row.gridx = 0;
+    row.weightx = 1;
+    row.gridwidth = 2;
+    row.fill = GridBagConstraints.HORIZONTAL;
+    rows.add(line, row);
+  }
+
+  private record RankChoice(boolean dan, int number) {
+    @Override
+    public String toString() {
+      return TeacherStrings.format(
+          "Teacher.settings.design." + (dan ? "rankDan" : "rankKyu"),
+          dan ? "{0} dan" : "{0} kyu",
+          number);
+    }
+  }
+
+  private JScrollPane scrollPage(JPanel page) {
+    page.setBorder(BorderFactory.createEmptyBorder(20, 36, 0, 36));
+    JPanel tracking = new WidthTrackingPage();
+    tracking.add(page, BorderLayout.CENTER);
+    JScrollPane scroll = new JScrollPane(tracking);
+    scroll.setBorder(BorderFactory.createEmptyBorder());
+    scroll.getViewport().setBackground(TeacherSettingsStyle.surface());
+    scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    scroll.getVerticalScrollBar().setUnitIncrement(16);
+    return scroll;
+  }
+
+  private static final class WidthTrackingPage extends JPanel implements javax.swing.Scrollable {
+    WidthTrackingPage() {
+      super(new BorderLayout());
+      setOpaque(false);
+    }
+
+    public Dimension getPreferredScrollableViewportSize() {
+      return getPreferredSize();
+    }
+
+    public int getScrollableUnitIncrement(
+        java.awt.Rectangle visible, int orientation, int direction) {
+      return 16;
+    }
+
+    public int getScrollableBlockIncrement(
+        java.awt.Rectangle visible, int orientation, int direction) {
+      return Math.max(16, visible.height - 16);
+    }
+
+    public boolean getScrollableTracksViewportWidth() {
+      return true;
+    }
+
+    public boolean getScrollableTracksViewportHeight() {
+      return getParent() instanceof javax.swing.JViewport viewport
+          && viewport.getHeight() >= getPreferredSize().height;
+    }
+  }
+
+  private void showPage(boolean preferences) {
+    ((CardLayout) pages.getLayout()).show(pages, preferences ? "preferences" : "connection");
+    preferencesVisible = preferences;
+    saveButton.setText(
+        preferences
+            ? design("savePreferences", "Save preferences")
+            : design("save", "Save settings"));
+    saveButton.getAccessibleContext().setAccessibleDescription(saveButton.getText());
+    if (isShowing()) (preferences ? preferencesPage : connectionPage).requestFocusInWindow();
+  }
+
+  private static String design(String key, String fallback) {
+    return TeacherSettingsStyle.text(key, fallback);
   }
 
   private void loadValues() {
@@ -259,13 +674,22 @@ final class TeacherSettingsDialog extends JDialog {
         try {
           LoadedValues loaded = get();
           TeacherSettings.Snapshot snapshot = loaded.snapshot;
+          apiCredentialLoaded =
+              snapshot.provider != TeacherSettings.Provider.CHATGPT
+                  || !snapshot.rememberApiKey
+                  || !loaded.apiKey.isEmpty();
+          chatGptTab.setSelected(snapshot.provider == TeacherSettings.Provider.CHATGPT);
+          apiTab.setSelected(snapshot.provider == TeacherSettings.Provider.API_KEY);
+          chooseProvider(snapshot.provider);
           baseUrlField.setText(snapshot.baseUrl);
-          modelBox.addItem(snapshot.model);
+          if (!snapshot.model.isBlank()) modelBox.addItem(snapshot.model);
           modelBox.setSelectedItem(snapshot.model);
           rememberApiKey.setSelected(snapshot.rememberApiKey);
           rankModeBox.setSelectedIndex("d".equals(snapshot.rankMode) ? 1 : 0);
           updateRankBounds();
           rankNumSpinner.setValue(snapshot.rankNum);
+          rankChoice.setSelectedIndex(
+              "d".equals(snapshot.rankMode) ? 17 + snapshot.rankNum : 18 - snapshot.rankNum);
           styleBox.setSelectedIndex(clampIndex(snapshot.styleIndex, 4));
           densityBox.setSelectedIndex(clampIndex(snapshot.densityIndex, 2));
           paceBox.setSelectedIndex(clampIndex(snapshot.paceIndex, 2));
@@ -279,7 +703,11 @@ final class TeacherSettingsDialog extends JDialog {
           }
           setInputsEnabled(true);
           rememberApiKey.setEnabled(snapshot.secureStorageAvailable);
-          status.setText(" ");
+          status.setText(
+              snapshot.provider == TeacherSettings.Provider.UNSELECTED
+                  ? ChatGptSettingsPanel.text(
+                      "choose", "Choose a connection method and finish setup.")
+                  : " ");
         } catch (Exception error) {
           setInputsEnabled(true);
           rememberApiKey.setEnabled(false);
@@ -290,9 +718,9 @@ final class TeacherSettingsDialog extends JDialog {
   }
 
   private void refreshModels() {
+    if (!validateAddressInput()) return;
     char[] key = apiKeyField.getPassword();
     String baseUrl = baseUrlField.getText();
-    String selectedModel = selectedModel();
     if (key.length == 0) {
       status.setText(TeacherStrings.get("Teacher.settings.enterKey", "Enter an API key first."));
       return;
@@ -301,37 +729,43 @@ final class TeacherSettingsDialog extends JDialog {
     status.setText(TeacherStrings.get("Teacher.settings.loadingModels", "Loading models..."));
     char[] keyCopy = key.clone();
     Arrays.fill(key, '\0');
-    new SwingWorker<List<String>, Void>() {
-      @Override
-      protected List<String> doInBackground() throws Exception {
-        try {
-          return new TeacherLlmClient(baseUrl, new String(keyCopy), selectedModel).listModels();
-        } finally {
-          Arrays.fill(keyCopy, '\0');
-        }
-      }
+    long request = providerGeneration;
+    apiModelWorker =
+        new SwingWorker<List<String>, Void>() {
+          @Override
+          protected List<String> doInBackground() throws Exception {
+            try {
+              return TeacherLlmClient.listModels(baseUrl, new String(keyCopy));
+            } finally {
+              Arrays.fill(keyCopy, '\0');
+            }
+          }
 
-      @Override
-      protected void done() {
-        refreshModels.setEnabled(true);
-        try {
-          List<String> models = get();
-          Object previous = modelBox.getEditor().getItem();
-          modelBox.removeAllItems();
-          for (String model : models) {
-            modelBox.addItem(model);
+          @Override
+          protected void done() {
+            if (!isDisplayable() || providerGeneration != request) return;
+            refreshModels.setEnabled(true);
+            try {
+              List<String> models = get();
+              Object previous = modelBox.getEditor().getItem();
+              modelBox.removeAllItems();
+              for (String model : models) {
+                modelBox.addItem(model);
+              }
+              if (previous != null && !previous.toString().isBlank()) {
+                modelBox.setSelectedItem(previous.toString());
+              } else {
+                modelBox.setSelectedItem(null);
+              }
+              status.setText(
+                  TeacherStrings.format(
+                      "Teacher.settings.modelsLoaded", "Loaded {0} models.", models.size()));
+            } catch (Exception error) {
+              status.setText(localError(error));
+            }
           }
-          if (previous != null && !previous.toString().isBlank()) {
-            modelBox.setSelectedItem(previous.toString());
-          }
-          status.setText(
-              TeacherStrings.format(
-                  "Teacher.settings.modelsLoaded", "Loaded {0} models.", models.size()));
-        } catch (Exception error) {
-          status.setText(localError(error));
-        }
-      }
-    }.execute();
+        };
+    apiModelWorker.execute();
   }
 
   private void updateRankBounds() {
@@ -344,25 +778,71 @@ final class TeacherSettingsDialog extends JDialog {
   }
 
   private void save() {
+    boolean preferencesOnly = preferencesVisible;
+    TeacherSettings.Provider provider =
+        chatGptTab.isSelected()
+            ? TeacherSettings.Provider.CHATGPT
+            : apiTab.isSelected()
+                ? TeacherSettings.Provider.API_KEY
+                : TeacherSettings.Provider.UNSELECTED;
+    if (!preferencesOnly
+        && (provider == TeacherSettings.Provider.UNSELECTED
+            || (provider == TeacherSettings.Provider.CHATGPT && !chatGptPanel.isReady()))) {
+      status.setText(
+          ChatGptSettingsPanel.text("choose", "Choose a connection method and finish setup."));
+      return;
+    }
+    if (!preferencesOnly && provider == TeacherSettings.Provider.API_KEY && !validateAddressInput())
+      return;
+    if (!preferencesOnly && provider == TeacherSettings.Provider.API_KEY) {
+      try {
+        TeacherSettings.validateModel(selectedModel());
+      } catch (IllegalArgumentException invalid) {
+        status.setText(invalid.getMessage());
+        modelBox.getEditor().getEditorComponent().requestFocusInWindow();
+        return;
+      }
+    }
+    String chatAccount = chatGptPanel.selectedAccountId();
+    String chatModel = chatGptPanel.selectedModel();
+    String chatEffort = chatGptPanel.selectedReasoningEffort();
     char[] key = apiKeyField.getPassword();
     String requestedBaseUrl = baseUrlField.getText();
     String requestedModel = selectedModel();
     boolean requestedRemember = rememberApiKey.isSelected();
+    String rankMode = rankModeBox.getSelectedIndex() == 1 ? "d" : "k";
+    int rankNumber = ((Number) rankNumSpinner.getValue()).intValue();
+    int style = styleBox.getSelectedIndex();
+    int density = densityBox.getSelectedIndex();
+    int pace = paceBox.getSelectedIndex();
+    int variation = variationBox.getSelectedIndex();
     setInputsEnabled(false);
+    if (!preferencesOnly) {
+      chatGptPanel.suspend();
+      setChildrenEnabled(chatGptPanel, false);
+    }
     cancelButton.setEnabled(false);
     setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
     status.setText(TeacherStrings.get("Teacher.settings.saving", "Saving securely..."));
     new SwingWorker<TeacherSettings.Snapshot, Void>() {
       @Override
       protected TeacherSettings.Snapshot doInBackground() throws Exception {
-        settings.saveTeachingPreferences(
-            rankModeBox.getSelectedIndex() == 1 ? "d" : "k",
-            ((Number) rankNumSpinner.getValue()).intValue(),
-            styleBox.getSelectedIndex(),
-            densityBox.getSelectedIndex(),
-            paceBox.getSelectedIndex(),
-            variationBox.getSelectedIndex());
-        return settings.save(requestedBaseUrl, requestedModel, key, requestedRemember);
+        settings.saveTeachingPreferences(rankMode, rankNumber, style, density, pace, variation);
+        if (preferencesOnly) return settings.snapshot();
+        if (provider == TeacherSettings.Provider.API_KEY) {
+          settings.save(requestedBaseUrl, requestedModel, key, requestedRemember);
+        } else {
+          settings.chatGpt().model(chatAccount, chatModel, chatEffort);
+          settings.chatGpt().select(chatAccount);
+          settings.refreshChatGptAccount();
+          ChatGptSessions.Account current = settings.chatGptAccount();
+          if (current != null && current.credentialsUnavailable)
+            throw ChatGptHttp.error("credentialsUnavailable");
+          if (current == null || !current.signedIn) throw ChatGptHttp.error("loginRequired");
+          if (!current.authorized) throw ChatGptHttp.error("permission");
+        }
+        settings.selectProvider(provider);
+        return settings.snapshot();
       }
 
       @Override
@@ -371,10 +851,23 @@ final class TeacherSettingsDialog extends JDialog {
         try {
           get();
           saved = true;
+          if (preferencesOnly) {
+            setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+            setInputsEnabled(true);
+            cancelButton.setEnabled(true);
+            status.setText(
+                design(
+                    "preferencesSaved", "Preferences saved. Connection settings are unchanged."));
+            return;
+          }
           dispose();
         } catch (Exception error) {
           setDefaultCloseOperation(DISPOSE_ON_CLOSE);
           setInputsEnabled(true);
+          if (!preferencesOnly) {
+            setChildrenEnabled(chatGptPanel, true);
+            if (chatGptTab.isSelected()) chatGptPanel.reload();
+          }
           cancelButton.setEnabled(true);
           status.setText(localError(error));
         }
@@ -383,6 +876,11 @@ final class TeacherSettingsDialog extends JDialog {
   }
 
   private void setInputsEnabled(boolean enabled) {
+    connectionPage.setEnabled(enabled);
+    preferencesPage.setEnabled(enabled);
+    reloadKnowledge.setEnabled(enabled);
+    chatGptTab.setEnabled(enabled);
+    apiTab.setEnabled(enabled);
     baseUrlField.setEnabled(enabled);
     apiKeyField.setEnabled(enabled);
     modelBox.setEnabled(enabled);
@@ -390,12 +888,93 @@ final class TeacherSettingsDialog extends JDialog {
     rememberApiKey.setEnabled(enabled);
     rankModeBox.setEnabled(enabled);
     rankNumSpinner.setEnabled(enabled);
+    rankChoice.setEnabled(enabled);
     styleBox.setEnabled(enabled);
     densityBox.setEnabled(enabled);
     paceBox.setEnabled(enabled);
     variationBox.setEnabled(enabled);
     refreshModels.setEnabled(enabled);
     saveButton.setEnabled(enabled);
+  }
+
+  private void chooseProvider(TeacherSettings.Provider provider) {
+    providerGeneration++;
+    if (apiModelWorker != null) apiModelWorker.cancel(true);
+    if (apiCredentialWorker != null) apiCredentialWorker.cancel(true);
+    apiKeyField.setEnabled(true);
+    saveButton.setEnabled(true);
+    refreshModels.setEnabled(true);
+    chatGptPanel.suspend();
+    ((CardLayout) providers.getLayout()).show(providers, provider.name());
+    if (provider == TeacherSettings.Provider.CHATGPT) chatGptPanel.reload();
+    providers.revalidate();
+    status.setText(
+        provider == TeacherSettings.Provider.UNSELECTED
+            ? ChatGptSettingsPanel.text("choose", "Choose a connection method and finish setup.")
+            : " ");
+    if (provider == TeacherSettings.Provider.API_KEY
+        && !apiCredentialLoaded
+        && settings.snapshot().provider == TeacherSettings.Provider.CHATGPT
+        && settings.snapshot().rememberApiKey
+        && apiKeyField.getPassword().length == 0) restoreApiCredential();
+  }
+
+  private void restoreApiCredential() {
+    long request = providerGeneration;
+    String savedAddress = settings.snapshot().baseUrl;
+    apiKeyField.setEnabled(false);
+    saveButton.setEnabled(false);
+    refreshModels.setEnabled(false);
+    status.setText(
+        TeacherStrings.get("Teacher.status.loadingSettings", "Loading secure settings..."));
+    apiCredentialWorker =
+        new SwingWorker<char[], Void>() {
+          @Override
+          protected char[] doInBackground() throws Exception {
+            settings.restoreRememberedApiKey();
+            return settings.apiKey().orElse("").toCharArray();
+          }
+
+          @Override
+          protected void done() {
+            char[] key = null;
+            try {
+              key = get();
+              if (!isDisplayable() || request != providerGeneration) return;
+              apiCredentialLoaded = true;
+              if (savedAddress.equals(baseUrlField.getText())
+                  && apiKeyField.getPassword().length == 0) apiKeyField.setText(new String(key));
+              status.setText(" ");
+            } catch (Exception failure) {
+              if (isDisplayable() && request == providerGeneration)
+                status.setText(localError(failure));
+            } finally {
+              if (key != null) Arrays.fill(key, '\0');
+              if (isDisplayable() && request == providerGeneration) {
+                apiKeyField.setEnabled(true);
+                saveButton.setEnabled(true);
+                refreshModels.setEnabled(true);
+              }
+            }
+          }
+        };
+    apiCredentialWorker.execute();
+  }
+
+  @Override
+  public void dispose() {
+    providerGeneration++;
+    if (apiModelWorker != null) apiModelWorker.cancel(true);
+    if (apiCredentialWorker != null) apiCredentialWorker.cancel(true);
+    if (chatGptPanel != null) chatGptPanel.suspend();
+    super.dispose();
+  }
+
+  private static void setChildrenEnabled(java.awt.Container parent, boolean enabled) {
+    for (Component child : parent.getComponents()) {
+      child.setEnabled(enabled);
+      if (child instanceof java.awt.Container container) setChildrenEnabled(container, enabled);
+    }
   }
 
   private static int clampIndex(int value, int max) {
@@ -416,6 +995,23 @@ final class TeacherSettingsDialog extends JDialog {
     return message == null || message.isBlank()
         ? TeacherStrings.get("Teacher.error.generic", "The operation failed.")
         : message;
+  }
+
+  private boolean validateAddressInput() {
+    try {
+      TeacherSettings.validateBaseUrl(baseUrlField.getText());
+      return true;
+    } catch (IllegalArgumentException invalid) {
+      status.setText(
+          baseUrlField.getText().isBlank()
+              ? TeacherStrings.get(
+                  "Teacher.settings.enterAddress", "Enter the address supplied by your provider.")
+              : TeacherStrings.get(
+                  "Teacher.settings.invalidAddress",
+                  "Check the service address; use the full HTTPS address supplied by your provider."));
+      baseUrlField.requestFocusInWindow();
+      return false;
+    }
   }
 
   private static final class LoadedValues {

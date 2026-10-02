@@ -1,4 +1,121 @@
-# AI Commentary Design QA
+# AI Commentary Settings Design QA, 2026-09-30
+
+## Scope And Comparison
+
+The selected second visual direction is implemented as one native Swing editor with two
+pages: Connection and Preferences. This section supersedes only the settings-window QA;
+the older commentary-reader report below is retained and is not evidence for this change.
+
+- Source visual truth: `docs/design/chatgpt-settings/connection-reference.png` and
+  `docs/design/chatgpt-settings/preferences-reference.png`.
+- Implementation: `docs/screenshots/chatgpt-login-zh-CN.png` and
+  `docs/qa/chatgpt-settings/zh-CN-preferences.png`.
+- Window: 880 x 650 logical pixels on macOS; captures exclude native title chrome and
+  contain the 880 x 622 app-owned area at 1x density.
+- Source: 1499 x 1049 pixels, normalized without distortion using contain-fit to 880 x 622.
+- States: Simplified Chinese, light theme, signed out; then Preferences with the saved
+  default rank. The mock's sample 5 dan does not replace the user's actual 5 kyu default.
+- Combined full-view evidence: `docs/qa/chatgpt-settings/connection-comparison.png` and
+  `docs/qa/chatgpt-settings/preferences-comparison.png`, each 1760 x 622. Both comparisons
+  were opened and inspected with source on the left and implementation on the right.
+- Focused crops were unnecessary: labels, dividers, icon strokes, control padding and
+  footer buttons are readable at full resolution in these combined views.
+
+## Findings And Corrections
+
+- User-requested API copy revision: replace technical base-URL terminology with Service
+  address, Access key, Commentary model and Get models, with a provider-supplied-values
+  explanation. The new address field starts empty; its example hides on focus and is not
+  editable content. Existing saved addresses are not erased. API layout screenshots are
+  `docs/screenshots/chatgpt-api-key-zh-CN.png` and
+  `docs/qa/chatgpt-settings/zh-CN-api-focused.png`. The first revision added unnecessary
+  minimum text rows and caused a default scrollbar; removing those empty minimum rows
+  restored all seven locale layouts without relaxing the no-scroll assertions.
+- Reopened P1 after the next user report: the first-open `UNSELECTED` connection card
+  contained only a sentence and no illustration. Earlier tests clicked ChatGPT before
+  capturing, so the selected-state comparison did not cover the actual onboarding state.
+  Reproduced in `docs/qa/chatgpt-settings/zh-CN-initial-before.png`; the new native assertion
+  failed before the fix. The neutral initial card now includes the same browser/globe,
+  aligned introduction and privacy footer without choosing or persisting a provider.
+  `initial-comparison.png` shows before/after, not a mock-versus-build comparison.
+  The selected ChatGPT state was separately recaptured and compared to the reference in
+  `connection-comparison.png`. Both combined images were opened and inspected.
+- Added visible-icon bounds assertions for initial and ChatGPT states in every locale,
+  plus asset decoding/nonempty-image tests. The native suite now captures first-open
+  before clicking either provider; saving preferences still leaves the provider unselected.
+- Second fidelity pass, after user feedback: the earlier pass accepted too much typography
+  and spacing drift. Reopened these as P2: inherited gray/green text, uniformly heavy
+  navigation, compressed preference rows, excessive login whitespace and the missing globe.
+  The final captures now use explicit regular/bold font roles, slate text and jade accents,
+  a 210 px rail, 220 px fields, corrected provider-tab padding and a recreated browser/globe.
+  The screenshot paths above have been refreshed with the post-fix evidence.
+- Font metrics initially introduced vertical overflow, including a one-pixel overflow in
+  the Chinese preferences page. After adjusting header/page/section margins, the complete
+  seven-locale native suite passes without a default scrollbar. Small-window scrolling
+  and persistent footer controls remain intact; the test assertion was not relaxed.
+- Resolved P1: the initial native form inherited beige input surfaces and hidden-card
+  preferred heights, adding blank space and default scrollbars. Visible-card sizing,
+  width-tracking pages and explicit theme-aware control rendering now preserve the design.
+- Resolved P2: English preferences and signed-in account content initially overflowed.
+  Shorter navigation, compact field spacing and removal of redundant signed-in notices
+  leave default-size pages without scrollbars in every tested locale.
+- Resolved P2: preferences lacked the source's two section headings, and the connection
+  illustration/actions were too far left. Added groups and adjusted the sidebar, margins
+  and action alignment; the final combined captures show the post-fix result.
+- Resolved P2: the longer English Save preferences label was clipped after changing pages.
+  The persistent button width now accommodates both localized labels; native tests pass.
+
+## Fidelity Surfaces
+
+- Typography: available PingFang SC, Microsoft YaHei UI or Noto Sans CJK SC with native
+  fallback; 32 px window/page headings,
+  16 px labels and 14 px wrapping explanations preserve hierarchy. System glyph weight
+  differs slightly from the generated reference; no font is embedded or simulated.
+- Layout: tinted 210 px minimum rail, equal provider tabs, consistent 220 px field alignment,
+  thin row separators and persistent footer. Default 880 x 650 has no page scrollbar;
+  the 740 x 530 minimum uses safe content scrolling without hiding footer actions.
+- Colors: white content, pale teal rail, jade selected state/action, slate helper text
+  and neutral dividers. The mock's subtle gradient is intentionally a flat native surface.
+- Assets: licensed Lucide control icons plus a transparent generated browser/globe
+  illustration based on the selected source. Its 86 x 70 logical aspect ratio is preserved.
+  It is neither an OpenAI logo nor a rasterized form; all text remains native and editable.
+- Copy: connection credentials and teaching controls never share a page. Preferences
+  explicitly apply to both providers. Save preferences deliberately replaces the mock's
+  ambiguous Save settings label, and successful preference saves keep the editor open.
+
+## Interaction Evidence And Limits
+
+Native macOS tests exercised first-open and all seven locale variants, equal provider dimensions/fonts,
+page switching, API draft preservation, preferences-only persistence, minimum resizing,
+and fake-service signed-in, model-error and sign-out states. Accessible names and button
+text bounds are checked. Focus outlines remain visible and the OS owns the close button.
+
+Additional captures are under `docs/qa/chatgpt-settings/`: API form, signed-in account,
+model error, minimum window, English preferences and Thai preferences. No real credentials
+appear in the captures; the account is a local fake-service fixture.
+
+After the first-open fix, a temporary native app image was built from the newly packaged
+shaded JAR (no development-classpath resources). Desktop computer-use screenshots of its
+880 x 650 window confirmed the globe and navigation icons in the actual first-open and
+ChatGPT pages. API Key, Preferences and return navigation were also clicked and inspected.
+These desktop screenshots are inline in the task; the durable component captures and
+comparisons above cover the same controls without the 28 px native title bar. No real
+authentication or inference was invoked during this visual check.
+
+Windows native DPI, real screen-reader usage and real eligible ChatGPT account acceptance
+remain unverified. This result is limited to the local settings redesign, not an assertion
+that the complete authentication feature or every platform has passed release acceptance.
+
+No remaining actionable P0/P1/P2 design findings in the compared local states.
+P3 follow-up: system-font glyph shapes and the flat native surface differ slightly from the
+generated mock's optical weight and subtle background texture. The native title bar, visible
+keyboard focus, user's actual rank and precise Save preferences label are intentional.
+
+final result: passed
+
+---
+
+# Earlier AI Commentary Reader Design QA
 
 ## Comparison Target
 

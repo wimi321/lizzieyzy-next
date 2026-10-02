@@ -21,8 +21,18 @@ import java.util.Properties;
 
 /** Persists non-secret AI commentary preferences and keeps the API key in native storage. */
 public final class TeacherSettings {
-  static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
-  static final String DEFAULT_MODEL = "gpt-4o-mini";
+  enum Provider {
+    UNSELECTED,
+    CHATGPT,
+    API_KEY
+  }
+
+  private Provider provider = Provider.UNSELECTED;
+  private ChatGptSessions chatGptSessions;
+  private volatile ChatGptSessions.Account chatGptAccount;
+  static final String DEFAULT_BASE_URL = "";
+  private static final String LEGACY_BASE_URL = "https://api.openai.com/v1";
+  static final String DEFAULT_MODEL = "";
 
   private static final String FILE_NAME = "teacher.properties";
   private static final String CREDENTIAL_PREFIX = "ai-commentary:";
@@ -55,6 +65,8 @@ public final class TeacherSettings {
   /** 0=少讲 1=适中 2=详细。 */
   private int variationIndex = 1;
 
+  private boolean apiKeyRestoreAttempted;
+
   public static TeacherSettings createDefault() {
     Path workDirectory = Config.resolvedWorkDirPath();
     CredentialStore store =
@@ -65,6 +77,11 @@ public final class TeacherSettings {
   TeacherSettings(Path settingsFile, CredentialStore credentialStore) {
     this.settingsFile = settingsFile;
     this.credentialStore = credentialStore;
+  }
+
+  TeacherSettings(Path settingsFile, CredentialStore credentialStore, ChatGptSessions sessions) {
+    this(settingsFile, credentialStore);
+    chatGptSessions = sessions;
   }
 
   public synchronized Snapshot load() throws IOException {
@@ -78,8 +95,25 @@ public final class TeacherSettings {
       }
     }
 
-    baseUrl = validateBaseUrl(properties.getProperty("baseUrl", DEFAULT_BASE_URL));
-    model = validateModel(properties.getProperty("model", DEFAULT_MODEL));
+    // Only pre-provider settings may have relied on the former implicit OpenAI address.
+    String storedBaseUrl = properties.getProperty("baseUrl");
+    if (storedBaseUrl == null || storedBaseUrl.isBlank()) {
+      storedBaseUrl =
+          Files.isRegularFile(settingsFile) && !properties.containsKey("provider")
+              ? LEGACY_BASE_URL
+              : DEFAULT_BASE_URL;
+    }
+    baseUrl = storedBaseUrl.isBlank() ? "" : validateBaseUrl(storedBaseUrl);
+    try {
+      provider =
+          Provider.valueOf(
+              properties.getProperty(
+                  "provider", Files.isRegularFile(settingsFile) ? "API_KEY" : "UNSELECTED"));
+    } catch (IllegalArgumentException invalid) {
+      provider = Provider.UNSELECTED;
+    }
+    String storedModel = properties.getProperty("model", DEFAULT_MODEL);
+    model = storedModel.isBlank() ? "" : validateModel(storedModel);
     rememberApiKey = Boolean.parseBoolean(properties.getProperty("rememberApiKey", "false"));
     rankMode = "d".equals(properties.getProperty("teacher.rankMode", "k")) ? "d" : "k";
     rankNum = clampInt(properties.getProperty("teacher.rankNum", "5"), 1, maximumRank(rankMode), 5);
@@ -96,17 +130,33 @@ public final class TeacherSettings {
       rememberApiKey = false;
       properties.remove("apiKey");
       writeProperties(sanitizedProperties());
-    } else if (rememberApiKey && credentialStore.isAvailable()) {
+    } else if (provider != Provider.CHATGPT) {
       try {
-        Optional<String> stored =
-            credentialStore.read(CredentialStore.Kind.API_KEY, credentialAccount(baseUrl));
-        replaceSessionApiKey(stored.orElse("").toCharArray());
+        restoreRememberedApiKey();
       } catch (IOException e) {
         replaceSessionApiKey(new char[0]);
       }
     }
     loaded = true;
     return snapshot();
+  }
+
+  /** Only restore inactive-provider credentials when the user explicitly opens that provider. */
+  synchronized void restoreRememberedApiKey() throws IOException {
+    if (apiKeyRestoreAttempted || sessionApiKey.length > 0 || !rememberApiKey || baseUrl.isBlank())
+      return;
+    apiKeyRestoreAttempted = true;
+    if (!credentialStore.isAvailable()) return;
+    try {
+      Optional<String> stored =
+          credentialStore.read(CredentialStore.Kind.API_KEY, credentialAccount(baseUrl));
+      replaceSessionApiKey(stored.orElse("").toCharArray());
+    } catch (IOException unavailable) {
+      throw new IOException(
+          TeacherStrings.get(
+              "Teacher.settings.storageUnavailable",
+              "System credential storage is unavailable; the key will be session-only."));
+    }
   }
 
   public synchronized Snapshot save(
@@ -118,7 +168,7 @@ public final class TeacherSettings {
     String normalizedBaseUrl = validateBaseUrl(requestedBaseUrl);
     String normalizedModel = validateModel(requestedModel);
     char[] suppliedKey = requestedApiKey == null ? new char[0] : requestedApiKey.clone();
-    String oldAccount = credentialAccount(baseUrl);
+    String oldAccount = baseUrl.isBlank() ? null : credentialAccount(baseUrl);
     String newAccount = credentialAccount(normalizedBaseUrl);
 
     try {
@@ -133,7 +183,7 @@ public final class TeacherSettings {
       } else {
         credentialStore.delete(CredentialStore.Kind.API_KEY, newAccount);
       }
-      if (!oldAccount.equals(newAccount)) {
+      if (oldAccount != null && !oldAccount.equals(newAccount)) {
         credentialStore.delete(CredentialStore.Kind.API_KEY, oldAccount);
       }
 
@@ -166,7 +216,27 @@ public final class TeacherSettings {
         styleIndex,
         densityIndex,
         paceIndex,
-        variationIndex);
+        variationIndex,
+        provider);
+  }
+
+  synchronized ChatGptSessions chatGpt() {
+    if (chatGptSessions == null) chatGptSessions = ChatGptSessions.createDefault();
+    return chatGptSessions;
+  }
+
+  void refreshChatGptAccount() throws IOException {
+    chatGptAccount = chatGpt().active();
+  }
+
+  ChatGptSessions.Account chatGptAccount() {
+    return chatGptAccount;
+  }
+
+  synchronized void selectProvider(Provider requested) throws IOException {
+    load();
+    provider = requested;
+    writeProperties(sanitizedProperties());
   }
 
   /** 保存讲解设置（等级/风格/术语密度/节奏/变化细节），不触碰 LLM 凭据。 */
@@ -206,7 +276,9 @@ public final class TeacherSettings {
   }
 
   public synchronized void forgetApiKey() throws IOException {
-    credentialStore.delete(CredentialStore.Kind.API_KEY, credentialAccount(baseUrl));
+    if (!baseUrl.isBlank()) {
+      credentialStore.delete(CredentialStore.Kind.API_KEY, credentialAccount(baseUrl));
+    }
     replaceSessionApiKey(new char[0]);
     rememberApiKey = false;
     loaded = true;
@@ -215,6 +287,7 @@ public final class TeacherSettings {
 
   private Properties sanitizedProperties() {
     Properties properties = new Properties();
+    properties.setProperty("provider", provider.name());
     properties.setProperty("baseUrl", baseUrl);
     properties.setProperty("model", model);
     properties.setProperty("rememberApiKey", Boolean.toString(rememberApiKey));
@@ -260,7 +333,9 @@ public final class TeacherSettings {
   static String validateBaseUrl(String value) {
     String candidate = value == null ? "" : value.trim();
     if (candidate.isEmpty()) {
-      candidate = DEFAULT_BASE_URL;
+      throw new IllegalArgumentException(
+          TeacherStrings.get(
+              "Teacher.settings.enterAddress", "Enter the address supplied by your provider."));
     }
     while (candidate.endsWith("/")) {
       candidate = candidate.substring(0, candidate.length() - 1);
@@ -296,7 +371,10 @@ public final class TeacherSettings {
   static String validateModel(String value) {
     String candidate = value == null ? "" : value.trim();
     if (candidate.isEmpty()) {
-      throw new IllegalArgumentException("A model name is required.");
+      throw new IllegalArgumentException(
+          TeacherStrings.get(
+              "Teacher.settings.enterModel",
+              "Choose a model from your provider or enter its name."));
     }
     if (candidate.length() > 160 || candidate.chars().anyMatch(Character::isISOControl)) {
       throw new IllegalArgumentException("Model name is invalid.");
@@ -316,6 +394,7 @@ public final class TeacherSettings {
   }
 
   public static final class Snapshot {
+    final Provider provider;
     public final String baseUrl;
     public final String model;
     public final boolean rememberApiKey;
@@ -342,6 +421,37 @@ public final class TeacherSettings {
         int densityIndex,
         int paceIndex,
         int variationIndex) {
+      this(
+          baseUrl,
+          model,
+          rememberApiKey,
+          hasApiKey,
+          secureStorageAvailable,
+          secureStorageBackend,
+          rankMode,
+          rankNum,
+          styleIndex,
+          densityIndex,
+          paceIndex,
+          variationIndex,
+          Provider.API_KEY);
+    }
+
+    Snapshot(
+        String baseUrl,
+        String model,
+        boolean rememberApiKey,
+        boolean hasApiKey,
+        boolean secureStorageAvailable,
+        String secureStorageBackend,
+        String rankMode,
+        int rankNum,
+        int styleIndex,
+        int densityIndex,
+        int paceIndex,
+        int variationIndex,
+        Provider provider) {
+      this.provider = provider;
       this.baseUrl = baseUrl;
       this.model = model;
       this.rememberApiKey = rememberApiKey;

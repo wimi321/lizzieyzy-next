@@ -1,10 +1,12 @@
 package featurecat.lizzie.teacher;
 
 import featurecat.lizzie.gui.AppleStyleSupport;
+import featurecat.lizzie.util.LocaleFontSupport;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
@@ -94,6 +96,7 @@ final class TeacherDialogStyle {
 
   static void styleSecondary(AbstractButton button) {
     styleButton(button, surface(), text(), border());
+    button.setFont(button.getFont().deriveFont(Font.PLAIN));
   }
 
   static void styleDanger(AbstractButton button) {
@@ -101,6 +104,7 @@ final class TeacherDialogStyle {
   }
 
   static void styleModeButton(AbstractButton button, ModeGlyph glyph) {
+    localizeFonts(button);
     button.setUI(new ModeButtonUI());
     button.setContentAreaFilled(false);
     button.setOpaque(false);
@@ -109,16 +113,16 @@ final class TeacherDialogStyle {
     button.setForeground(text());
     button.setFont(button.getFont().deriveFont(java.awt.Font.BOLD));
     button.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-    button.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
-    button.setVerticalTextPosition(javax.swing.SwingConstants.BOTTOM);
+    button.setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
+    button.setVerticalTextPosition(javax.swing.SwingConstants.CENTER);
     button.setIconTextGap(7);
     button.setIcon(new ModeIcon(glyph));
-    button.setBorder(BorderFactory.createEmptyBorder(12, 10, 12, 10));
+    button.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
     int textWidth = button.getFontMetrics(button.getFont()).stringWidth(button.getText());
     Dimension size =
         new Dimension(
-            Math.max(92, textWidth + button.getInsets().left + button.getInsets().right + 8),
-            Math.max(96, button.getFontMetrics(button.getFont()).getHeight() + 64));
+            Math.max(110, textWidth + button.getInsets().left + button.getInsets().right + 36),
+            Math.max(42, button.getFontMetrics(button.getFont()).getHeight() + 16));
     button.setPreferredSize(size);
     button.setMinimumSize(size);
     button.setMaximumSize(size);
@@ -129,6 +133,7 @@ final class TeacherDialogStyle {
   }
 
   static void styleInput(JComponent component) {
+    localizeFonts(component);
     if (component instanceof javax.swing.JComboBox) {
       AppleStyleSupport.installComboBoxStyle((javax.swing.JComboBox<?>) component);
     }
@@ -178,8 +183,8 @@ final class TeacherDialogStyle {
     return String.format("#%02x%02x%02x", safe.getRed(), safe.getGreen(), safe.getBlue());
   }
 
-  private static void styleButton(
-      AbstractButton button, Color fill, Color foreground, Color outline) {
+  static void styleButton(AbstractButton button, Color fill, Color foreground, Color outline) {
+    localizeFonts(button);
     button.setUI(new FlatButtonUI(fill, outline));
     button.setContentAreaFilled(false);
     button.setOpaque(false);
@@ -189,6 +194,22 @@ final class TeacherDialogStyle {
     button.setForeground(foreground);
     button.setFont(button.getFont().deriveFont(java.awt.Font.BOLD));
     button.setBorder(BorderFactory.createEmptyBorder(7, 14, 7, 14));
+  }
+
+  static void localizeFonts(Component component) {
+    Font font = component.getFont();
+    if (font != null) {
+      component.setFont(font(font.getStyle(), font.getSize2D()));
+    }
+    if (component instanceof java.awt.Container)
+      for (Component child : ((java.awt.Container) component).getComponents()) localizeFonts(child);
+  }
+
+  static Font font(int style, float size) {
+    Font base = AppleStyleSupport.workspaceFont(style, Math.max(13f, size));
+    String family =
+        LocaleFontSupport.resolveLanguageFontName(base.getFamily(), TeacherStrings.locale());
+    return new Font(family, style, base.getSize()).deriveFont(base.getSize2D());
   }
 
   private static Color uiColor(String key, Color fallback) {

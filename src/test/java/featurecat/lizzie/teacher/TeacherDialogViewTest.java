@@ -14,6 +14,123 @@ import org.junit.jupiter.api.Test;
 
 class TeacherDialogViewTest {
   @Test
+  void commentaryUsesTheFullReaderWidthAtSmallAndLargeSizes() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          var view = new TeacherDialogView();
+          view.showOutput();
+          for (var size :
+              new java.awt.Dimension[] {
+                new java.awt.Dimension(760, 540), new java.awt.Dimension(1120, 760)
+              }) {
+            view.setSize(size);
+            for (var mode : TeacherDialogView.Mode.values()) {
+              view.selectMode(mode);
+              layoutTree(view);
+              assertTextOnlyReader(view);
+            }
+          }
+        });
+  }
+
+  static void assertTextOnlyReader(TeacherDialogView view) {
+    var tabs = (javax.swing.JTabbedPane) find(view, "teacherReaderTabs");
+    var reader = find(view, "teacherReader");
+    var cards = find(view, "teacherContentCards");
+    assertNotNull(tabs);
+    assertNotNull(reader);
+    assertNotNull(cards);
+    assertEquals(2, tabs.getTabCount(), "only commentary and its evidence, no duplicate board");
+    assertEquals(
+        reader.getWidth() - reader.getInsets().left - reader.getInsets().right, tabs.getWidth());
+    assertTrue(cards.getWidth() >= tabs.getWidth() - 24, "no sidebar reduces the reading width");
+  }
+
+  @Test
+  void evidenceIncludesEverySelectedPositionAndClearsWithTheGame() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          var view = new TeacherDialogView();
+          var node = TeacherBoardContextTest.position();
+          var first = TeacherEvidence.current(node).orElseThrow();
+          node.getData().moveNumber = 20;
+          var second = TeacherEvidence.current(node).orElseThrow();
+          assertFalse(
+              TeacherPromptBuilder.formatPosition(first)
+                  .equals(TeacherPromptBuilder.formatPosition(second)));
+          view.setEvidence(java.util.List.of(first, second));
+          var evidence = (javax.swing.JTextArea) find(view, "teacherEvidenceText");
+          assertNotNull(evidence);
+          assertEquals(
+              TeacherPromptBuilder.formatPosition(first)
+                  + "\n\n"
+                  + TeacherPromptBuilder.formatPosition(second),
+              evidence.getText());
+          assertEquals(0, evidence.getCaretPosition());
+          assertFalse(evidence.isEditable());
+          assertTrue(evidence.getLineWrap());
+          assertAccessibleName(evidence);
+          view.setEvidence(java.util.List.of());
+          assertEquals("", evidence.getText());
+        });
+  }
+
+  @Test
+  void initialBoardIsARealPositionNotAMissingGame() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          var view = new TeacherDialogView();
+          view.setCurrentMove(0);
+          assertEquals(
+              TeacherStrings.format("Teacher.position.move", "Current move {0}", 0),
+              view.currentMove().getText());
+          view.setCurrentMove(-1);
+          assertEquals(
+              TeacherStrings.get("Teacher.position.none", "No active position"),
+              view.currentMove().getText());
+        });
+  }
+
+  @Test
+  @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
+  void localizedControlsRenderTheirActualGlyphs() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          var previous = featurecat.lizzie.Lizzie.resourceBundle;
+          try {
+            for (String tag :
+                new String[] {"zh-CN", "zh-TW", "zh-HK", "en-US", "ja-JP", "ko", "th-TH"}) {
+              featurecat.lizzie.Lizzie.resourceBundle =
+                  java.util.ResourceBundle.getBundle(
+                      "l10n.DisplayStrings", java.util.Locale.forLanguageTag(tag));
+              TeacherDialogView view = new TeacherDialogView();
+              view.setChatGptUsageVisible(true);
+              assertGlyphs(view);
+            }
+          } finally {
+            featurecat.lizzie.Lizzie.resourceBundle = previous;
+          }
+        });
+  }
+
+  static void assertGlyphs(Component component) {
+    String text = null;
+    if (component instanceof javax.swing.AbstractButton)
+      text = ((javax.swing.AbstractButton) component).getText();
+    else if (component instanceof javax.swing.JLabel)
+      text = ((javax.swing.JLabel) component).getText();
+    else if (component instanceof javax.swing.text.JTextComponent)
+      text = ((javax.swing.text.JTextComponent) component).getText();
+    if (text != null && !text.isBlank())
+      assertEquals(
+          -1,
+          component.getFont().canDisplayUpTo(text),
+          component.getClass().getSimpleName() + ": " + text);
+    if (component instanceof Container)
+      for (Component child : ((Container) component).getComponents()) assertGlyphs(child);
+  }
+
+  @Test
   void localizedModeLabelsFitWithoutEllipsis() throws Exception {
     SwingUtilities.invokeAndWait(
         () -> {
@@ -63,11 +180,21 @@ class TeacherDialogViewTest {
           assertNotNull(composer);
           assertTrue(rail.getWidth() >= 94);
           assertTrue(reader.getWidth() >= 500, "the commentary reader remains the dominant region");
-          assertTrue(cards.getHeight() >= 220, "commentary keeps meaningful reading height");
+          assertTrue(
+              cards.getHeight() >= 220,
+              "commentary keeps meaningful reading height: "
+                  + cards.getBounds()
+                  + "; reader="
+                  + reader.getBounds()
+                  + "; modes="
+                  + rail.getBounds()
+                  + "; composer="
+                  + composer.getBounds());
           assertFalse(overlaps(boundsIn(view, rail), boundsIn(view, reader)));
           assertFalse(overlaps(boundsIn(view, reader), boundsIn(view, composer)));
-          assertTrue(view.explainNext().getY() < view.explainRange().getY());
-          assertTrue(view.explainRange().getY() < view.explainWhole().getY());
+          assertEquals(view.explainNext().getY(), view.explainRange().getY());
+          assertTrue(view.explainNext().getX() < view.explainRange().getX());
+          assertTrue(view.explainRange().getX() < view.explainWhole().getX());
         });
   }
 
@@ -156,6 +283,37 @@ class TeacherDialogViewTest {
           assertTrue(reader.getX() + reader.getWidth() <= view.getWidth() - view.getInsets().right);
           assertEquals(view.status().getText(), view.status().getToolTipText());
           assertEquals(view.modelStatus().getText(), view.modelStatus().getToolTipText());
+        });
+  }
+
+  @Test
+  void chatGptPlanUsageHasVisibleActionWithoutHidingTheComposer() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          java.util.ResourceBundle previous = featurecat.lizzie.Lizzie.resourceBundle;
+          try {
+            for (String tag : new String[] {"zh-CN", "zh-TW", "en-US", "ja-JP", "ko", "th-TH"}) {
+              featurecat.lizzie.Lizzie.resourceBundle =
+                  java.util.ResourceBundle.getBundle(
+                      "l10n.DisplayStrings", java.util.Locale.forLanguageTag(tag));
+              TeacherDialogView view = new TeacherDialogView();
+              view.setChatGptUsageVisible(true);
+              view.setSize(760, 540);
+              layoutTree(view);
+              var button = view.manageChatGptUsage();
+              assertAccessible(button);
+              assertTrue(
+                  button.getWidth() - button.getInsets().left - button.getInsets().right
+                      >= button.getFontMetrics(button.getFont()).stringWidth(button.getText()),
+                  tag);
+              var composer = find(view, "teacherComposer");
+              assertNotNull(composer);
+              assertFalse(overlaps(boundsIn(view, button), boundsIn(view, composer)), tag);
+              assertTrue(boundsIn(view, button).y + button.getHeight() <= view.getHeight(), tag);
+            }
+          } finally {
+            featurecat.lizzie.Lizzie.resourceBundle = previous;
+          }
         });
   }
 

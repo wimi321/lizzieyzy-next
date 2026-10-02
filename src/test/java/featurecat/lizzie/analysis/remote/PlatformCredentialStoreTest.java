@@ -15,40 +15,142 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 
 class PlatformCredentialStoreTest {
   @Test
-  void macKeychainReceivesSecretsOnlyThroughStandardInput() throws Exception {
+  @EnabledOnOs(OS.MAC)
+  @EnabledIfSystemProperty(named = "lizzie.test.nativeKeychain", matches = "true")
+  void macKeychainPreservesLongTokensAndSeparatesServices() throws Exception {
     RecordingRunner runner = new RecordingRunner();
-    runner.readOutput = "stored-secret\n";
     CredentialStore store = PlatformCredentialStore.create("Mac OS X", Path.of("unused"), runner);
-
-    store.write(CredentialStore.Kind.PASSWORD, "user@example.com", "never-in-argv");
-    assertEquals(
-        "stored-secret",
-        store.read(CredentialStore.Kind.PASSWORD, "user@example.com").orElseThrow());
-
-    assertFalse(runner.flattenedCommands().contains("never-in-argv"));
-    assertTrue(
-        runner.inputs.contains(
-            "never-in-argv" + System.lineSeparator() + "never-in-argv" + System.lineSeparator()));
-    assertTrue(runner.flattenedCommands().contains("add-generic-password"));
-    assertTrue(runner.flattenedCommands().contains("find-generic-password"));
+    String account = "keychain-regression-" + java.util.UUID.randomUUID();
+    assertTrue(store.isAvailable());
+    try {
+      assertTrue(store.read(CredentialStore.Kind.CHATGPT_SESSION, account).isEmpty());
+      store.write(CredentialStore.Kind.API_KEY, account, "independent-api-key");
+      for (int size : new int[] {32, 128, 129, 1024, 4096, 12000, 65536}) {
+        String secret = "x".repeat(size) + "\u4e2d\u6587\n trailing space ";
+        store.write(CredentialStore.Kind.CHATGPT_SESSION, account, secret);
+        CredentialStore reader = PlatformCredentialStore.create(Path.of("unused"));
+        assertEquals(
+            secret, reader.read(CredentialStore.Kind.CHATGPT_SESSION, account).orElseThrow());
+      }
+      assertEquals(
+          "independent-api-key", store.read(CredentialStore.Kind.API_KEY, account).orElseThrow());
+      assertTrue(runner.commands.isEmpty());
+      assertTrue(runner.inputs.isEmpty());
+    } finally {
+      store.delete(CredentialStore.Kind.CHATGPT_SESSION, account);
+      store.delete(CredentialStore.Kind.API_KEY, account);
+    }
+    store.delete(CredentialStore.Kind.CHATGPT_SESSION, account);
+    assertTrue(store.read(CredentialStore.Kind.CHATGPT_SESSION, account).isEmpty());
   }
 
   @Test
-  void aiCommentaryUsesAnIndependentMacKeychainService() throws Exception {
-    RecordingRunner runner = new RecordingRunner();
-    CredentialStore store = PlatformCredentialStore.create("Mac OS X", Path.of("unused"), runner);
+  @EnabledOnOs(OS.MAC)
+  @EnabledIfSystemProperty(named = "lizzie.test.legacyKeychain", matches = "true")
+  void macKeychainReadsAndUpdatesLegacyCommandLineEntries() throws Exception {
+    String account = "legacy-keychain-regression-" + java.util.UUID.randomUUID();
+    CredentialStore store = PlatformCredentialStore.create(Path.of("unused"));
+    try {
+      Process legacy =
+          new ProcessBuilder(
+                  "/usr/bin/security",
+                  "add-generic-password",
+                  "-a",
+                  account,
+                  "-s",
+                  "cn.lizzieyzy.next.ai-commentary.api-key",
+                  "-w")
+              .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+              .redirectError(ProcessBuilder.Redirect.DISCARD)
+              .start();
+      try {
+        try (var input = legacy.getOutputStream()) {
+          input.write("legacy-canary\nlegacy-canary\n".getBytes(StandardCharsets.UTF_8));
+        }
+        assertTrue(legacy.waitFor(10, java.util.concurrent.TimeUnit.SECONDS));
+        assertEquals(0, legacy.exitValue());
+      } finally {
+        if (legacy.isAlive()) legacy.destroyForcibly();
+      }
+      assertEquals(
+          "legacy-canary", store.read(CredentialStore.Kind.API_KEY, account).orElseThrow());
+      store.write(CredentialStore.Kind.API_KEY, account, "updated".repeat(1000));
+      assertEquals(
+          "updated".repeat(1000), store.read(CredentialStore.Kind.API_KEY, account).orElseThrow());
+    } finally {
+      store.delete(CredentialStore.Kind.API_KEY, account);
+    }
+  }
 
-    store.write(CredentialStore.Kind.API_KEY, "provider-account", "never-in-argv");
-
-    String commands = runner.flattenedCommands();
-    assertTrue(commands.contains("cn.lizzieyzy.next.ai-commentary.api-key"));
-    assertFalse(commands.contains("cn.lizzieyzy.next.zhizi.api-key"));
-    assertFalse(commands.contains("never-in-argv"));
+  @Test
+  @EnabledOnOs(OS.MAC)
+  @EnabledIfSystemProperty(named = "lizzie.test.nativeKeychain", matches = "true")
+  void chatGptBackgroundReadRefusesForeignCredentialsWithoutPrompting() throws Exception {
+    String account = "quiet-keychain-regression-" + java.util.UUID.randomUUID();
+    String service = "cn.lizzieyzy.next.ai-commentary.chatgpt-session";
+    CredentialStore store = PlatformCredentialStore.create(Path.of("unused"));
+    var security = com.sun.jna.Native.load("Security", MacKeychainNative.Security.class);
+    byte[] before = new byte[1];
+    assertEquals(0, security.SecKeychainGetUserInteractionAllowed(before));
+    try {
+      // Only the creator may read this synthetic entry. Our JVM must never ask for access.
+      Process creator =
+          new ProcessBuilder(
+                  "/usr/bin/security",
+                  "add-generic-password",
+                  "-a",
+                  account,
+                  "-s",
+                  service,
+                  "-T",
+                  "/usr/bin/security",
+                  "-w")
+              .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+              .redirectError(ProcessBuilder.Redirect.DISCARD)
+              .start();
+      try {
+        try (var input = creator.getOutputStream()) {
+          input.write("quiet-canary\nquiet-canary\n".getBytes(StandardCharsets.UTF_8));
+        }
+        assertTrue(creator.waitFor(10, java.util.concurrent.TimeUnit.SECONDS));
+        assertEquals(0, creator.exitValue());
+      } finally {
+        if (creator.isAlive()) creator.destroyForcibly();
+      }
+      org.junit.jupiter.api.Assertions.assertTimeout(
+          Duration.ofSeconds(5),
+          () -> {
+            for (int attempt = 0; attempt < 3; attempt++) {
+              IOException denied =
+                  assertThrows(
+                      IOException.class,
+                      () -> store.read(CredentialStore.Kind.CHATGPT_SESSION, account));
+              assertFalse(denied.toString().contains("quiet-canary"));
+            }
+          });
+      byte[] after = new byte[1];
+      assertEquals(0, security.SecKeychainGetUserInteractionAllowed(after));
+      assertEquals(before[0], after[0]);
+    } finally {
+      Process cleanup =
+          new ProcessBuilder(
+                  "/usr/bin/security", "delete-generic-password", "-a", account, "-s", service)
+              .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+              .redirectError(ProcessBuilder.Redirect.DISCARD)
+              .start();
+      try {
+        assertTrue(cleanup.waitFor(10, java.util.concurrent.TimeUnit.SECONDS));
+        assertEquals(0, cleanup.exitValue());
+      } finally {
+        if (cleanup.isAlive()) cleanup.destroyForcibly();
+      }
+    }
   }
 
   @Test
@@ -139,6 +241,38 @@ class PlatformCredentialStoreTest {
 
     assertEquals("session-only", store.backendName());
     assertFalse(store.isAvailable());
+  }
+
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void windowsDpapiPreservesLongChatGptTokensAndSeparatesProviders(
+      @org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+    String account = "chatgpt-regression-" + java.util.UUID.randomUUID();
+    CredentialStore writer = PlatformCredentialStore.create(directory);
+    assertTrue(writer.isAvailable());
+    writer.write(CredentialStore.Kind.API_KEY, account, "independent-api-key");
+    for (int size : new int[] {32, 128, 129, 4096, 12000, 65536}) {
+      String secret = "synthetic-" + "x".repeat(size) + "\u4e2d\u6587\n trailing space ";
+      writer.write(CredentialStore.Kind.CHATGPT_SESSION, account, secret);
+      CredentialStore reopened = PlatformCredentialStore.create(directory);
+      assertEquals(
+          secret, reopened.read(CredentialStore.Kind.CHATGPT_SESSION, account).orElseThrow());
+      assertEquals(
+          "independent-api-key", reopened.read(CredentialStore.Kind.API_KEY, account).orElseThrow());
+      try (var files = Files.list(directory)) {
+        for (Path file : files.toList()) {
+          String encoded = Files.readString(file, StandardCharsets.US_ASCII);
+          assertFalse(encoded.contains("synthetic-"));
+          assertFalse(
+              new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8)
+                  .contains("synthetic-"));
+        }
+      }
+    }
+    writer.delete(CredentialStore.Kind.CHATGPT_SESSION, account);
+    assertTrue(writer.read(CredentialStore.Kind.CHATGPT_SESSION, account).isEmpty());
+    assertEquals(
+        "independent-api-key", writer.read(CredentialStore.Kind.API_KEY, account).orElseThrow());
   }
 
   private static final class RecordingRunner
