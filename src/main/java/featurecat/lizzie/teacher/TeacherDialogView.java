@@ -13,8 +13,6 @@ import java.awt.Insets;
 import java.awt.RenderingHints;
 import javax.accessibility.AccessibleContext;
 import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -90,12 +88,14 @@ final class TeacherDialogView extends JPanel {
   private final JTextPane emptyDetail = new JTextPane();
   private final StatusDot statusDot = new StatusDot();
   private final JPanel contentCards = new JPanel(new CardLayout());
+  private final JTextArea evidenceText = new JTextArea();
+  private final javax.swing.JTabbedPane readerTabs = new javax.swing.JTabbedPane();
 
   TeacherDialogView() {
-    super(new BorderLayout(0, 14));
+    super(new BorderLayout(0, 8));
     setName("teacherDialogView");
     setBackground(TeacherDialogStyle.background());
-    setBorder(BorderFactory.createEmptyBorder(18, 20, 16, 20));
+    setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
     add(buildHeader(), BorderLayout.NORTH);
     add(buildWorkspace(), BorderLayout.CENTER);
     add(buildComposer(), BorderLayout.SOUTH);
@@ -105,31 +105,6 @@ final class TeacherDialogView extends JPanel {
   }
 
   private JPanel buildHeader() {
-    JLabel title = new JLabel(TeacherStrings.get("Teacher.title", "AI commentary"));
-    title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 6f));
-    title.setForeground(TeacherDialogStyle.text());
-
-    JTextArea subtitle =
-        wrappingText(
-            TeacherStrings.get(
-                "Teacher.subtitle",
-                "Uses existing KataGo analysis; missing evidence is never invented."));
-    subtitle.setRows(2);
-    subtitle.setFont(subtitle.getFont().deriveFont(subtitle.getFont().getSize2D() - 1f));
-    subtitle.setForeground(TeacherDialogStyle.muted());
-
-    JPanel headingText = transparent(new GridBagLayout());
-    GridBagConstraints constraints = new GridBagConstraints();
-    constraints.gridx = 0;
-    constraints.gridy = 0;
-    constraints.weightx = 1.0;
-    constraints.anchor = GridBagConstraints.WEST;
-    constraints.fill = GridBagConstraints.HORIZONTAL;
-    headingText.add(title, constraints);
-    constraints.gridy = 1;
-    constraints.insets = new Insets(3, 0, 0, 0);
-    headingText.add(subtitle, constraints);
-
     TeacherDialogStyle.styleSecondary(settingsButton);
     TeacherDialogStyle.installSettingsIcon(settingsButton);
     settingsButton.setToolTipText(
@@ -142,14 +117,13 @@ final class TeacherDialogView extends JPanel {
     settings.add(settingsButton);
 
     JPanel header = transparent(new BorderLayout(14, 0));
-    header.add(headingText, BorderLayout.CENTER);
+    header.add(buildModeRail(), BorderLayout.CENTER);
     header.add(settings, BorderLayout.EAST);
     return header;
   }
 
   private JPanel buildWorkspace() {
-    JPanel workspace = transparent(new BorderLayout(14, 0));
-    workspace.add(buildModeRail(), BorderLayout.WEST);
+    JPanel workspace = transparent(new BorderLayout(0, 8));
     workspace.add(buildReader(), BorderLayout.CENTER);
     return workspace;
   }
@@ -157,10 +131,8 @@ final class TeacherDialogView extends JPanel {
   private JPanel buildModeRail() {
     JPanel rail = new JPanel();
     rail.setName("teacherModeRail");
-    rail.setLayout(new BoxLayout(rail, BoxLayout.Y_AXIS));
-    rail.setOpaque(true);
-    rail.setBackground(TeacherDialogStyle.railSurface());
-    rail.setBorder(new TeacherDialogStyle.RoundedBorder(TeacherDialogStyle.border(), 8));
+    rail.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0));
+    rail.setOpaque(false);
     ButtonGroup modes = new ButtonGroup();
     configureModeButton(
         explainNext,
@@ -189,7 +161,6 @@ final class TeacherDialogView extends JPanel {
     rail.add(explainNext);
     rail.add(explainRange);
     rail.add(explainWhole);
-    rail.add(Box.createVerticalGlue());
     int width =
         Math.max(
             explainNext.getPreferredSize().width,
@@ -200,9 +171,6 @@ final class TeacherDialogView extends JPanel {
       button.setMinimumSize(size);
       button.setMaximumSize(size);
     }
-    Dimension railSize = new Dimension(width + 2, 10);
-    rail.setPreferredSize(railSize);
-    rail.setMinimumSize(railSize);
     return rail;
   }
 
@@ -219,13 +187,34 @@ final class TeacherDialogView extends JPanel {
   }
 
   private JPanel buildReader() {
-    JPanel reader = new JPanel(new BorderLayout(0, 0));
+    JPanel reader = new JPanel(new BorderLayout(0, 6));
     reader.setName("teacherReader");
     reader.setOpaque(true);
     reader.setBackground(TeacherDialogStyle.surface());
-    reader.setBorder(new TeacherDialogStyle.RoundedBorder(TeacherDialogStyle.border(), 8));
+    reader.setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 12));
     reader.add(buildContextBar(), BorderLayout.NORTH);
-    reader.add(buildContentCards(), BorderLayout.CENTER);
+    javax.swing.JTabbedPane tabs = readerTabs;
+    tabs.setBackground(TeacherDialogStyle.surface());
+    tabs.setForeground(TeacherDialogStyle.text());
+    tabs.setName("teacherReaderTabs");
+    tabs.addTab(TeacherStrings.get("Teacher.learning.lesson", "Explanation"), buildContentCards());
+    evidenceText.setName("teacherEvidenceText");
+    evidenceText.setEditable(false);
+    evidenceText.setLineWrap(true);
+    evidenceText.setWrapStyleWord(true);
+    evidenceText.setFont(TeacherDialogStyle.font(Font.PLAIN, 14));
+    evidenceText.setBackground(TeacherDialogStyle.surface());
+    evidenceText.setForeground(TeacherDialogStyle.text());
+    evidenceText.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+    evidenceText
+        .getAccessibleContext()
+        .setAccessibleName(TeacherStrings.get("Teacher.learning.evidence", "Analysis evidence"));
+    JScrollPane evidenceScroll = new JScrollPane(evidenceText);
+    evidenceScroll.setBorder(BorderFactory.createEmptyBorder());
+    evidenceScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    tabs.addTab(
+        TeacherStrings.get("Teacher.learning.evidence", "Analysis evidence"), evidenceScroll);
+    reader.add(tabs, BorderLayout.CENTER);
     reader.add(buildStatusArea(), BorderLayout.SOUTH);
     return reader;
   }
@@ -277,10 +266,10 @@ final class TeacherDialogView extends JPanel {
     context.setBorder(
         BorderFactory.createCompoundBorder(
             BorderFactory.createMatteBorder(0, 0, 1, 0, TeacherDialogStyle.border()),
-            BorderFactory.createEmptyBorder(10, 14, 10, 12)));
+            BorderFactory.createEmptyBorder(6, 14, 6, 12)));
     context.add(currentMove, BorderLayout.CENTER);
     context.add(right, BorderLayout.EAST);
-    context.add(range, BorderLayout.SOUTH);
+    context.add(range, BorderLayout.WEST);
     return context;
   }
 
@@ -297,8 +286,7 @@ final class TeacherDialogView extends JPanel {
     JLabel emptyIcon = new JLabel(TeacherDialogStyle.commentaryIcon());
     emptyIcon.setHorizontalAlignment(SwingConstants.CENTER);
 
-    emptyTitle.setFont(
-        emptyTitle.getFont().deriveFont(Font.BOLD, emptyTitle.getFont().getSize2D() + 4f));
+    emptyTitle.setFont(TeacherDialogStyle.font(Font.BOLD, 18));
     emptyTitle.setForeground(TeacherDialogStyle.text());
     emptyTitle.setHorizontalAlignment(SwingConstants.CENTER);
 
@@ -306,8 +294,9 @@ final class TeacherDialogView extends JPanel {
     emptyDetail.setFocusable(false);
     emptyDetail.setOpaque(false);
     emptyDetail.setForeground(TeacherDialogStyle.muted());
-    emptyDetail.setFont(emptyDetail.getFont().deriveFont(emptyDetail.getFont().getSize2D() - 1f));
-    emptyDetail.setPreferredSize(new Dimension(100, 38));
+    emptyDetail.setFont(TeacherDialogStyle.font(Font.PLAIN, 13));
+    emptyDetail.setPreferredSize(
+        new Dimension(100, 2 * emptyDetail.getFontMetrics(emptyDetail.getFont()).getHeight()));
     centerEmptyDetail();
 
     JPanel text = transparent(new GridBagLayout());
@@ -339,7 +328,7 @@ final class TeacherDialogView extends JPanel {
 
   private JScrollPane buildOutput() {
     output.setContentType("text/html");
-    TeacherDialogStyle.localizeFonts(output);
+    output.setFont(TeacherDialogStyle.font(Font.PLAIN, 16));
     output.setEditable(false);
     output.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
     output.setForeground(TeacherDialogStyle.text());
@@ -362,24 +351,28 @@ final class TeacherDialogView extends JPanel {
   private HTMLEditorKit createEditorKit() {
     HTMLEditorKit kit = new HTMLEditorKit();
     StyleSheet style = kit.getStyleSheet();
-    String fontFamily = output.getFont().getFamily().replace("'", "\\'");
+    String fontFamily = output.getFont().getFamily();
+    int bodySize = output.getFont().getSize();
     String text = TeacherDialogStyle.cssColor(TeacherDialogStyle.text());
     String surface = TeacherDialogStyle.cssColor(TeacherDialogStyle.surface());
     String muted = TeacherDialogStyle.cssColor(TeacherDialogStyle.muted());
     String subtle = TeacherDialogStyle.cssColor(TeacherDialogStyle.railSurface());
     String border = TeacherDialogStyle.cssColor(TeacherDialogStyle.border());
     style.addRule(
-        "body { font-family: '"
+        "body { font-family: "
             + fontFamily
-            + "', sans-serif; font-size: 15px; line-height: 1.55; margin: 18px 22px; color: "
+            + "; font-size: "
+            + bodySize
+            + "pt; line-height: 1.4; margin: 18px 22px; color: "
             + text
             + "; background-color: "
             + surface
             + "; }");
-    style.addRule("p { margin: 7px 0; }");
-    style.addRule("h1 { font-size: 22px; margin: 15px 0 7px 0; }");
-    style.addRule("h2 { font-size: 19px; margin: 14px 0 6px 0; }");
-    style.addRule("h3 { font-size: 16px; margin: 13px 0 5px 0; }");
+    style.addRule("p { margin: 0 0 14px 0; }");
+    style.addRule("a { color: " + TeacherDialogStyle.cssColor(TeacherDialogStyle.accent()) + "; }");
+    style.addRule("h1 { font-size: " + (bodySize + 4) + "pt; margin: 15px 0 9px 0; }");
+    style.addRule("h2 { font-size: " + (bodySize + 2) + "pt; margin: 14px 0 8px 0; }");
+    style.addRule("h3 { font-size: " + bodySize + "pt; margin: 13px 0 7px 0; }");
     style.addRule("b, strong { font-weight: bold; }");
     style.addRule(
         "code { background-color: " + subtle + "; padding: 1px 4px; font-family: monospace; }");
@@ -401,7 +394,7 @@ final class TeacherDialogView extends JPanel {
   }
 
   private JPanel buildStatusArea() {
-    status.setRows(2);
+    status.setRows(1);
     progressBar.setIndeterminate(true);
     progressBar.setVisible(false);
     progressBar.setPreferredSize(new Dimension(10, 3));
@@ -432,22 +425,20 @@ final class TeacherDialogView extends JPanel {
             BorderFactory.createMatteBorder(1, 0, 0, 0, TeacherDialogStyle.border()),
             BorderFactory.createEmptyBorder(8, 13, 8, 13)));
     row.add(statusLeft, BorderLayout.CENTER);
-    row.add(modelStatus, BorderLayout.SOUTH);
+    JPanel account = transparent(new BorderLayout(8, 0));
+    account.add(modelStatus, BorderLayout.CENTER);
+    account.add(chatGptUsage, BorderLayout.EAST);
+    row.add(account, BorderLayout.EAST);
 
     JPanel area = transparent(new BorderLayout());
     area.add(progressBar, BorderLayout.NORTH);
     area.add(row, BorderLayout.CENTER);
-    chatGptUsage.setBorder(BorderFactory.createEmptyBorder(0, 13, 8, 13));
-    chatGptUsage.add(
-        new JLabel(ChatGptSettingsPanel.text("usingPlan", "Using ChatGPT plan")),
-        BorderLayout.CENTER);
     TeacherDialogStyle.styleSecondary(manageChatGptUsage);
     manageChatGptUsage
         .getAccessibleContext()
         .setAccessibleDescription(manageChatGptUsage.getText());
     chatGptUsage.add(manageChatGptUsage, BorderLayout.LINE_END);
     chatGptUsage.setVisible(false);
-    area.add(chatGptUsage, BorderLayout.SOUTH);
     return area;
   }
 
@@ -486,7 +477,21 @@ final class TeacherDialogView extends JPanel {
     JPanel composer = transparent(new BorderLayout(0, 6));
     composer.setName("teacherComposer");
     composer.add(promptRow, BorderLayout.CENTER);
-    composer.add(writeToSgf, BorderLayout.SOUTH);
+    JPanel footer = transparent(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0));
+    footer.add(writeToSgf);
+    for (String[] question :
+        new String[][] {{"simpler", "Explain simply"}, {"reply", "Why this reply?"}}) {
+      JButton shortcut =
+          new JButton(TeacherStrings.get("Teacher.learning." + question[0], question[1]));
+      TeacherDialogStyle.styleSecondary(shortcut);
+      shortcut.addActionListener(
+          event -> {
+            followUp.setText(shortcut.getText());
+            followUp.requestFocusInWindow();
+          });
+      footer.add(shortcut);
+    }
+    composer.add(footer, BorderLayout.SOUTH);
     return composer;
   }
 
@@ -510,6 +515,7 @@ final class TeacherDialogView extends JPanel {
   void selectMode(Mode mode) {
     this.mode = mode;
     rangeControls.setVisible(mode == Mode.RANGE);
+    currentMove.setVisible(mode != Mode.RANGE);
     switch (mode) {
       case RANGE:
         explainRange.setSelected(true);
@@ -528,6 +534,14 @@ final class TeacherDialogView extends JPanel {
 
   Mode mode() {
     return mode;
+  }
+
+  void setEvidence(java.util.List<TeacherEvidence.Position> positions) {
+    evidenceText.setText(
+        positions.stream()
+            .map(TeacherPromptBuilder::formatPosition)
+            .collect(java.util.stream.Collectors.joining("\n\n")));
+    evidenceText.setCaretPosition(0);
   }
 
   JButton start() {
@@ -582,7 +596,7 @@ final class TeacherDialogView extends JPanel {
 
   void setCurrentMove(int moveNumber) {
     currentMove.setText(
-        moveNumber <= 0
+        moveNumber < 0
             ? TeacherStrings.get("Teacher.position.none", "No active position")
             : TeacherStrings.format("Teacher.position.move", "Current move {0}", moveNumber));
     currentMove.setToolTipText(currentMove.getText());

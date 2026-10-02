@@ -21,12 +21,12 @@ import java.util.OptionalDouble;
 public final class TeacherEvidence {
   static final int MAX_CANDIDATES = 3;
   static final int MAX_PV_MOVES = 12;
-  static final int MAX_RANGE_POSITIONS = 40;
+  static final int MAX_RANGE_POSITIONS = 5;
 
   private TeacherEvidence() {}
 
   public static Optional<Position> current(BoardHistoryNode node) {
-    return position(node);
+    return position(node).map(p -> p.withBoard(TeacherBoardContext.capture(node, p)));
   }
 
   public static Range mainLine(BoardHistoryNode root, int firstMove, int lastMove) {
@@ -36,12 +36,17 @@ public final class TeacherEvidence {
     int normalizedFirst = Math.max(1, firstMove);
     int normalizedLast = Math.max(normalizedFirst, lastMove);
     ArrayList<Position> available = new ArrayList<>();
+    java.util.Map<Position, BoardHistoryNode> sources = new java.util.IdentityHashMap<>();
     BoardHistoryNode parent = root;
     while (parent != null && parent.next().isPresent()) {
       BoardHistoryNode child = parent.next().get();
       int moveNumber = child.getData().moveNumber;
       if (moveNumber >= normalizedFirst && moveNumber <= normalizedLast) {
-        position(parent).ifPresent(available::add);
+        Optional<Position> evidence = position(parent);
+        if (evidence.isPresent()) {
+          available.add(evidence.get());
+          sources.put(evidence.get(), parent);
+        }
       }
       if (moveNumber > normalizedLast) {
         break;
@@ -49,7 +54,11 @@ public final class TeacherEvidence {
       parent = child;
     }
     List<Position> selected = selectKeyPositions(available, MAX_RANGE_POSITIONS);
-    return new Range(selected, available.size(), Math.max(0, available.size() - selected.size()));
+    // Only freeze/replay the selected teaching moments, not every move in a long SGF.
+    ArrayList<Position> grounded = new ArrayList<>();
+    for (Position next : selected)
+      grounded.add(next.withBoard(TeacherBoardContext.capture(sources.get(next), next)));
+    return new Range(grounded, available.size(), Math.max(0, available.size() - grounded.size()));
   }
 
   public static Range wholeGame(BoardHistoryNode root) {
@@ -81,6 +90,17 @@ public final class TeacherEvidence {
     }
 
     String actualMove = actualMove(parent.next().orElse(null));
+    if (!actualMove.isEmpty()
+        && candidates.stream().noneMatch(c -> c.coordinate.equals(actualMove))) {
+      for (int i = 0; i < moves.size(); i++) {
+        MoveData move = moves.get(i);
+        if (move != null && actualMove.equals(normalizeCoordinate(move.coordinate))) {
+          Candidate actual = candidate(i + 1, move);
+          if (actual != null) candidates.add(actual);
+          break;
+        }
+      }
+    }
     OptionalDouble actualLoss = OptionalDouble.empty();
     if (!actualMove.isEmpty()) {
       Candidate best = candidates.get(0);
@@ -97,11 +117,13 @@ public final class TeacherEvidence {
 
     ArrayList<String> continuation = new ArrayList<>();
     BoardHistoryNode walk = parent.next().orElse(null);
+    boolean black = data.blackToPlay;
     while (walk != null && continuation.size() < 5) {
-      if (walk.getData() != null && walk.getData().lastMove.isPresent()) {
-        int[] xy = walk.getData().lastMove.get();
-        continuation.add(normalizeCoordinate(Board.convertCoordinatesToName(xy[0], xy[1])));
-      }
+      String move = actualMove(walk);
+      if (move.isEmpty() || walk.getData().lastMoveColor != (black ? Stone.BLACK : Stone.WHITE))
+        break;
+      continuation.add(move);
+      black = !black;
       walk = walk.next().orElse(null);
     }
 
@@ -149,7 +171,7 @@ public final class TeacherEvidence {
     if (data.isPassNode()) {
       return "pass";
     }
-    if (data.lastMove.isEmpty()) {
+    if (!data.isMoveNode() || data.lastMove.isEmpty()) {
       return "";
     }
     int[] move = data.lastMove.get();
@@ -181,9 +203,9 @@ public final class TeacherEvidence {
             .reversed()
             .thenComparingInt(position -> position.moveNumber));
     LinkedHashSet<Position> selected = new LinkedHashSet<>();
-    selected.add(positions.get(0));
-    selected.add(positions.get(positions.size() - 1));
     for (Position position : ranked) {
+      if (selected.stream().anyMatch(p -> Math.abs(p.moveNumber - position.moveNumber) < 3))
+        continue;
       selected.add(position);
       if (selected.size() >= limit) {
         break;
@@ -195,8 +217,10 @@ public final class TeacherEvidence {
   }
 
   private static double importance(Position position) {
+    OptionalDouble scoreLoss = position.actualScoreLoss();
+    if (scoreLoss.isPresent()) return scoreLoss.getAsDouble();
     if (position.actualWinrateLoss.isPresent()) {
-      return position.actualWinrateLoss.getAsDouble();
+      return position.actualWinrateLoss.getAsDouble() / 10.0;
     }
     return position.candidates.isEmpty() ? 0.0 : position.candidates.get(0).visits / 1_000_000.0;
   }
@@ -280,8 +304,8 @@ public final class TeacherEvidence {
       populateKnowledgeContext(query, node);
       Optional<Position> position = position(node);
       query.lossScore =
-          position.isPresent() && position.get().actualWinrateLoss.isPresent()
-              ? position.get().actualWinrateLoss.getAsDouble()
+          position.isPresent() && position.get().actualScoreLoss().isPresent()
+              ? position.get().actualScoreLoss().getAsDouble()
               : null;
       List<featurecat.lizzie.teacher.knowledge.MatchEngine.KnowledgeMatch> matches =
           featurecat.lizzie.teacher.knowledge.MatchEngine.searchKnowledgeMatchEngine(query);
@@ -358,7 +382,6 @@ public final class TeacherEvidence {
     }
 
     Stone[] stones = node.getData().stones;
-    int boardWidth = Math.max(1, Board.boardWidth);
     if (stones != null) {
       for (int index = 0; index < stones.length; index++) {
         Stone stone = stones[index];
@@ -369,7 +392,7 @@ public final class TeacherEvidence {
             new featurecat.lizzie.teacher.knowledge.LocalPatternMatcher.BoardSnapshotStone();
         snapshot.point =
             normalizeCoordinate(
-                Board.convertCoordinatesToName(index % boardWidth, index / boardWidth));
+                Board.convertCoordinatesToName(Board.getCoord(index)[0], Board.getCoord(index)[1]));
         snapshot.color = stone.isBlack() ? "B" : "W";
         query.boardSnapshot.add(snapshot);
       }
@@ -426,6 +449,7 @@ public final class TeacherEvidence {
     public final String actualMove;
     public final OptionalDouble actualWinrateLoss;
     public final List<Candidate> candidates;
+    final TeacherBoardContext board;
 
     /** 实战手之后的棋谱实际续走序列（最多 5 手），无则空列表。 */
     public final List<String> playedContinuation;
@@ -448,6 +472,26 @@ public final class TeacherEvidence {
         OptionalDouble actualWinrateLoss,
         Collection<Candidate> candidates,
         Collection<String> playedContinuation) {
+      this(
+          moveNumber,
+          toPlay,
+          playouts,
+          actualMove,
+          actualWinrateLoss,
+          candidates,
+          playedContinuation,
+          null);
+    }
+
+    private Position(
+        int moveNumber,
+        String toPlay,
+        int playouts,
+        String actualMove,
+        OptionalDouble actualWinrateLoss,
+        Collection<Candidate> candidates,
+        Collection<String> playedContinuation,
+        TeacherBoardContext board) {
       this.moveNumber = Math.max(0, moveNumber);
       this.toPlay = "W".equals(toPlay) ? "W" : "B";
       this.playouts = Math.max(0, playouts);
@@ -460,6 +504,29 @@ public final class TeacherEvidence {
       this.playedContinuation =
           Collections.unmodifiableList(
               new ArrayList<>(playedContinuation == null ? List.of() : playedContinuation));
+      this.board = board;
+    }
+
+    Position withBoard(TeacherBoardContext board) {
+      return new Position(
+          moveNumber,
+          toPlay,
+          playouts,
+          actualMove,
+          actualWinrateLoss,
+          candidates,
+          playedContinuation,
+          board);
+    }
+
+    OptionalDouble actualScoreLoss() {
+      if (candidates.isEmpty() || !Double.isFinite(candidates.get(0).scoreLead))
+        return OptionalDouble.empty();
+      for (Candidate candidate : candidates) {
+        if (candidate.coordinate.equals(actualMove) && Double.isFinite(candidate.scoreLead))
+          return OptionalDouble.of(Math.max(0, candidates.get(0).scoreLead - candidate.scoreLead));
+      }
+      return OptionalDouble.empty();
     }
   }
 

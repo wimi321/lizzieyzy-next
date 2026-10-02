@@ -295,6 +295,12 @@ class TeacherCommentaryNativeTest {
               JDialog dialog = new JDialog();
               try {
                 var view = new TeacherDialogView();
+                view.setEvidence(
+                    List.of(
+                        TeacherEvidence.current(TeacherBoardContextTest.position()).orElseThrow()));
+                view.output()
+                    .setText(TeacherDialog.markdownToHtml("A18 captures the stone at A19."));
+                view.showOutput();
                 view.setChatGptUsageVisible(true);
                 dialog.setContentPane(view);
                 dialog.setSize(760, 540);
@@ -324,6 +330,8 @@ class TeacherCommentaryNativeTest {
                     assertTrue(bounds.x >= 0 && bounds.x + bounds.width <= view.getWidth(), tag);
                     assertTrue(bounds.y >= 0 && bounds.y + bounds.height <= view.getHeight(), tag);
                   }
+                  TeacherDialogViewTest.assertTextOnlyReader(view);
+                  assertFalse(view.output().getText().contains("teacher:point:"));
                   capture(dialog, "locale-" + tag + "-" + mode);
                 }
               } finally {

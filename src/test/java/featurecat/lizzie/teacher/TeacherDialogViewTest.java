@@ -14,6 +14,84 @@ import org.junit.jupiter.api.Test;
 
 class TeacherDialogViewTest {
   @Test
+  void commentaryUsesTheFullReaderWidthAtSmallAndLargeSizes() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          var view = new TeacherDialogView();
+          view.showOutput();
+          for (var size :
+              new java.awt.Dimension[] {
+                new java.awt.Dimension(760, 540), new java.awt.Dimension(1120, 760)
+              }) {
+            view.setSize(size);
+            for (var mode : TeacherDialogView.Mode.values()) {
+              view.selectMode(mode);
+              layoutTree(view);
+              assertTextOnlyReader(view);
+            }
+          }
+        });
+  }
+
+  static void assertTextOnlyReader(TeacherDialogView view) {
+    var tabs = (javax.swing.JTabbedPane) find(view, "teacherReaderTabs");
+    var reader = find(view, "teacherReader");
+    var cards = find(view, "teacherContentCards");
+    assertNotNull(tabs);
+    assertNotNull(reader);
+    assertNotNull(cards);
+    assertEquals(2, tabs.getTabCount(), "only commentary and its evidence, no duplicate board");
+    assertEquals(
+        reader.getWidth() - reader.getInsets().left - reader.getInsets().right, tabs.getWidth());
+    assertTrue(cards.getWidth() >= tabs.getWidth() - 24, "no sidebar reduces the reading width");
+  }
+
+  @Test
+  void evidenceIncludesEverySelectedPositionAndClearsWithTheGame() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          var view = new TeacherDialogView();
+          var node = TeacherBoardContextTest.position();
+          var first = TeacherEvidence.current(node).orElseThrow();
+          node.getData().moveNumber = 20;
+          var second = TeacherEvidence.current(node).orElseThrow();
+          assertFalse(
+              TeacherPromptBuilder.formatPosition(first)
+                  .equals(TeacherPromptBuilder.formatPosition(second)));
+          view.setEvidence(java.util.List.of(first, second));
+          var evidence = (javax.swing.JTextArea) find(view, "teacherEvidenceText");
+          assertNotNull(evidence);
+          assertEquals(
+              TeacherPromptBuilder.formatPosition(first)
+                  + "\n\n"
+                  + TeacherPromptBuilder.formatPosition(second),
+              evidence.getText());
+          assertEquals(0, evidence.getCaretPosition());
+          assertFalse(evidence.isEditable());
+          assertTrue(evidence.getLineWrap());
+          assertAccessibleName(evidence);
+          view.setEvidence(java.util.List.of());
+          assertEquals("", evidence.getText());
+        });
+  }
+
+  @Test
+  void initialBoardIsARealPositionNotAMissingGame() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          var view = new TeacherDialogView();
+          view.setCurrentMove(0);
+          assertEquals(
+              TeacherStrings.format("Teacher.position.move", "Current move {0}", 0),
+              view.currentMove().getText());
+          view.setCurrentMove(-1);
+          assertEquals(
+              TeacherStrings.get("Teacher.position.none", "No active position"),
+              view.currentMove().getText());
+        });
+  }
+
+  @Test
   @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
   void localizedControlsRenderTheirActualGlyphs() throws Exception {
     SwingUtilities.invokeAndWait(
@@ -102,11 +180,21 @@ class TeacherDialogViewTest {
           assertNotNull(composer);
           assertTrue(rail.getWidth() >= 94);
           assertTrue(reader.getWidth() >= 500, "the commentary reader remains the dominant region");
-          assertTrue(cards.getHeight() >= 220, "commentary keeps meaningful reading height");
+          assertTrue(
+              cards.getHeight() >= 220,
+              "commentary keeps meaningful reading height: "
+                  + cards.getBounds()
+                  + "; reader="
+                  + reader.getBounds()
+                  + "; modes="
+                  + rail.getBounds()
+                  + "; composer="
+                  + composer.getBounds());
           assertFalse(overlaps(boundsIn(view, rail), boundsIn(view, reader)));
           assertFalse(overlaps(boundsIn(view, reader), boundsIn(view, composer)));
-          assertTrue(view.explainNext().getY() < view.explainRange().getY());
-          assertTrue(view.explainRange().getY() < view.explainWhole().getY());
+          assertEquals(view.explainNext().getY(), view.explainRange().getY());
+          assertTrue(view.explainNext().getX() < view.explainRange().getX());
+          assertTrue(view.explainRange().getX() < view.explainWhole().getX());
         });
   }
 

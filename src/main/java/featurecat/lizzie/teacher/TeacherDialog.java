@@ -112,6 +112,10 @@ public final class TeacherDialog extends JDialog {
     bindActions();
     setMinimumSize(new Dimension(760, 540));
     setSize(new Dimension(900, 680));
+    java.awt.Rectangle screen =
+        java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+    setMinimumSize(new Dimension(Math.min(760, screen.width), Math.min(540, screen.height)));
+    setSize(Math.min(900, screen.width - 24), Math.min(680, screen.height - 24));
     setLocationRelativeTo(owner);
     getRootPane()
         .registerKeyboardAction(
@@ -132,6 +136,7 @@ public final class TeacherDialog extends JDialog {
                 lastEvidenceContext = List.of();
                 lastEvidencePositions = List.of();
                 requestPositions = List.of();
+                view.setEvidence(List.of());
                 requestTarget = null;
                 pendingText.clear();
                 followUp.setText("");
@@ -229,7 +234,7 @@ public final class TeacherDialog extends JDialog {
       if (!requests.isRunning()) {
         clearOutputForEmptyState();
       }
-      view.setCurrentMove(0);
+      view.setCurrentMove(-1);
       setStatus(
           TeacherStrings.get("Teacher.status.noGame", "No game is loaded."),
           TeacherDialogView.StatusTone.WARNING);
@@ -263,7 +268,7 @@ public final class TeacherDialog extends JDialog {
       lastEvidenceContext = List.of();
       lastEvidencePositions = List.of();
       clearOutputForEmptyState();
-      boolean hasEvidence = TeacherEvidence.current(current).isPresent();
+      boolean hasEvidence = TeacherEvidence.position(current).isPresent();
       setStatus(
           evidenceStatus(current),
           hasEvidence
@@ -333,7 +338,7 @@ public final class TeacherDialog extends JDialog {
             if (node != null)
               setStatus(
                   evidenceStatus(node),
-                  TeacherEvidence.current(node).isPresent()
+                  TeacherEvidence.position(node).isPresent()
                       ? TeacherDialogView.StatusTone.NEUTRAL
                       : TeacherDialogView.StatusTone.WARNING);
           }
@@ -511,7 +516,6 @@ public final class TeacherDialog extends JDialog {
       String question) {
     if (requestRunning) return false;
     Object evidenceGame = currentGame();
-    messages = appendKnowledge(messages, targetNode);
     CommentaryClient client = configuredClient();
     if (client == null) {
       return false;
@@ -531,6 +535,7 @@ public final class TeacherDialog extends JDialog {
     lastEvidenceContext = List.copyOf(context);
     lastEvidencePositions = List.copyOf(positions);
     requestPositions = lastEvidencePositions;
+    view.setEvidence(requestPositions);
     requestQuestion = question;
     if (question.isEmpty() || lastCompletedOutput.isEmpty()) {
       if (question.isEmpty()) lastCompletedOutput = "";
@@ -555,7 +560,7 @@ public final class TeacherDialog extends JDialog {
     setRunning(true);
     setStatus(runningStatus, TeacherDialogView.StatusTone.RUNNING);
     requests.start(
-        client,
+        new GroundedCommentaryClient(client, positions),
         messages,
         new TeacherRequestController.Listener() {
           @Override
@@ -591,28 +596,6 @@ public final class TeacherDialog extends JDialog {
           }
         });
     return true;
-  }
-
-  /** 把知识库匹配结果（定式/棋形）拼到最后一条 user 消息；无匹配不改动。 */
-  private static List<TeacherLlmClient.Message> appendKnowledge(
-      List<TeacherLlmClient.Message> messages, BoardHistoryNode node) {
-    if (messages == null || messages.isEmpty()) {
-      return messages;
-    }
-    String knowledge = TeacherEvidence.knowledgeMatchText(node);
-    if (knowledge.isEmpty()) {
-      return messages;
-    }
-    java.util.ArrayList<TeacherLlmClient.Message> out = new java.util.ArrayList<>(messages);
-    int last = out.size() - 1;
-    TeacherLlmClient.Message message = out.get(last);
-    if ("user".equals(message.role)) {
-      out.set(
-          last,
-          new TeacherLlmClient.Message(
-              message.role, message.content + "\n\n【Knowledge】\n" + knowledge));
-    }
-    return out;
   }
 
   private CommentaryClient configuredClient() {
@@ -707,7 +690,8 @@ public final class TeacherDialog extends JDialog {
       TeacherVerifier.Result verification = TeacherVerifier.verify(result, requestPositions);
       java.util.ArrayList<String> notes = new java.util.ArrayList<>(verification.violations);
       notes.addAll(verification.warnings);
-      appendQualityGateNotes(result, notes);
+      // The old quality gate rebuilt mutable live evidence after generation and omitted PVs.
+      // Verify against the same frozen positions that were sent, including board-group references.
       if (notes.isEmpty()) {
         return;
       }
@@ -727,29 +711,6 @@ public final class TeacherDialog extends JDialog {
       output.setText(markdownToHtml(rawOutput.toString()));
     } catch (Exception ignored) {
       // 校验失败不阻断解说显示
-    }
-  }
-
-  /** 重型校验链：构建 MoveAnalysis → TeachingEvidence → QualityGate（结构化/claim 级核对）。 */
-  private void appendQualityGateNotes(String result, java.util.ArrayList<String> notes) {
-    if (requestTarget == null
-        || requestTarget.getData() == null
-        || requestPositions.size() != 1
-        || requestPositions.get(0).moveNumber != requestTarget.getData().moveNumber) {
-      return;
-    }
-    try {
-      MoveAnalysis analysis = TeacherEvidence.moveAnalysis(requestTarget);
-      TeachingEvidenceBuilder.TeachingEvidence evidence =
-          TeachingEvidenceBuilder.buildTeachingEvidence(
-              analysis, "", java.util.List.of(), java.util.List.of(), java.util.List.of());
-      featurecat.lizzie.teacher.analysis.QualityGate.TeacherQualityGateResult gate =
-          featurecat.lizzie.teacher.analysis.QualityGate.runTeacherQualityGate(
-              result, evidence, false);
-      notes.addAll(gate.violations);
-      notes.addAll(gate.warnings);
-    } catch (Exception ignored) {
-      // 重型校验失败不阻断解说显示
     }
   }
 
@@ -882,7 +843,7 @@ public final class TeacherDialog extends JDialog {
   }
 
   private String evidenceStatus(BoardHistoryNode node) {
-    Optional<TeacherEvidence.Position> position = TeacherEvidence.current(node);
+    Optional<TeacherEvidence.Position> position = TeacherEvidence.position(node);
     if (position.isEmpty()) {
       return TeacherStrings.get(
           "Teacher.status.needsAnalysis",
