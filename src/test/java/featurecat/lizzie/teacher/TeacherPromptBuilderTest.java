@@ -12,6 +12,18 @@ import org.junit.jupiter.api.Test;
 
 class TeacherPromptBuilderTest {
   @Test
+  void localizedRequestsDoNotAskForExhaustiveVariationReports() {
+    var position = TeacherEvidence.current(TeacherBoardContextTest.position()).orElseThrow();
+    for (String tag : List.of("zh-CN", "zh-TW", "zh-HK", "en-US", "ja-JP", "ko", "th-TH")) {
+      var request = TeacherPromptBuilder.forPosition(position, Locale.forLanguageTag(tag), null);
+      String instruction = request.get(1).content.split("【KataGo evidence】")[0];
+      assertFalse(instruction.contains("PV"), tag + ": " + instruction);
+      assertFalse(instruction.contains("Follow each"), tag);
+      assertTrue(request.get(0).content.contains("2-4 short paragraphs"), tag);
+    }
+  }
+
+  @Test
   void promptContainsEvidenceAndExplicitAntiHallucinationContract() {
     TeacherEvidence.Position position =
         new TeacherEvidence.Position(
@@ -40,8 +52,8 @@ class TeacherPromptBuilderTest {
     assertTrue(evidence.contains("第 42 手之后的局面"));
     assertTrue(system.contains("不得进行作弊指控"));
     assertTrue(system.contains("不得声称用户具有任何官方段位"));
-    assertTrue(system.contains("### 正确思路"));
-    assertTrue(system.contains("### 练习建议"));
+    assertTrue(system.contains("不强制附加练习报告"));
+    assertTrue(system.contains("Teaching contract"));
     assertTrue(evidence.contains("D4"));
     assertTrue(evidence.contains("Q16"));
     assertTrue(evidence.contains("pv=Q16"));
@@ -114,7 +126,7 @@ class TeacherPromptBuilderTest {
     assertTrue(messages.get(0).content.contains("do not infer another perspective"));
     assertFalse(messages.get(0).content.contains("black-positive convention"));
     assertFalse(messages.get(0).content.contains("围棋 AI 讲棋老师"));
-    assertTrue(messages.get(1).content.startsWith("Explain the actual next move"));
+    assertTrue(messages.get(1).content.startsWith("Explain one important decision"));
     assertFalse(messages.get(1).content.contains("讲解实战下一手"));
   }
 

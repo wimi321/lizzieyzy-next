@@ -24,7 +24,7 @@ final class TeacherPromptBuilder {
   static List<TeacherLlmClient.Message> forPosition(
       TeacherEvidence.Position position, Locale locale, TeacherSettings.Snapshot snapshot) {
     return List.of(
-        new TeacherLlmClient.Message("system", systemPrompt(locale, snapshot)),
+        new TeacherLlmClient.Message("system", systemPrompt(locale, snapshot) + teachingContract()),
         new TeacherLlmClient.Message(
             "user",
             modeInstruction(Mode.NEXT_MOVE, locale)
@@ -48,7 +48,7 @@ final class TeacherPromptBuilder {
       evidence.append('\n').append(formatPosition(position, locale));
     }
     return List.of(
-        new TeacherLlmClient.Message("system", systemPrompt(locale, snapshot)),
+        new TeacherLlmClient.Message("system", systemPrompt(locale, snapshot) + teachingContract()),
         new TeacherLlmClient.Message(
             "user", modeInstruction(mode, locale) + "\n\n【KataGo evidence】\n" + evidence));
   }
@@ -118,7 +118,7 @@ final class TeacherPromptBuilder {
                   format(position.actualWinrateLoss.getAsDouble())))
           .append("\n");
     }
-    if (!position.playedContinuation.isEmpty()) {
+    if (position.board == null && !position.playedContinuation.isEmpty()) {
       text.append(
               TeacherStrings.format(
                   locale,
@@ -141,7 +141,7 @@ final class TeacherPromptBuilder {
       if (Double.isFinite(candidate.scoreLead)) {
         text.append(", scoreLead=").append(format(candidate.scoreLead));
       }
-      if (!candidate.variation.isEmpty()) {
+      if (position.board == null && !candidate.variation.isEmpty()) {
         text.append(", pv=");
         boolean black = "B".equals(position.toPlay);
         String blackLabel = TeacherStrings.get(locale, "Teacher.prompt.black", "(B)");
@@ -171,7 +171,38 @@ final class TeacherPromptBuilder {
                   position.actualMove))
           .append("\n");
     }
+    position
+        .actualScoreLoss()
+        .ifPresent(
+            loss ->
+                text.append("Actual move score loss (points, NOT percent): ")
+                    .append(format(loss))
+                    .append('\n'));
+    if (position.board != null) text.append('\n').append(position.board.facts());
     return text.toString();
+  }
+
+  private static String teachingContract() {
+    return "\n\nTeaching contract (takes precedence over generic reporting style):\n"
+        + "Teach one concrete decision per position: what needs attention, why the recorded move "
+        + "allows a specific reply, how the recommended line changes the result, and one reusable "
+        + "thinking question WITH its conditions. Anchor every reason to named stones/groups and "
+        + "the supplied replay. Do not invent a player's intentions. If no recorded move is available, "
+        + "explain a plan without inventing a mistake. A normal move does not need criticism.\n"
+        + "Lead with board reasoning, not winrate. Do not enumerate candidate statistics or visits; "
+        + "the UI already provides them under Analysis evidence. Mention at most one numerical loss "
+        + "when it changes the lesson. Avoid generic advice like do more life-and-death problems. "
+        + "Default to 2-4 short paragraphs (about 180-300 Chinese characters or 100-160 English "
+        + "words for one position), and at most ONE short illustrative line. No report-style "
+        + "headings or move-by-move list unless asked; expand only on request. "
+        + "Whole-game/range: explain only the selected moments, group recurring themes, no move-by-move report.\n"
+        + "Board groups and liberties are exact geometry, NOT proof of death, safety or sente. "
+        + "Recorded continuation is what happened, NOT the best defense. Candidate lines are references, "
+        + "NOT forced sequences or the engine's hidden reasoning. Only replayed prefixes may be narrated. "
+        + "Do not infer ownership, territory gains, ladders or forced kills from a score difference alone. "
+        + "Missing actual-move evaluation means loss is unknown; do not manufacture a number. "
+        + "If a causal explanation needs an unprovided reply, state the specific missing evidence briefly "
+        + "and explain only what is supported. Never pad the answer with percentages.\n";
   }
 
   private static String systemPrompt(Locale locale, TeacherSettings.Snapshot snapshot) {
@@ -194,8 +225,8 @@ final class TeacherPromptBuilder {
                 "cheating accusations or claim an official rank. Keep the explanation practical ")
             .append("and understandable.\n\n");
     prompt
-        .append("For every reviewed position, follow each supplied PV move by move and identify ")
-        .append("the turning point and concrete result. Treat score differences within 0.5 points ")
+        .append("For each selected position, explain the meaningful turning point supported by ")
+        .append("a supplied reference line. Treat score differences within 0.5 points ")
         .append("as effectively equivalent for a human player, 0.5 to 1.5 as a small preference, ")
         .append("and more than 1.5 as a meaningful difference worth explaining. Use winrate only ")
         .append("as supporting context. Compare the candidates' strategic tradeoffs, and clearly ")
@@ -228,15 +259,14 @@ final class TeacherPromptBuilder {
         .append("不得进行作弊指控，也不得声称用户具有任何官方段位。\n")
         .append("指出关键手、问题手与更好的应对，语言通俗、具体且可执行。\n");
     prompt.append("分析要求：\n");
-    prompt.append("1) 按提供的变化图逐手说明，并指出关键转折点和最终得失；\n");
+    prompt.append("1) 选一条能说明原因的参考变化，只讲关键应手和可验证的后果，不必逐手念坐标；\n");
     prompt.append("2) 以目差为主要判断依据：0.5 目以内视为基本等价，0.5 至 1.5 目只说明细微倾向，超过 1.5 目再重点解释；\n");
     prompt.append("3) 胜率仅作辅助，不因 50% 附近的小幅波动制造虚假优劣感；\n");
     prompt.append("4) 比较各候选的策略差异；棋理和意图属于教学性解读时，必须与数据事实明确区分。\n");
     prompt.append("讲解格式要求：\n");
     prompt.append("1) 先用通俗语言讲解这一手的好坏与原因；\n");
-    prompt.append("2) 末尾用以下固定标记补充结构化内容（无则省略该段）：\n");
-    prompt.append("### 正确思路\n（给出比实战更好的下法及其变化图/结果，1-3 条）\n");
-    prompt.append("### 练习建议\n（给出 1-2 个针对性练习，标明类型：死活/手筋/思路）\n");
+    prompt.append("2) 用简短段落讲清本局的判断重点、实战与推荐变化的差别，以及下次遇到相似局面应检查什么；\n");
+    prompt.append("3) 不强制附加练习报告；不要用多做死活题、多看高手棋谱等泛泛建议凑数。\n");
     prompt.append("讲解正文严禁出现\"围棋老师\"、\"讲棋老师\"、\"教练\"等称呼。\n");
     prompt.append("不要在回答中提及用户的段位。\n");
     prompt.append("输出语言：请全程使用 ").append(chineseOutputLanguage(locale)).append("，不要混用其他语言。\n");
@@ -400,13 +430,13 @@ final class TeacherPromptBuilder {
             "Teacher.prompt.modeRange",
             "Review the selected move range. Focus on the most important turning points, "
                 + "compare the actual move with KataGo's candidates, follow only the supplied PVs, "
-                + "and finish with three actionable lessons.");
+                + "and combine recurring lessons without padding the answer.");
       case WHOLE_GAME:
         return TeacherStrings.get(
             locale,
             "Teacher.prompt.modeWhole",
             "Review the whole game from the selected key positions. Give a short overview, "
-                + "the decisive turning points in chronological order, and three actionable lessons. "
+                + "the decisive turning points in chronological order, and practical lessons. "
                 + "Do not pretend that omitted positions were analyzed.");
       case FOLLOW_UP:
         return TeacherStrings.get(
@@ -419,9 +449,9 @@ final class TeacherPromptBuilder {
         return TeacherStrings.get(
             locale,
             "Teacher.prompt.modeNextMove",
-            "Explain the actual next move when available and compare it with KataGo's top "
-                + "three candidates. Follow each supplied PV move by move, then give one practical "
-                + "principle. If there is no actual next move, explain only the candidates.");
+            "Explain one important decision in 2-4 short paragraphs. Compare the actual move "
+                + "with one useful reference and give a concrete reason and reusable principle. "
+                + "Do not enumerate candidates or moves. Without an actual move, explain a plan.");
     }
   }
 
