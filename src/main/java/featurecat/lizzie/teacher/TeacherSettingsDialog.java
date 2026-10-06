@@ -11,6 +11,7 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.Window;
+import java.awt.event.ItemEvent;
 import java.awt.event.KeyEvent;
 import java.util.Arrays;
 import java.util.List;
@@ -215,8 +216,15 @@ final class TeacherSettingsDialog extends JDialog {
     pages.add(scrollPage(buildConnectionPage()), "connection");
     pages.add(scrollPage(buildPreferencesPage()), "preferences");
     content.add(pages, BorderLayout.CENTER);
-    connectionPage.addActionListener(event -> showPage(false));
-    preferencesPage.addActionListener(event -> showPage(true));
+    // Swing arrow navigation changes selection without necessarily firing an ActionEvent.
+    connectionPage.addItemListener(
+        event -> {
+          if (event.getStateChange() == ItemEvent.SELECTED) showPage(false);
+        });
+    preferencesPage.addItemListener(
+        event -> {
+          if (event.getStateChange() == ItemEvent.SELECTED) showPage(true);
+        });
     connectionPage.setSelected(true);
     showPage(false);
 
@@ -312,8 +320,19 @@ final class TeacherSettingsDialog extends JDialog {
     providers.add(buildConnectionWelcome(), "UNSELECTED");
     providers.add(buildApiForm(), "API_KEY");
     providers.add(chatGptPanel, "CHATGPT");
-    chatGptTab.addActionListener(event -> chooseProvider(TeacherSettings.Provider.CHATGPT));
-    apiTab.addActionListener(event -> chooseProvider(TeacherSettings.Provider.API_KEY));
+    // Initial values are loaded while disabled and explicitly select their provider once.
+    chatGptTab.addItemListener(
+        event -> {
+          if (event.getStateChange() == ItemEvent.SELECTED && chatGptTab.isEnabled()) {
+            chooseProvider(TeacherSettings.Provider.CHATGPT);
+          }
+        });
+    apiTab.addItemListener(
+        event -> {
+          if (event.getStateChange() == ItemEvent.SELECTED && apiTab.isEnabled()) {
+            chooseProvider(TeacherSettings.Provider.API_KEY);
+          }
+        });
     JPanel providerContent = TeacherSettingsStyle.panel(new BorderLayout(0, 18));
     providerContent.add(tabs, BorderLayout.NORTH);
     providerContent.add(providers, BorderLayout.CENTER);

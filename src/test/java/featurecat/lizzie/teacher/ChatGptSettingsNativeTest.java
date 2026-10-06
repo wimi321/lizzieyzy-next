@@ -27,6 +27,54 @@ class ChatGptSettingsNativeTest {
   @TempDir Path directory;
 
   @Test
+  void selectionChangesKeepNavigationAndProviderCardsInSync() throws Exception {
+    assumeTrue(
+        Boolean.getBoolean("lizzie.test.chatgptNative") && !GraphicsEnvironment.isHeadless());
+    var store = new ChatGptIntegrationTest.MemoryStore();
+    var settings =
+        new TeacherSettings(
+            directory.resolve("selection.properties"),
+            store,
+            new ChatGptSessions(directory.resolve("selection-session"), store, new ChatGptHttp()));
+    TeacherSettingsDialog[] dialog = new TeacherSettingsDialog[1];
+    SwingUtilities.invokeAndWait(
+        () -> {
+          dialog[0] = new TeacherSettingsDialog(null, settings);
+          dialog[0].setModalityType(Dialog.ModalityType.MODELESS);
+          dialog[0].setVisible(true);
+        });
+    try {
+      await(() -> button(dialog[0], "preferencesPage").isEnabled());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            // Swing ButtonGroup arrow keys select a model without firing an ActionEvent.
+            button(dialog[0], "preferencesPage").setSelected(true);
+            assertTrue(named(dialog[0], "stylePreference").isShowing());
+            assertFalse(button(dialog[0], "chatGptProvider").isShowing());
+            assertEquals(
+                TeacherSettingsStyle.text("savePreferences", "Save preferences"),
+                ((AbstractButton) named(dialog[0], "saveSettings")).getText());
+            button(dialog[0], "connectionPage").setSelected(true);
+            assertFalse(named(dialog[0], "stylePreference").isShowing());
+            button(dialog[0], "apiKeyProvider").setSelected(true);
+            assertTrue(named(dialog[0], "apiBaseUrl").isShowing());
+            ((javax.swing.JTextField) named(dialog[0], "apiBaseUrl"))
+                .setText("https://provider.example/v1");
+            button(dialog[0], "chatGptProvider").setSelected(true);
+            assertFalse(named(dialog[0], "apiBaseUrl").isShowing());
+            assertTrue(named(dialog[0], "chatGptWelcomeIcon").isShowing());
+            button(dialog[0], "apiKeyProvider").setSelected(true);
+            assertEquals(
+                "https://provider.example/v1",
+                ((javax.swing.JTextField) named(dialog[0], "apiBaseUrl")).getText());
+            assertEquals(TeacherSettings.Provider.UNSELECTED, settings.snapshot().provider);
+          });
+    } finally {
+      SwingUtilities.invokeAndWait(dialog[0]::dispose);
+    }
+  }
+
+  @Test
   void bothProvidersRemainEqualAndUsableInEveryLocale() throws Exception {
     assumeTrue(
         Boolean.getBoolean("lizzie.test.chatgptNative") && !GraphicsEnvironment.isHeadless());

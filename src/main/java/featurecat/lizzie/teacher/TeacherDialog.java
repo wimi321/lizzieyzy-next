@@ -4,6 +4,7 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import java.awt.Dimension;
 import java.awt.Window;
+import java.awt.event.ItemEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -192,9 +193,25 @@ public final class TeacherDialog extends JDialog {
                 }
               }.execute();
             });
-    explainNext.addActionListener(event -> view.selectMode(TeacherDialogView.Mode.NEXT));
-    explainRange.addActionListener(event -> view.selectMode(TeacherDialogView.Mode.RANGE));
-    explainWhole.addActionListener(event -> view.selectMode(TeacherDialogView.Mode.WHOLE));
+    // Keep the effective mode in sync with keyboard selection as well as mouse clicks.
+    explainNext.addItemListener(
+        event -> {
+          if (event.getStateChange() == ItemEvent.SELECTED) {
+            view.selectMode(TeacherDialogView.Mode.NEXT);
+          }
+        });
+    explainRange.addItemListener(
+        event -> {
+          if (event.getStateChange() == ItemEvent.SELECTED) {
+            view.selectMode(TeacherDialogView.Mode.RANGE);
+          }
+        });
+    explainWhole.addItemListener(
+        event -> {
+          if (event.getStateChange() == ItemEvent.SELECTED) {
+            view.selectMode(TeacherDialogView.Mode.WHOLE);
+          }
+        });
     start.addActionListener(
         event -> {
           if (requestRunning || !settingsLoaded) return;

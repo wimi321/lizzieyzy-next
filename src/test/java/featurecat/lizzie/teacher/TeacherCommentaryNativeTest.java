@@ -112,6 +112,25 @@ class TeacherCommentaryNativeTest {
   }
 
   @Test
+  void selectionChangesKeepCommentaryModeAndRangeControlsInSync() throws Exception {
+    try (Flow flow = new Flow()) {
+      onEdt(
+          () -> {
+            flow.view.explainRange().setSelected(true);
+            assertEquals(TeacherDialogView.Mode.RANGE, flow.view.mode());
+            assertTrue(flow.view.rangeStart().isShowing());
+            flow.view.explainWhole().setSelected(true);
+            assertEquals(TeacherDialogView.Mode.WHOLE, flow.view.mode());
+            assertFalse(flow.view.rangeStart().isShowing());
+            flow.view.explainNext().setSelected(true);
+            assertEquals(TeacherDialogView.Mode.NEXT, flow.view.mode());
+            assertFalse(flow.view.rangeStart().isShowing());
+            assertEquals(0, flow.calls.get());
+          });
+    }
+  }
+
+  @Test
   void modeSelectionDoesNotSpendRequestsAndTypedRangeIsCommitted() throws Exception {
     try (Flow flow = new Flow()) {
       onEdt(
