@@ -1449,7 +1449,20 @@ class LeelazExclusiveRemoteGtpSessionTest {
     Leelaz previousMirror = Lizzie.leelaz2;
     Config config = Lizzie.config;
     RecordingRestoreLeelaz mirror = recordingRestoreEngine();
-    installOutput(mirror);
+    CountDownLatch restoreReady = new CountDownLatch(1);
+    ExactSnapshotRestoreProtocolFixture.install(
+        harness.engine,
+        command -> {
+          if ("name".equals(command)) {
+            restoreReady.countDown();
+            return null;
+          }
+          return "stop".equals(command)
+              ? null
+              : ExactSnapshotRestoreProtocolFixture.Response.success();
+        });
+    ExactSnapshotRestoreProtocolFixture.install(
+        mirror, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
     Leelaz.EngineModeReservation mirrorReservation = null;
     AtomicInteger failures = new AtomicInteger();
     try {
@@ -1462,12 +1475,16 @@ class LeelazExclusiveRemoteGtpSessionTest {
               failures::incrementAndGet));
       assertTrue(dispatch(harness.engine, "=800000001"));
       assertTrue(dispatch(harness.engine, ""));
-      waitUntil(() -> harness.board.resendCount == 1);
+      // resendCount marks entry, not completion. Acknowledge the first snapshot and wait
+      // for its final boundary before reserving the mirror, so only retry admission fails.
+      assertTrue(restoreReady.await(3, TimeUnit.SECONDS));
+      assertEquals(1, harness.board.resendCount);
+      assertEquals(0, failures.get());
 
       harness.engine.sendCommand("play B D4");
       mirrorReservation = mirror.beginEngineModeReservation();
       assertTrue(mirrorReservation != null);
-      completeForegroundRestore(harness.engine);
+      invokeResponseHandlerForLine(harness.engine, "=");
       waitUntil(() -> failures.get() == 1);
 
       assertEquals(0, harness.completions.get());
