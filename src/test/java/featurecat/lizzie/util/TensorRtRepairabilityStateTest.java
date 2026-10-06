@@ -499,6 +499,7 @@ public class TensorRtRepairabilityStateTest {
     Path runtimeDir = Files.createDirectories(runtimeWorkDirectory.resolve("nvidia-runtime"));
     touchRequiredCuda12_8Dlls(runtimeDir);
     touch(runtimeDir.resolve("nvinfer_10.dll"));
+    touch(runtimeDir.resolve("nvonnxparser_10.dll"));
     touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
   }
 

@@ -5,22 +5,30 @@ import static org.junit.jupiter.api.Assertions.*;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.rules.Board;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.Insets;
 import java.awt.image.BufferedImage;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.JTableHeader;
+import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumn;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -233,6 +241,7 @@ class WorkbenchStyleTest {
   void suggestionTableRefreshKeepsDataAndFitsConfiguredFont() throws Exception {
     Config previous = Lizzie.config;
     int previousSize = Config.frameFontSize;
+    LizzieFrame previousFrame = Lizzie.frame;
     try {
       Config config = ConfigTestHelper.createForTests(tempDir);
       Lizzie.config = config;
@@ -241,26 +250,126 @@ class WorkbenchStyleTest {
       field.setAccessible(true);
       LizzieFrame frame =
           (LizzieFrame) ((sun.misc.Unsafe) field.get(null)).allocateInstance(LizzieFrame.class);
-      frame.listTable =
-          new JTable(new Object[][] {{"D4", "55.2%"}}, new Object[] {"Move", "Winrate"});
-      frame.listScrollpane = new JScrollPane(frame.listTable);
-      for (boolean dark : new boolean[] {false, true}) {
-        config.isAppleStyle = dark;
-        frame.refreshSuggestionTableStyle();
-        assertEquals("55.2%", frame.listTable.getValueAt(0, 1));
-        assertEquals(
-            AppleStyleSupport.workspaceSurface(),
-            frame.listScrollpane.getViewport().getBackground());
-        assertTrue(
-            contrast(frame.listTable.getForeground(), frame.listTable.getBackground()) >= 4.5);
-        assertTrue(
-            frame.listTable.getRowHeight()
-                >= frame.listTable.getFontMetrics(frame.listTable.getFont()).getHeight() + 8);
-      }
+      Lizzie.frame = frame;
+      SwingUtilities.invokeAndWait(
+          () -> {
+            Object[][] data = {
+              {"1", "D4", "55.2", "1200", "42.5", "+0.5"},
+              {"2", "Q16", "53.1", "980", "35.0", "-0.2"},
+              {"3(actual)", "R17", "↓1.5(51.0)", "620", "22.5", "↓0.5(+0.1)"}
+            };
+            frame.listTable =
+                new JTable(
+                    data, new String[] {"Move", "Coords", "Winrate", "Visits", "Share", "Score"});
+            JTable table = frame.listTable;
+            TableCellRenderer renderer = frame.new ColorTableCellRenderer();
+            table.setDefaultRenderer(Object.class, renderer);
+            for (int column = 0; column < table.getColumnCount(); column++) {
+              table.getColumnModel().getColumn(column).setCellRenderer(renderer);
+              DefaultTableCellRenderer header = new DefaultTableCellRenderer();
+              header.setHorizontalAlignment(SwingConstants.CENTER);
+              table.getColumnModel().getColumn(column).setHeaderRenderer(header);
+            }
+            frame.listScrollpane = new SuggestionTableScrollPane(table);
+            frame.listScrollpane.setColumnHeaderView(table.getTableHeader());
+            for (boolean dark : new boolean[] {false, true}) {
+              config.isAppleStyle = dark;
+              frame.refreshSuggestionTableStyle();
+              assertEquals(22, table.getFont().getSize());
+              assertEquals(Font.PLAIN, table.getFont().getStyle());
+              assertEquals(
+                  AppleStyleSupport.workspaceSurface(),
+                  frame.listScrollpane.getViewport().getBackground());
+              assertTrue(contrast(table.getForeground(), table.getBackground()) >= 4.5);
+              frame.listScrollpane.setSize(900, 300);
+              frame.listScrollpane.doLayout();
+              JTableHeader header = table.getTableHeader();
+              int headerHeight = header.getPreferredSize().height;
+              int baseline =
+                  Math.max(
+                      Config.menuHeight - 4, table.getFontMetrics(table.getFont()).getHeight() + 8);
+              int chrome =
+                  frame.listScrollpane.getViewport().getY()
+                      + frame.listScrollpane.getInsets().bottom;
+              for (int budget :
+                  new int[] {
+                    baseline * 3,
+                    (baseline - 1) * 3,
+                    baseline * 3 - 1,
+                    baseline * 3 + baseline / 2,
+                    baseline - 3,
+                    0,
+                    1 - headerHeight
+                  }) {
+                frame.listScrollpane.setSize(900, chrome + budget);
+                frame.listScrollpane.doLayout();
+                table.doLayout();
+                int extent = frame.listScrollpane.getViewport().getHeight();
+                assertTrue(table.getRowHeight() > 0);
+                assertEquals(0, extent % table.getRowHeight());
+                assertTrue(extent <= Math.max(0, budget));
+                if (budget == baseline * 3 || budget == (baseline - 1) * 3) {
+                  assertEquals(budget / 3, table.getRowHeight());
+                }
+                if (budget < baseline - 2) {
+                  assertEquals(0, extent);
+                  assertEquals(0, table.getHeight());
+                  assertFalse(frame.listScrollpane.isWheelScrollingEnabled());
+                  assertFalse(frame.listScrollpane.getVerticalScrollBar().isEnabled());
+                }
+                assertEquals(
+                    budget < 0 ? 0 : headerHeight,
+                    frame.listScrollpane.getColumnHeader().getHeight());
+                assertTrue(frame.listScrollpane.getVerticalScrollBar().getMaximum() >= 0);
+                for (int state = 0; state < 3; state++) {
+                  frame.suggestionclick =
+                      state == 0
+                          ? LizzieFrame.outOfBoundCoordinate
+                          : Board.convertNameToCoordinates("D4");
+                  frame.selectedorder = state == 2 ? 1 : -1;
+                  for (int row = 0; row < data.length; row++) {
+                    for (int column = 0; column < table.getColumnCount(); column++) {
+                      assertEquals(data[row][column], table.getValueAt(row, column));
+                      Component cell =
+                          renderer.getTableCellRendererComponent(
+                              table, table.getValueAt(row, column), false, false, row, column);
+                      assertEquals(22, cell.getFont().getSize());
+                      assertRendererContentFits(
+                          cell, 240, table.getRowHeight() - table.getRowMargin(), 2);
+                    }
+                  }
+                }
+                for (int column = 0; column < table.getColumnCount(); column++) {
+                  TableColumn col = header.getColumnModel().getColumn(column);
+                  Component cell =
+                      col.getHeaderRenderer()
+                          .getTableCellRendererComponent(
+                              table, col.getHeaderValue(), false, false, -1, column);
+                  assertRendererContentFits(cell, 150, headerHeight, 0);
+                  assertTrue(contrast(cell.getForeground(), cell.getBackground()) >= 4.5);
+                }
+              }
+            }
+          });
     } finally {
       Lizzie.config = previous;
       Config.frameFontSize = previousSize;
+      Lizzie.frame = previousFrame;
     }
+  }
+
+  private static void assertRendererContentFits(
+      Component renderer, int width, int height, int padding) {
+    renderer.setSize(width, height);
+    BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D graphics = image.createGraphics();
+    renderer.paint(graphics);
+    graphics.dispose();
+    Insets insets = ((JComponent) renderer).getInsets();
+    assertTrue(
+        height - insets.top - insets.bottom
+            >= renderer.getFontMetrics(renderer.getFont()).getHeight() + padding,
+        "Actual renderer content needs vertical insets and safe text padding");
   }
 
   @Test

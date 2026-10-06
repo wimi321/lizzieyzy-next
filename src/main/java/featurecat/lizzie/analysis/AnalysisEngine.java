@@ -9,14 +9,13 @@ import featurecat.lizzie.gui.EngineFailedMessage;
 import featurecat.lizzie.gui.EngineFailedMessage.DiagnosticActionResult;
 import featurecat.lizzie.gui.RemoteEngineData;
 import featurecat.lizzie.gui.WaitForAnalysis;
+import featurecat.lizzie.logging.EngineObservation;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
-import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
-import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.util.CommandLaunchHelper;
 import featurecat.lizzie.util.EngineThreadPolicy;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
@@ -24,7 +23,6 @@ import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.KataGoRuntimeHelper.TensorRtRepairContext;
 import featurecat.lizzie.util.KataGoRuntimeHelper.TensorRtRuntimeException;
 import featurecat.lizzie.util.Utils;
-import featurecat.lizzie.logging.EngineObservation;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
@@ -47,6 +45,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.jdesktop.swingx.util.OS;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -120,8 +119,10 @@ public class AnalysisEngine {
   private volatile boolean requestDispatchFailed = false;
   private volatile boolean requestDispatchComplete = false;
   private volatile boolean shutdownRequested = false;
-  private volatile Runnable completionCallback;
-  private volatile Runnable failureCallback;
+  private volatile Consumer<ForegroundRestoreResult> completionCallback;
+  private volatile Consumer<ForegroundRestoreResult> failureCallback;
+  private volatile ForegroundRestoreResult foregroundRestoreResult =
+      ForegroundRestoreResult.NOT_REQUIRED;
   private volatile ProgressListener progressListener;
   private volatile boolean keepAliveAfterCurrentRequest = false;
   private volatile boolean preserveExistingAnalysis = false;
@@ -229,16 +230,11 @@ public class AnalysisEngine {
     this.purpose =
         purpose == null ? AnalysisResourceCoordinator.Purpose.OTHER : purpose;
     this.persistentPreload = persistentPreload;
-    String foregroundCommand = Lizzie.leelaz == null ? null : Lizzie.leelaz.engineCommand();
     boolean lightweightQuickModelRequested =
         commandOverride != null && !commandOverride.trim().isEmpty();
     automaticPrimaryForegroundReuse =
-        shouldAutomaticallyReusePrimaryForeground(
-            this.purpose,
-            RemoteComputeConfig.isRemoteComputeEngineCommand(foregroundCommand),
-            KataGoRuntimeHelper.isBundledNvidiaCommand(foregroundCommand),
-            KataGoRuntimeHelper.isBundledTensorRtCommand(foregroundCommand),
-            lightweightQuickModelRequested);
+        this.purpose == AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS
+            && automaticallyReusesPrimaryForeground(lightweightQuickModelRequested);
     this.dedicatedLightweightQuickModel =
         this.purpose == AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS
             && !automaticPrimaryForegroundReuse
@@ -293,6 +289,17 @@ public class AnalysisEngine {
     return commandOverride == null || commandOverride.trim().isEmpty()
         ? Lizzie.config.analysisEngineCommand
         : commandOverride;
+  }
+
+  /** Shared by admission and construction, including remote-only profiles without a local command. */
+  public static boolean automaticallyReusesPrimaryForeground(boolean lightweightQuickModelRequested) {
+    String command = Lizzie.leelaz == null ? null : Lizzie.leelaz.engineCommand();
+    return shouldAutomaticallyReusePrimaryForeground(
+        AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS,
+        RemoteComputeConfig.isRemoteComputeEngineCommand(command),
+        KataGoRuntimeHelper.isBundledNvidiaCommand(command),
+        KataGoRuntimeHelper.isBundledTensorRtCommand(command),
+        lightweightQuickModelRequested);
   }
 
   static boolean shouldAutomaticallyReusePrimaryForeground(
@@ -428,7 +435,9 @@ public class AnalysisEngine {
       ProcessBuilder processBuilder = new ProcessBuilder(launchCommands);
       CommandLaunchHelper.configureProcessBuilder(processBuilder, launchSpec);
       KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, engineExecutable);
-      processBuilder.redirectErrorStream(true);
+      // KataGo can write diagnostic fragments while another thread emits a JSON result.
+      // Merging these pipes can prefix/corrupt a response and leave the curve waiting forever.
+      processBuilder.redirectErrorStream(false);
       if (startupDiagnosticAttempt != null) {
         startupDiagnosticAttempt.capture(processBuilder);
       }
@@ -584,7 +593,7 @@ public class AnalysisEngine {
       String line = "";
       while ((line = readerInput.readLine()) != null) {
         if (attempt != null) {
-          attempt.output(!useJavaSSH && !useRemoteCompute ? "merged" : "stdout", line);
+          attempt.output("stdout", line);
           if (attempt != startupDiagnosticAttempt) continue;
         }
         try {
@@ -1190,7 +1199,7 @@ public class AnalysisEngine {
         };
     if (!releaseSharedForegroundLease(
         finishSuccessfulRequest, this::finishSharedForegroundRestoreFailure)) {
-      finishSuccessfulRequest.run();
+      finishForegroundRestore(finishSuccessfulRequest, this::finishSharedForegroundRestoreFailure);
     }
   }
 
@@ -1198,14 +1207,25 @@ public class AnalysisEngine {
     normalQuit(null);
   }
 
-  /** Stops this worker and runs {@code afterRestore} once any shared foreground lease is restored. */
+  /**
+   * Stops this worker and runs {@code afterRestore} once any shared foreground lease is restored.
+   */
   public void normalQuit(Runnable afterRestore) {
     normalQuit(afterRestore, afterRestore);
   }
 
   /**
-   * Stops this worker and reports whether a pending shared foreground lease restore succeeded.
-   * Dedicated workers have no restore boundary and therefore use {@code afterRestore}.
+   * Stops this worker and reports the actual handback result, including an earlier restore failure.
+   */
+  public void normalQuitWithRestoreResult(Consumer<ForegroundRestoreResult> finished) {
+    Runnable afterRestore =
+        finished == null ? null : () -> finished.accept(foregroundRestoreResult);
+    normalQuit(afterRestore, afterRestore);
+  }
+
+  /**
+   * Stops this worker and reports whether the shared foreground lease restore succeeded. An earlier
+   * restore failure remains a failure; dedicated workers use {@code afterRestore}.
    */
   public void normalQuit(Runnable afterRestore, Runnable afterRestoreFailure) {
     requestShutdown();
@@ -1216,10 +1236,9 @@ public class AnalysisEngine {
       requestDispatchFailed = true;
       finishFailedRequestDispatch(false, afterRestore, afterRestoreFailure);
     } else {
-      boolean restorePending =
-          releaseSharedForegroundLease(afterRestore, afterRestoreFailure);
-      if (!restorePending && afterRestore != null) {
-        afterRestore.run();
+      boolean restorePending = releaseSharedForegroundLease(afterRestore, afterRestoreFailure);
+      if (!restorePending) {
+        finishForegroundRestore(afterRestore, afterRestoreFailure);
       }
     }
     if (this.useJavaSSH) {
@@ -1238,8 +1257,8 @@ public class AnalysisEngine {
   }
 
   private synchronized void finishAbortedAnalysis() {
-    releaseSharedForegroundLease();
     if (analyzeMap.isEmpty() && completionCallback == null && failureCallback == null) {
+      releaseSharedForegroundLease();
       return;
     }
     analyzeMap.clear();
@@ -1259,10 +1278,12 @@ public class AnalysisEngine {
     resultCount = 0;
     responseCount = 0;
     requestDispatchComplete = false;
-    if (failureCallback != null) {
-      runFailureCallback();
-    } else {
-      runCompletionCallback();
+    Consumer<ForegroundRestoreResult> callback =
+        failureCallback != null ? failureCallback : completionCallback;
+    clearRequestCallbacks();
+    Runnable finishAbort = () -> dispatchRequestCallback(callback);
+    if (!releaseSharedForegroundLease(finishAbort, finishAbort)) {
+      finishAbort.run();
     }
   }
 
@@ -1358,7 +1379,7 @@ public class AnalysisEngine {
         };
     if (!releaseSharedForegroundLease(
         finishSuccessfulRequest, this::finishSharedForegroundRestoreFailure)) {
-      finishSuccessfulRequest.run();
+      finishForegroundRestore(finishSuccessfulRequest, this::finishSharedForegroundRestoreFailure);
     }
   }
 
@@ -1519,6 +1540,7 @@ public class AnalysisEngine {
   }
 
   private void prepareRequestState(boolean showProgressDialog) {
+    foregroundRestoreResult = ForegroundRestoreResult.NOT_REQUIRED;
     analyzeMap.clear();
     remoteGtpQueue().clear();
     remoteGtpActiveJob = null;
@@ -1647,7 +1669,7 @@ public class AnalysisEngine {
       boolean showProgressDialog,
       Runnable afterForegroundRestore,
       Runnable afterForegroundRestoreFailure) {
-    Runnable failedRequestCallback = failureCallback;
+    Consumer<ForegroundRestoreResult> failedRequestCallback = failureCallback;
     analyzeMap.clear();
     remoteGtpQueue().clear();
     remoteGtpActiveJob = null;
@@ -1669,9 +1691,7 @@ public class AnalysisEngine {
     failureCallback = null;
     progressListener = null;
     Runnable deliverFailure =
-        failedRequestCallback == null
-            ? null
-            : () -> javax.swing.SwingUtilities.invokeLater(failedRequestCallback);
+        failedRequestCallback == null ? null : () -> dispatchRequestCallback(failedRequestCallback);
     Runnable finishRestore = chainCallbacks(deliverFailure, afterForegroundRestore);
     Runnable finishRestoreFailure =
         chainCallbacks(deliverFailure, afterForegroundRestoreFailure);
@@ -1698,8 +1718,18 @@ public class AnalysisEngine {
             }
           });
     }
-    if (!restorePending && finishRestore != null) {
-      finishRestore.run();
+    if (!restorePending) {
+      finishForegroundRestore(finishRestore, finishRestoreFailure);
+    }
+  }
+
+  private void finishForegroundRestore(Runnable afterRestore, Runnable afterRestoreFailure) {
+    Runnable callback =
+        foregroundRestoreResult == ForegroundRestoreResult.FAILED
+            ? afterRestoreFailure
+            : afterRestore;
+    if (callback != null) {
+      callback.run();
     }
   }
 
@@ -2149,6 +2179,8 @@ public class AnalysisEngine {
       if (!sharedForegroundRestoreInProgress) {
         return;
       }
+      foregroundRestoreResult =
+          successful ? ForegroundRestoreResult.SUCCEEDED : ForegroundRestoreResult.FAILED;
       callback = successful ? sharedForegroundRestoreCompletion : sharedForegroundRestoreFailure;
       sharedForegroundRestoreInProgress = false;
       sharedForegroundRestoreCompletion = null;
@@ -2594,11 +2626,9 @@ public class AnalysisEngine {
         && process.isAlive();
   }
 
-
-  void requestShutdown() {
-    synchronized (this) {
-      shutdownRequested = true;
-    }
+  /** Closes request admission immediately without waiting for background dispatch or handback. */
+  public void requestShutdown() {
+    shutdownRequested = true;
   }
 
   public void shutdown() {
@@ -2657,6 +2687,7 @@ public class AnalysisEngine {
   public synchronized boolean hasRequestLifecycleInProgress() {
     return sharedForegroundLeaseStarting
         || sharedForegroundLeaseActive
+        || sharedForegroundRestoreInProgress
         || isAnalysisInProgress();
   }
 
@@ -2665,11 +2696,15 @@ public class AnalysisEngine {
     return isAnalysisInProgress() && silentProgress;
   }
 
-  public void setCompletionCallback(Runnable completionCallback) {
+  /** Receives request completion on the EDT after any foreground restore has settled. */
+  public void setCompletionCallback(Consumer<ForegroundRestoreResult> completionCallback) {
     this.completionCallback = completionCallback;
   }
 
-  public void setFailureCallback(Runnable failureCallback) {
+  /**
+   * Receives request failure on the EDT, separately reporting whether foreground handback was safe.
+   */
+  public void setFailureCallback(Consumer<ForegroundRestoreResult> failureCallback) {
     this.failureCallback = failureCallback;
   }
 
@@ -2688,22 +2723,15 @@ public class AnalysisEngine {
   }
 
   private void runCompletionCallback() {
-    Runnable callback = completionCallback;
-    completionCallback = null;
-    failureCallback = null;
-    progressListener = null;
-    if (callback != null) {
-      javax.swing.SwingUtilities.invokeLater(callback);
-    }
+    Consumer<ForegroundRestoreResult> callback = completionCallback;
+    clearRequestCallbacks();
+    dispatchRequestCallback(callback);
   }
 
-  private void runFailureCallback() {
-    Runnable callback = failureCallback;
-    completionCallback = null;
-    failureCallback = null;
-    progressListener = null;
+  private void dispatchRequestCallback(Consumer<ForegroundRestoreResult> callback) {
+    ForegroundRestoreResult restore = foregroundRestoreResult;
     if (callback != null) {
-      javax.swing.SwingUtilities.invokeLater(callback);
+      javax.swing.SwingUtilities.invokeLater(() -> callback.accept(restore));
     }
   }
 

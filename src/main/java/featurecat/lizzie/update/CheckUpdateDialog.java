@@ -22,6 +22,7 @@ import javax.swing.ButtonGroup;
 import javax.swing.JDialog;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
+import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
@@ -40,7 +41,7 @@ public final class CheckUpdateDialog extends JDialog implements UpdateCheckCoord
       channelRadio(UpdateText.tr("WindowsUpdate.source.github", "GitHub", "GitHub"));
   private final JFontButton checkButton =
       new JFontButton(UpdateText.tr("WindowsUpdate.btnCheck", "检查更新", "Check update"));
-  private final JFontLabel resultLabel = new JFontLabel(" ");
+  private final JTextArea resultLabel = new JTextArea(4, 36);
   private boolean closeAllowed = true;
 
   public CheckUpdateDialog(Component parent) {
@@ -81,8 +82,7 @@ public final class CheckUpdateDialog extends JDialog implements UpdateCheckCoord
     header.setOpaque(false);
 
     JFontLabel versionLabel =
-        new JFontLabel(
-            UpdateText.tr("WindowsUpdate.currentVersion", "当前版本", "Current version"));
+        new JFontLabel(UpdateText.tr("WindowsUpdate.currentVersion", "当前版本", "Current version"));
     versionLabel.setForeground(mutedText());
 
     JFontLabel versionValue = new JFontLabel(displayVersion());
@@ -176,6 +176,12 @@ public final class CheckUpdateDialog extends JDialog implements UpdateCheckCoord
     form.add(sourceRow, constraints);
 
     resultLabel.setForeground(mutedText());
+    resultLabel.setFont(stableButton.getFont());
+    resultLabel.setOpaque(false);
+    resultLabel.setEditable(false);
+    resultLabel.setFocusable(false);
+    resultLabel.setLineWrap(true);
+    resultLabel.setWrapStyleWord(true);
     constraints.gridy = 4;
     constraints.insets = new Insets(0, 0, 0, 0);
     form.add(resultLabel, constraints);
@@ -200,8 +206,7 @@ public final class CheckUpdateDialog extends JDialog implements UpdateCheckCoord
 
   private void startCheck() {
     WindowsUpdateController.checkForUpdate(
-        this,
-        UpdateCheckSelection.of(selectedChannel(), selectedSource(), Lizzie.nextVersion));
+        this, UpdateCheckSelection.of(selectedChannel(), selectedSource(), Lizzie.nextVersion));
   }
 
   @Override
@@ -216,8 +221,11 @@ public final class CheckUpdateDialog extends JDialog implements UpdateCheckCoord
 
   @Override
   public void showStayOnPage(UpdateCheckResult result, UpdateCheckSelection snapshot) {
-    resultLabel.setText(
-        UpdateCheckFeedback.message(result, snapshot == null ? selectedChannel() : snapshot.channel));
+    String message =
+        UpdateCheckFeedback.message(
+            result, snapshot == null ? selectedChannel() : snapshot.channel);
+    String warning = UpdateCheckFeedback.warning(result);
+    resultLabel.setText(warning.isEmpty() ? message : message + "\n" + warning);
   }
 
   @Override
@@ -267,8 +275,6 @@ public final class CheckUpdateDialog extends JDialog implements UpdateCheckCoord
   }
 
   private static String displayVersion() {
-    return Lizzie.nextVersion == null || Lizzie.nextVersion.isBlank()
-        ? "-"
-        : Lizzie.nextVersion;
+    return Lizzie.nextVersion == null || Lizzie.nextVersion.isBlank() ? "-" : Lizzie.nextVersion;
   }
 }

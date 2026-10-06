@@ -119,6 +119,7 @@ public class SubBoardRenderer {
   private int cachedDisplayedBranchLength = SHOW_RAW_BOARD;
   private boolean showingBranch = false;
   Stone[] stonesTemp;
+  private BoardHistoryNode variationNode;
   //  private boolean isMainBoard = false;
   public boolean variationBlackToPlay = false;
   public boolean wheeled = false;
@@ -860,16 +861,24 @@ public class SubBoardRenderer {
       return;
     }
 
+    BranchInputCapture capture =
+        BranchInputCapture.begin(
+            Lizzie.board,
+            () -> Lizzie.board.getHistory().getCurrentHistoryNode(),
+            () -> isMouseOver ? variationNode : Lizzie.board.getHistory().getCurrentHistoryNode());
+    if (capture == null) {
+      publishEmptyBranch();
+      return;
+    }
     if (!isMouseOver) {
-      BoardHistoryNode bestMoveNode;
-      if (!Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMoves.isEmpty()) {
-        bestMoveNode = Lizzie.board.getHistory().getCurrentHistoryNode();
-        bestMoves = bestMoveNode.getData().bestMoves;
-        estimateArray = bestMoveNode.getData().estimateArray;
-        variationBlackToPlay = bestMoveNode.getData().blackToPlay;
-      } else {
-        bestMoves = new ArrayList<MoveData>();
-        estimateArray = null;
+      synchronized (Lizzie.board) {
+        variationNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+        stonesTemp = capture.sourceData.stones.clone();
+        variationBlackToPlay = capture.sourceData.blackToPlay;
+      }
+      synchronized (capture.analysisData) {
+        bestMoves = new ArrayList<>(capture.analysisData.bestMoves);
+        estimateArray = capture.analysisData.estimateArray;
       }
       if (Lizzie.config.showKataGoEstimate
           && estimateArray == null
@@ -895,19 +904,26 @@ public class SubBoardRenderer {
       return;
     }
 
-    if (!isMouseOver || (statChanged && !wheeled)) {
-      if (!isMouseOver) stonesTemp = Lizzie.board.getData().stones;
-      variation = suggestedMove.get().variation;
-      if (statChanged) {
-        setDisplayedBranchLength(-2);
-        statChanged = false;
-      }
+    boolean refreshVariation = !isMouseOver || (statChanged && !wheeled);
+    if (refreshVariation && statChanged) {
+      setDisplayedBranchLength(-2);
+      statChanged = false;
     }
-    if (variation == null) {
+    Branch.Input input =
+        capture.capture(
+            () -> refreshVariation ? suggestedMove.get().variation : variation,
+            () -> null,
+            displayedBranchLength > 0 ? displayedBranchLength : 199,
+            Lizzie.config.removeDeadChainInVariation && !Lizzie.config.noCapture,
+            false,
+            stonesTemp,
+            variationBlackToPlay);
+    if (input == null) {
       publishEmptyBranch();
       return;
     }
 
+    if (refreshVariation) variation = input.variation;
     BoardHistoryNode branchNode = Lizzie.board.getHistory().getCurrentHistoryNode();
     if (canReuseBranch(branchNode, variation)) {
       branchOpt = Optional.of(branch);
@@ -920,17 +936,7 @@ public class SubBoardRenderer {
     Graphics2D g = newImage.createGraphics();
     g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
     g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
-    branch =
-        new Branch(
-            Lizzie.board,
-            variation,
-            null,
-            this.displayedBranchLength > 0 ? displayedBranchLength : 199,
-            true,
-            variationBlackToPlay,
-            stonesTemp,
-            false,
-            null);
+    branch = new Branch(input);
     branchOpt = Optional.of(branch);
     variationOpt = Optional.of(variation);
     showingBranch = true;

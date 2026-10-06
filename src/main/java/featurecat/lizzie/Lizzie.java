@@ -1515,6 +1515,7 @@ public class Lizzie {
     } catch (Exception e) {
       e.printStackTrace();
     }
+    frame.shutdownVariationPreviews();
     try {
       frame.shutdownKifuEngineSyncCoordinator();
     } catch (Exception e) {

@@ -26,7 +26,11 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
 
   @Override
   public void mousePressed(MouseEvent e) {
-    Lizzie.frame.cancelPendingSuggestionHoverPreview();
+    if (SwingUtilities.isMiddleMouseButton(e)) {
+      Lizzie.frame.cancelSuggestionPreviewKeepingSelection();
+    } else {
+      Lizzie.frame.cancelPendingSuggestionHoverPreview();
+    }
     boolean boardButton =
         e.getButton() == MouseEvent.BUTTON1 || e.getButton() == MouseEvent.BUTTON3;
     if (boardButton && Lizzie.frame.hasActiveHumanSlGame()) {
@@ -148,11 +152,12 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
 
   @Override
   public void mouseReleased(MouseEvent e) {
-    if (selectMode || (e.isAltDown() && e.getButton() != MouseEvent.BUTTON2)) {
+    if (!SwingUtilities.isMiddleMouseButton(e) && (selectMode || e.isAltDown())) {
       Lizzie.frame.selectReleased(Utils.zoomOut(e.getX()), Utils.zoomOut(e.getY()));
       return;
     }
-    if (Draggedmode
+    if (!SwingUtilities.isMiddleMouseButton(e)
+        && Draggedmode
         && !Lizzie.frame.isTrying
         && !LizzieFrame.urlSgf
         && !Lizzie.frame.isPlayingAgainstLeelaz
@@ -164,7 +169,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
     if (SwingUtilities.isMiddleMouseButton(e)) {
       // if (Lizzie.frame.syncBoard) return;
       if (Lizzie.frame.isShowingRightMenu) return;
-      Lizzie.frame.playCurrentVariation();
+      Lizzie.frame.playMiddleVariation(LizzieFrame.boardRenderer);
     }
   }
 
@@ -379,16 +384,19 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
             Lizzie.board.SpinAndMirror(3);
           } else LizzieFrame.undoNoRefresh(10);
         } else {
-          if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
+          if (LizzieFrame.boardRenderer.hasSelectedVariation()
+              || (Lizzie.config.isDoubleEngineMode()
+                  && LizzieFrame.boardRenderer2 != null
+                  && LizzieFrame.boardRenderer2.hasSelectedVariation())) {
             Lizzie.frame.doBranch(-1);
           } else {
-            LizzieFrame.undoNoRefresh(1);
+            LizzieFrame.navigateHistoryNoRefresh(-1);
           }
         }
         break;
 
       case VK_PAGE_DOWN:
-        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
+        if (LizzieFrame.boardRenderer.hasSelectedVariation()) {
           Lizzie.frame.doBranch(1);
         } else {
           // Lizzie.frame.noautocounting();
@@ -409,10 +417,13 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
             Lizzie.board.SpinAndMirror(4);
           } else LizzieFrame.redoNoRefresh(10);
         } else {
-          if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
+          if (LizzieFrame.boardRenderer.hasSelectedVariation()
+              || (Lizzie.config.isDoubleEngineMode()
+                  && LizzieFrame.boardRenderer2 != null
+                  && LizzieFrame.boardRenderer2.hasSelectedVariation())) {
             Lizzie.frame.doBranch(1);
           } else {
-            LizzieFrame.redoNoRefresh(1);
+            LizzieFrame.navigateHistoryNoRefresh(1);
           }
         }
         break;
@@ -447,9 +458,6 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
       case VK_COMMA:
         if (e.isAltDown()) {
           Lizzie.frame.genmove();
-        } else if (!Lizzie.config.showSuggestionVariations) {
-          if (Lizzie.frame.isMouseOver) Lizzie.frame.playCurrentVariation();
-          else Lizzie.frame.playBestMove();
         } else {
           if (!Lizzie.frame.playCurrentVariation()) Lizzie.frame.playBestMove();
         }
@@ -493,7 +501,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
         break;
 
       case VK_PAGE_UP:
-        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
+        if (LizzieFrame.boardRenderer.hasSelectedVariation()) {
           Lizzie.frame.doBranch(-1);
         } else {
           // Lizzie.frame.noautocounting();
@@ -865,22 +873,22 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
     if (e.getWhen() - wheelWhen > 0) {
       wheelWhen = e.getWhen();
       if (e.getWheelRotation() > 0) {
-        if (LizzieFrame.boardRenderer.ownsBranchNavigation()
+        if (LizzieFrame.boardRenderer.hasSelectedVariation()
             || (Lizzie.config.isDoubleEngineMode()
-                && LizzieFrame.boardRenderer2.ownsBranchNavigation())) {
+                && LizzieFrame.boardRenderer2.hasSelectedVariation())) {
           Lizzie.frame.doBranch(1);
           Lizzie.frame.refresh();
         } else {
-          redo();
+          LizzieFrame.navigateHistoryNoRefresh(1);
         }
       } else if (e.getWheelRotation() < 0) {
-        if (LizzieFrame.boardRenderer.ownsBranchNavigation()
+        if (LizzieFrame.boardRenderer.hasSelectedVariation()
             || (Lizzie.config.isDoubleEngineMode()
-                && LizzieFrame.boardRenderer2.ownsBranchNavigation())) {
+                && LizzieFrame.boardRenderer2.hasSelectedVariation())) {
           Lizzie.frame.doBranch(-1);
           Lizzie.frame.refresh();
         } else {
-          undo();
+          LizzieFrame.navigateHistoryNoRefresh(-1);
         }
       }
     }

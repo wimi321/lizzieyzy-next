@@ -3459,15 +3459,6 @@ public class Board {
     return cleanupHasLibertiesHelper(x, y, color.recursed(), stones, zobrist, !hasLiberties);
   }
 
-  public static void removeDeadChainForBranch(int x, int y, Stone color, Stone[] stones) {
-    if (!isValid(x, y) || stones[getIndex(x, y)] != color) return;
-
-    boolean hasLiberties = hasLibertiesHelperForBracnh(x, y, color, stones);
-
-    // either remove stones or reset what hasLibertiesHelper does to the board
-    cleanupHasLibertiesHelperForBranch(x, y, color.recursed(), stones, !hasLiberties);
-  }
-
   /**
    * Recursively determines if a chain has liberties. Alters the state of stones, so it must be
    * counteracted
@@ -3496,28 +3487,6 @@ public class Board {
             || hasLibertiesHelper(x, y + 1, color, stones)
             || hasLibertiesHelper(x - 1, y, color, stones)
             || hasLibertiesHelper(x, y - 1, color, stones);
-
-    return hasLiberties;
-  }
-
-  private static boolean hasLibertiesHelperForBracnh(int x, int y, Stone color, Stone[] stones) {
-    if (!isValid(x, y)) return false;
-
-    if (stones[getIndex(x, y)].isEmpty()) return true; // a liberty was found
-    else if (stones[getIndex(x, y)] != color)
-      return false; // we are either neighboring an enemy stone, or one we've already recursed on
-
-    // set this index to be the recursed color to keep track of where we've already
-    // searched
-    stones[getIndex(x, y)] = color.recursed();
-
-    // set removeDeadChain to true if any recursive calls return true. Recurse in
-    // all 4 directions
-    boolean hasLiberties =
-        hasLibertiesHelperForBracnh(x + 1, y, color, stones)
-            || hasLibertiesHelperForBracnh(x, y + 1, color, stones)
-            || hasLibertiesHelperForBracnh(x - 1, y, color, stones)
-            || hasLibertiesHelperForBracnh(x, y - 1, color, stones);
 
     return hasLiberties;
   }
@@ -3551,23 +3520,6 @@ public class Board {
     removed += cleanupHasLibertiesHelper(x - 1, y, color, stones, zobrist, removeStones);
     removed += cleanupHasLibertiesHelper(x, y - 1, color, stones, zobrist, removeStones);
     return removed;
-  }
-
-  private static void cleanupHasLibertiesHelperForBranch(
-      int x, int y, Stone color, Stone[] stones, boolean removeStones) {
-    //   int removed = 0;
-    if (!isValid(x, y) || stones[getIndex(x, y)] != color) return;
-
-    stones[getIndex(x, y)] =
-        removeStones
-            ? color == Stone.BLACK_RECURSED ? Stone.BLACK_CAPTURED : Stone.WHITE_CAPTURED
-            : color.unrecursed();
-
-    // use the flood fill algorithm to replace all adjacent recursed stones
-    cleanupHasLibertiesHelperForBranch(x + 1, y, color, stones, removeStones);
-    cleanupHasLibertiesHelperForBranch(x, y + 1, color, stones, removeStones);
-    cleanupHasLibertiesHelperForBranch(x - 1, y, color, stones, removeStones);
-    cleanupHasLibertiesHelperForBranch(x, y - 1, color, stones, removeStones);
   }
 
   /**
@@ -7215,10 +7167,11 @@ public class Board {
   }
 
   public void changeNextTurn() {
-    // TODO Auto-generated method stub
     if (Lizzie.leelaz != null && Lizzie.leelaz.canAddPlayer) {
-      getHistory().getCurrentHistoryNode().getData().blackToPlay =
-          !getHistory().getCurrentHistoryNode().getData().blackToPlay;
+      synchronized (this) {
+        BoardData data = getHistory().getCurrentHistoryNode().getData();
+        data.blackToPlay = !data.blackToPlay;
+      }
       clearbestmoves();
       if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.ponder();
     } else {

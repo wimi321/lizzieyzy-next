@@ -642,6 +642,7 @@ public class KataGoRuntimeHelperTest {
           Path runtimeDir = Files.createDirectories(runtimeWorkDirectory.resolve("nvidia-runtime"));
           touchRequiredCuda12_8Dlls(runtimeDir);
           touch(runtimeDir.resolve("nvinfer_10.dll"));
+          touch(runtimeDir.resolve("nvonnxparser_10.dll"));
           touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
           Path originalDirectory = Files.createDirectories(portableRoot.resolve("app"));
           ProcessBuilder processBuilder =
@@ -698,6 +699,7 @@ public class KataGoRuntimeHelperTest {
           touchRequiredCuda12_8Dlls(runtimeDir);
           Files.delete(runtimeDir.resolve("z.dll"));
           touch(runtimeDir.resolve("nvinfer_10.dll"));
+          touch(runtimeDir.resolve("nvonnxparser_10.dll"));
           touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
 
           withConfig(
@@ -758,6 +760,7 @@ public class KataGoRuntimeHelperTest {
           touchRequiredCuda12_8Dlls(runtimeDir);
           Files.delete(runtimeDir.resolve("z.dll"));
           touch(runtimeDir.resolve("nvinfer_10.dll"));
+          touch(runtimeDir.resolve("nvonnxparser_10.dll"));
           touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
 
           withConfig(
@@ -809,6 +812,7 @@ public class KataGoRuntimeHelperTest {
           touchRequiredCuda12_8Dlls(engineDir);
           Files.delete(engineDir.resolve("z.dll"));
           touch(engineDir.resolve("nvinfer_10.dll"));
+          touch(engineDir.resolve("nvonnxparser_10.dll"));
           touch(engineDir.resolve("nvinfer_plugin_10.dll"));
 
           assertMissingDynamicZlib(enginePath);
@@ -1086,6 +1090,7 @@ public class KataGoRuntimeHelperTest {
           Path enginePath = touch(engineDir.resolve("katago.exe"));
           touchRequiredCuda12_8Dlls(engineDir);
           touch(engineDir.resolve("nvinfer_10.dll"));
+          touch(engineDir.resolve("nvonnxparser_10.dll"));
           touch(engineDir.resolve("nvinfer_plugin_10.dll"));
           Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
 
@@ -1712,6 +1717,7 @@ public class KataGoRuntimeHelperTest {
                 touch(targetDir.resolve("libz.dll"));
                 touchRequiredCuda12_8Dlls(runtimeDir);
                 touch(runtimeDir.resolve("nvinfer_10.dll"));
+                touch(runtimeDir.resolve("nvonnxparser_10.dll"));
                 touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
                 Files.writeString(
                     targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
@@ -1781,6 +1787,7 @@ public class KataGoRuntimeHelperTest {
                 Path runtimeDir = runtimeWorkDirectory.resolve("nvidia-runtime");
                 touchRequiredCuda12_8Dlls(runtimeDir);
                 touch(runtimeDir.resolve("nvinfer_10.dll"));
+                touch(runtimeDir.resolve("nvonnxparser_10.dll"));
                 touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
                 Files.writeString(
                     targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
@@ -1828,6 +1835,7 @@ public class KataGoRuntimeHelperTest {
                 Path runtimeDir = runtimeWorkDirectory.resolve("nvidia-runtime");
                 touchRequiredCuda12_8Dlls(runtimeDir);
                 touch(runtimeDir.resolve("nvinfer_10.dll"));
+                touch(runtimeDir.resolve("nvonnxparser_10.dll"));
                 touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
                 Files.writeString(
                     targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
@@ -1881,6 +1889,7 @@ public class KataGoRuntimeHelperTest {
                 Path runtimeDir = runtimeWorkDirectory.resolve("nvidia-runtime");
                 touchRequiredCuda12_8Dlls(runtimeDir);
                 touch(runtimeDir.resolve("nvinfer_10.dll"));
+                touch(runtimeDir.resolve("nvonnxparser_10.dll"));
                 touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
                 Files.writeString(
                     targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
@@ -1934,6 +1943,7 @@ public class KataGoRuntimeHelperTest {
               targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
           touchRequiredCuda12_8Dlls(runtimeDir);
           touch(runtimeDir.resolve("nvinfer_10.dll"));
+          touch(runtimeDir.resolve("nvonnxparser_10.dll"));
           touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
           Path runtimeSentinel = touch(runtimeDir.resolve("existing-runtime-sentinel.txt"));
           Path fixtureZip =
@@ -2039,6 +2049,7 @@ public class KataGoRuntimeHelperTest {
                 touchCuda12CoreWithoutNvrtc(runtimeDir);
                 touch(runtimeDir.resolve("cudnn64_9.dll"));
                 touch(runtimeDir.resolve("nvinfer_10.dll"));
+                touch(runtimeDir.resolve("nvonnxparser_10.dll"));
                 touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
                 touch(runtimeDir.resolve("z.dll"));
                 Files.writeString(
@@ -2076,6 +2087,7 @@ public class KataGoRuntimeHelperTest {
           Path enginePath = touch(targetDir.resolve("katago.exe"));
           touchRequiredCuda12_8Dlls(targetDir);
           touch(targetDir.resolve("nvinfer_10.dll"));
+          touch(targetDir.resolve("nvonnxparser_10.dll"));
           touch(targetDir.resolve("nvinfer_plugin_10.dll"));
           Files.writeString(
               targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
@@ -2124,6 +2136,7 @@ public class KataGoRuntimeHelperTest {
           Path tensorRtEnginePath = touch(targetDir.resolve("katago.exe"));
           touchRequiredCuda12_8Dlls(targetDir);
           touch(targetDir.resolve("nvinfer_10.dll"));
+          touch(targetDir.resolve("nvonnxparser_10.dll"));
           touch(targetDir.resolve("nvinfer_plugin_10.dll"));
           Files.writeString(
               targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
@@ -2175,6 +2188,7 @@ public class KataGoRuntimeHelperTest {
                 touch(targetDir.resolve("libz.dll"));
                 touchRequiredCuda12_8Dlls(runtimeDir);
                 touch(runtimeDir.resolve("nvinfer_10.dll"));
+                touch(runtimeDir.resolve("nvonnxparser_10.dll"));
                 touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
                 Files.writeString(
                     targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");

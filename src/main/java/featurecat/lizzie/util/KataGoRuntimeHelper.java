@@ -1185,7 +1185,11 @@ public final class KataGoRuntimeHelper {
     if (!isTensorRtBackend(backend)) {
       return null;
     }
-    NvidiaRuntimeStatus runtime = inspectNvidiaRuntime(enginePath);
+    // AI Coach launches the packaged companion, so its runtime gaps are runtime repairs too.
+    NvidiaRuntimeStatus runtime =
+        packagedCompanionOnly
+            ? inspectTensorRtLaunchRuntime(enginePath)
+            : inspectNvidiaRuntime(enginePath);
     boolean companionReady =
         packagedCompanionOnly
             ? hasUsablePackagedHumanSlCompanion(enginePath)
@@ -1793,11 +1797,7 @@ public final class KataGoRuntimeHelper {
       return null;
     }
     if (hasUsablePackagedHumanSlCompanion(tensorRtEnginePath)) {
-      return tensorRtEnginePath
-          .toAbsolutePath()
-          .normalize()
-          .getParent()
-          .resolve(HUMAN_SL_CUDA_COMPANION_NAME);
+      return packagedHumanSlCompanionPath(tensorRtEnginePath);
     }
     return resolveConfiguredHumanSlCudaFallback(tensorRtEnginePath);
   }
@@ -1893,6 +1893,28 @@ public final class KataGoRuntimeHelper {
   private static boolean hasUsableTensorRtHumanSlCompanion(Path tensorRtEnginePath) {
     return hasUsablePackagedHumanSlCompanion(tensorRtEnginePath)
         || resolveConfiguredHumanSlCudaFallback(tensorRtEnginePath) != null;
+  }
+
+  private static Path packagedHumanSlCompanionPath(Path tensorRtEnginePath) {
+    return tensorRtEnginePath
+        .toAbsolutePath()
+        .normalize()
+        .getParent()
+        .resolve(HUMAN_SL_CUDA_COMPANION_NAME);
+  }
+
+  /**
+   * Runtime readiness of a TensorRT install including the packaged HumanSL companion it launches,
+   * so component status and repair agree with the companion's own launch preflight.
+   */
+  private static NvidiaRuntimeStatus inspectTensorRtLaunchRuntime(Path tensorRtEnginePath) {
+    NvidiaRuntimeStatus engine = inspectNvidiaRuntime(tensorRtEnginePath);
+    if (!engine.ready || !hasUsablePackagedHumanSlCompanion(tensorRtEnginePath)) {
+      return engine;
+    }
+    NvidiaRuntimeStatus companion =
+        inspectNvidiaRuntime(packagedHumanSlCompanionPath(tensorRtEnginePath));
+    return companion.ready ? engine : companion;
   }
 
   private static boolean directedRepairRequiresPackagedCompanion(TensorRtRepairContext context) {
@@ -2241,7 +2263,7 @@ public final class KataGoRuntimeHelper {
     boolean sourceAllowed = isTensorRtSourceProfileAllowed(snapshot);
     boolean enginePresent =
         spec.targetEnginePath != null && Files.isRegularFile(spec.targetEnginePath);
-    boolean runtimeReady = inspectNvidiaRuntime(spec.targetEnginePath).ready;
+    boolean runtimeReady = inspectTensorRtLaunchRuntime(spec.targetEnginePath).ready;
     boolean engineCurrent = isCurrentTensorRtEngineBinary(spec.targetEnginePath);
     boolean companionReady = hasUsableTensorRtHumanSlCompanion(spec.targetEnginePath);
     boolean profileActive = isTensorRtEngineActive(snapshot, spec);
@@ -2620,7 +2642,7 @@ public final class KataGoRuntimeHelper {
       TensorRtRepairContext context)
       throws IOException {
     activeSession.throwIfCancelled();
-    boolean runtimeReady = inspectNvidiaRuntime(spec.targetEnginePath).ready;
+    boolean runtimeReady = inspectTensorRtLaunchRuntime(spec.targetEnginePath).ready;
     boolean engineCurrent = isCurrentTensorRtEngineBinary(spec.targetEnginePath);
     Path reusableCompanion = resolveTensorRtInstallCompanionSource(snapshot, spec.targetEnginePath);
     boolean companionReady = hasUsableCompanionForRepair(spec.targetEnginePath, context);
@@ -6068,9 +6090,14 @@ public final class KataGoRuntimeHelper {
   private static List<List<String>> requiredRuntimeDllGroups(
       Path enginePath, String backend, boolean staticZlib) {
     if (isTensorRtBackend(backend)) {
-      return staticZlib
-          ? REQUIRED_NVIDIA_TRT10_9_RUNTIME_DLL_GROUPS_STATIC_ZLIB
-          : REQUIRED_NVIDIA_TRT10_9_RUNTIME_DLL_GROUPS;
+      if (staticZlib) {
+        // The pinned Transformer build imports the ONNX parser at process startup.
+        List<List<String>> required =
+            new ArrayList<>(REQUIRED_NVIDIA_TRT10_9_RUNTIME_DLL_GROUPS_STATIC_ZLIB);
+        required.add(List.of("nvonnxparser_10.dll"));
+        return required;
+      }
+      return REQUIRED_NVIDIA_TRT10_9_RUNTIME_DLL_GROUPS;
     }
     if (usesCuda12_8Runtime(enginePath, backend)) {
       return staticZlib
@@ -6231,10 +6258,9 @@ public final class KataGoRuntimeHelper {
     if (status != null && status.missingDlls != null && !status.missingDlls.isEmpty()) {
       builder.append(" Missing: ").append(String.join(", ", status.missingDlls));
     }
-    if (status != null && status.enginePath != null && status.enginePath.getParent() != null) {
-      builder
-          .append(" | ")
-          .append(status.enginePath.getParent().toAbsolutePath().normalize().toString());
+    if (status != null && status.enginePath != null) {
+      // The TensorRT engine and its HumanSL companion share a directory; name the failing file.
+      builder.append(" | ").append(status.enginePath.toAbsolutePath().normalize().toString());
     }
     return builder.toString();
   }
@@ -6840,11 +6866,44 @@ public final class KataGoRuntimeHelper {
   }
 
   private static boolean hasVerifiedStaticZlibProvenance(Path enginePath, String backend) {
+    if (NVIDIA50_CUDA_BACKEND.equalsIgnoreCase(backend)) {
+      return isVerifiedPackagedHumanSlCompanion(enginePath);
+    }
     KataGoAssetCatalog.Asset asset = assetForNvidiaBackend(backend);
+    return isProjectStaticZlibAsset(asset) && hasVerifiedEngineProvenance(enginePath, asset);
+  }
+
+  private static boolean isProjectStaticZlibAsset(KataGoAssetCatalog.Asset asset) {
     return asset != null
         && "project-source-build".equals(KATAGO_ASSETS.origin())
-        && "static".equals(asset.zlibLinkage())
-        && hasVerifiedEngineProvenance(enginePath, asset);
+        && "static".equals(asset.zlibLinkage());
+  }
+
+  /**
+   * The packaged HumanSL companion has no manifest of its own. It is trusted only when the verified
+   * TensorRT engine beside it lists the companion in its strict engine manifest.
+   */
+  private static boolean isVerifiedPackagedHumanSlCompanion(Path companionPath) {
+    if (companionPath == null
+        || companionPath.getFileName() == null
+        || !HUMAN_SL_CUDA_COMPANION_NAME.equalsIgnoreCase(companionPath.getFileName().toString())
+        || !isProjectStaticZlibAsset(NVIDIA_CUDA_ASSET)) {
+      return false;
+    }
+    Path engineDir = companionPath.toAbsolutePath().normalize().getParent();
+    if (engineDir == null || !isCurrentTensorRtEngineBinary(engineDir.resolve("katago.exe"))) {
+      return false;
+    }
+    try {
+      Map<String, String> manifest =
+          readStrictEngineManifest(engineDir.resolve(TENSORRT_ENGINE_MANIFEST_NAME));
+      // TensorRT provenance validates the companion entry only when present; require it here.
+      return manifest != null
+          && HUMAN_SL_CUDA_COMPANION_NAME.equals(manifest.get("HumanSL companion"))
+          && isPinnedHumanSlCudaExecutable(companionPath);
+    } catch (IOException e) {
+      return false;
+    }
   }
 
   private static KataGoAssetCatalog.Asset assetForNvidiaBackend(String backend) {

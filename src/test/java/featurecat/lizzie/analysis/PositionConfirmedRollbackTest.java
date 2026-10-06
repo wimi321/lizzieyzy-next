@@ -1326,6 +1326,289 @@ class PositionConfirmedRollbackTest {
     }
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"none", "kifu", "rules", "reader", "generation"})
+  void localRestartReconfirmsPositionAndFencesDelayedAnalysis(String replacement) throws Exception {
+    try (Harness harness = Harness.open()) {
+      boolean previousCanGo = LizzieFrame.canGoAfterload;
+      try {
+        harness.engine.isLoaded = false;
+        harness.engine.commandLists.add("loadsgf");
+        javax.swing.SwingUtilities.invokeAndWait(
+            harness.frame::synchronizeImportedSgfAfterParserLoad);
+        drainKifuWorker(harness.frame);
+        EngineManager.EngineSwitchUiTracker tracker = new EngineManager.EngineSwitchUiTracker();
+        setField(Lizzie.engineManager, "engineSwitchUiTracker", tracker);
+        long token = beginKifuRestart(harness, tracker);
+        ExactSnapshotRestoreProtocolFixture.Transport output =
+            ExactSnapshotRestoreProtocolFixture.install(
+                harness.engine, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+        harness.engine.installFreshCommandOutputForTest(output);
+        harness.engine.advertiseCommandsForTest(
+            List.of("name", "play", "undo", "stop", "kata-analyze", "loadsgf"));
+        Lizzie.setPrimaryEngine(harness.engine);
+        harness.engine.isLoaded = true;
+        tracker.succeed(token, true, 0, "restarted", harness.engine);
+        awaitKifuResume(harness.frame);
+        assertTrue(LizzieFrame.canGoAfterload);
+        assertEquals(1, payloadCount(output, "loadsgf"));
+        assertEquals(0, payloadCount(output, "kata-analyze"));
+        Runnable oldResume = harness.frame.scheduledResume;
+        switch (replacement) {
+          case "kifu" -> {
+            harness.engine.isLoaded = false;
+            harness.board.setHistory(new BoardHistoryList(BoardData.empty(19, 19)));
+            javax.swing.SwingUtilities.invokeAndWait(
+                harness.frame::synchronizeImportedSgfAfterParserLoad);
+          }
+          case "rules" -> harness.board.getHistory().publishExternalRules("Japanese");
+          case "reader" -> harness.engine.installFreshCommandOutputForTest(output);
+          case "generation" -> Lizzie.setPrimaryEngine(harness.engine);
+          case "none" -> {}
+          default -> throw new AssertionError(replacement);
+        }
+        javax.swing.SwingUtilities.invokeAndWait(oldResume);
+        if (replacement.equals("none")) {
+          awaitRawCommand(output, "kata-analyze", 0);
+          assertEquals(1, payloadCount(output, "kata-analyze"));
+        } else {
+          assertFalse(harness.engine.isPondering());
+          assertEquals(0, payloadCount(output, "kata-analyze"));
+          if (replacement.equals("kifu")) assertFalse(LizzieFrame.canGoAfterload);
+        }
+      } finally {
+        harness.frame.shutdownKifuEngineSyncCoordinator();
+        LizzieFrame.canGoAfterload = previousCanGo;
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {"keep", "exit-before-notification", "exit-after-notification", "exit-after-wait"})
+  void localRestartReconfirmsImportAfterComparisonModeChoice(String modeChoice)
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      boolean previousCanGo = LizzieFrame.canGoAfterload;
+      Leelaz mirror = new Leelaz("");
+      try {
+        Lizzie.config.extraMode = ExtraMode.Double_Engine;
+        Lizzie.config.uiConfig = new org.json.JSONObject();
+        mirror.started = true;
+        mirror.isLoaded = true;
+        mirror.isKatago = true;
+        mirror.advertiseCommandsForTest(
+            List.of("name", "play", "undo", "stop", "kata-analyze", "loadsgf"));
+        Lizzie.leelaz2 = mirror;
+        ExactSnapshotRestoreProtocolFixture.Transport mirrorOutput =
+            ExactSnapshotRestoreProtocolFixture.install(
+                mirror, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+        harness.engine.isLoaded = false;
+        harness.engine.commandLists.add("loadsgf");
+        assertSame(mirror, harness.engine.activeComparisonEngine());
+        javax.swing.SwingUtilities.invokeAndWait(
+            harness.frame::synchronizeImportedSgfAfterParserLoad);
+        drainKifuWorker(harness.frame);
+        EngineManager.EngineSwitchUiTracker tracker = new EngineManager.EngineSwitchUiTracker();
+        setField(Lizzie.engineManager, "engineSwitchUiTracker", tracker);
+        ExactSnapshotRestoreProtocolFixture.Transport output =
+            ExactSnapshotRestoreProtocolFixture.install(
+                harness.engine, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+        long[] token = new long[1];
+        javax.swing.SwingUtilities.invokeAndWait(
+            () -> {
+              Runnable exitComparison = () -> Lizzie.config.toggleExtraMode(0);
+              if (modeChoice.equals("exit-before-notification")) {
+                javax.swing.SwingUtilities.invokeLater(exitComparison);
+              }
+              token[0] = beginKifuRestart(harness, tracker);
+              if (modeChoice.equals("exit-after-notification")) {
+                javax.swing.SwingUtilities.invokeLater(exitComparison);
+              }
+              harness.engine.installFreshCommandOutputForTest(output);
+              harness.engine.advertiseCommandsForTest(
+                  List.of("name", "play", "undo", "stop", "kata-analyze", "loadsgf"));
+              // Production publishes the successor generation before the queued notification runs.
+              Lizzie.setPrimaryEngine(harness.engine);
+              harness.engine.isLoaded = true;
+            });
+        drainKifuWorker(harness.frame);
+        assertEquals(
+            EngineManager.EngineSwitchUiPhase.SWITCHING,
+            Lizzie.engineManager.engineSwitchUiSnapshot(true).phase());
+        assertFalse(LizzieFrame.canGoAfterload);
+        assertEquals(0, payloadCount(output, "loadsgf"));
+        if (modeChoice.equals("exit-after-wait")) {
+          javax.swing.SwingUtilities.invokeAndWait(() -> Lizzie.config.toggleExtraMode(0));
+        }
+        tracker.succeed(token[0], true, 0, "restarted", harness.engine);
+        awaitKifuResume(harness.frame);
+        assertTrue(LizzieFrame.canGoAfterload);
+        assertEquals(1, harness.frame.scheduledResumeCount);
+        assertEquals(1, payloadCount(output, "loadsgf"));
+        assertEquals(modeChoice.equals("keep") ? 1 : 0, payloadCount(mirrorOutput, "loadsgf"));
+        assertEquals(0, payloadCount(output, "kata-analyze"));
+        javax.swing.SwingUtilities.invokeAndWait(harness.frame.scheduledResume);
+        awaitRawCommand(output, "kata-analyze", 0);
+        assertEquals(1, payloadCount(output, "kata-analyze"));
+      } finally {
+        harness.frame.shutdownKifuEngineSyncCoordinator();
+        mirror.started = false;
+        mirror.isLoaded = false;
+        LizzieFrame.canGoAfterload = previousCanGo;
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"kifu", "rules", "engine", "restart", "shutdown"})
+  void queuedLocalRestartCannotTakeOverSuccessorContext(String replacement) throws Exception {
+    try (Harness harness = Harness.open()) {
+      boolean previousCanGo = LizzieFrame.canGoAfterload;
+      try {
+        harness.engine.isLoaded = false;
+        harness.engine.commandLists.add("loadsgf");
+        javax.swing.SwingUtilities.invokeAndWait(
+            harness.frame::synchronizeImportedSgfAfterParserLoad);
+        EngineManager.EngineSwitchUiTracker tracker = new EngineManager.EngineSwitchUiTracker();
+        setField(Lizzie.engineManager, "engineSwitchUiTracker", tracker);
+        ExactSnapshotRestoreProtocolFixture.Transport output =
+            ExactSnapshotRestoreProtocolFixture.install(
+                harness.engine, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+        javax.swing.SwingUtilities.invokeAndWait(
+            () -> {
+              long token = beginKifuRestart(harness, tracker);
+              switch (replacement) {
+                case "kifu" -> {
+                  harness.board.setHistory(new BoardHistoryList(BoardData.empty(19, 19)));
+                  harness.frame.synchronizeImportedSgfAfterParserLoad();
+                }
+                case "rules" -> harness.board.getHistory().publishExternalRules("Japanese");
+                case "engine" -> Lizzie.setPrimaryEngine(null);
+                case "restart" -> tracker.begin(true, 0, "old", harness.engine, 0, "new", harness.engine);
+                case "shutdown" -> harness.frame.shutdownKifuEngineSyncCoordinator();
+                default -> throw new AssertionError(replacement);
+              }
+              if (!replacement.equals("kifu")) {
+                tracker.succeed(token, true, 0, "retired", harness.engine);
+              }
+            });
+        javax.swing.SwingUtilities.invokeAndWait(() -> {});
+        assertFalse(LizzieFrame.canGoAfterload);
+        assertEquals(0, payloadCount(output, "clear_board"));
+        assertEquals(0, payloadCount(output, "loadsgf"));
+        assertEquals(0, payloadCount(output, "kata-analyze"));
+        assertEquals(0, harness.frame.scheduledResumeCount);
+      } finally {
+        harness.frame.shutdownKifuEngineSyncCoordinator();
+        LizzieFrame.canGoAfterload = previousCanGo;
+      }
+    }
+  }
+
+  @Test
+  void failedLocalRestartKeepsImportAndAnalysisGated() throws Exception {
+    try (Harness harness = Harness.open()) {
+      boolean previousCanGo = LizzieFrame.canGoAfterload;
+      try {
+        harness.engine.isLoaded = false;
+        javax.swing.SwingUtilities.invokeAndWait(
+            harness.frame::synchronizeImportedSgfAfterParserLoad);
+        EngineManager.EngineSwitchUiTracker tracker = new EngineManager.EngineSwitchUiTracker();
+        setField(Lizzie.engineManager, "engineSwitchUiTracker", tracker);
+        long token = beginKifuRestart(harness, tracker);
+        tracker.fail(token, true, "restart confirmation failed");
+        drainKifuWorker(harness.frame);
+        javax.swing.SwingUtilities.invokeAndWait(harness.frame::togglePonderMannul);
+        assertFalse(LizzieFrame.canGoAfterload);
+        assertFalse(harness.engine.isPondering());
+        assertEquals(0, harness.frame.scheduledResumeCount);
+        assertEquals(0, payloadCount(harness.transport, "kata-analyze"));
+      } finally {
+        harness.frame.shutdownKifuEngineSyncCoordinator();
+        LizzieFrame.canGoAfterload = previousCanGo;
+      }
+    }
+  }
+
+  @Test
+  void localRestartDoesNotInheritPreviousReaderRulesConsent() throws Exception {
+    try (Harness harness = Harness.open()) {
+      boolean previousCanGo = LizzieFrame.canGoAfterload;
+      try {
+        harness.engine.commandLists.add("loadsgf");
+        harness.engine.isLoaded = false;
+        harness.frame.rulesFailureChoice = javax.swing.JOptionPane.YES_OPTION;
+        harness.board.getHistory().publishExternalRules("Unsupported");
+        javax.swing.SwingUtilities.invokeAndWait(
+            harness.frame::synchronizeImportedSgfAfterParserLoad);
+        drainKifuWorker(harness.frame);
+        assertEquals(1, harness.frame.rulesFailurePromptCount);
+        harness.frame.rulesFailureChoice = javax.swing.JOptionPane.NO_OPTION;
+        EngineManager.EngineSwitchUiTracker tracker = new EngineManager.EngineSwitchUiTracker();
+        setField(Lizzie.engineManager, "engineSwitchUiTracker", tracker);
+        long token = beginKifuRestart(harness, tracker);
+        ExactSnapshotRestoreProtocolFixture.Transport output =
+            ExactSnapshotRestoreProtocolFixture.install(
+                harness.engine, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+        harness.engine.installFreshCommandOutputForTest(output);
+        harness.engine.advertiseCommandsForTest(
+            List.of("name", "play", "undo", "stop", "kata-analyze", "loadsgf"));
+        Lizzie.setPrimaryEngine(harness.engine);
+        harness.engine.isLoaded = true;
+        tracker.succeed(token, true, 0, "restarted", harness.engine);
+        long deadline = System.nanoTime() + OBSERVATION_TIMEOUT_NANOS;
+        while (harness.frame.rulesFailurePromptCount < 2 && System.nanoTime() < deadline) {
+          javax.swing.SwingUtilities.invokeAndWait(() -> {});
+          Thread.sleep(5L);
+        }
+        assertEquals(2, harness.frame.rulesFailurePromptCount);
+        assertEquals(0, payloadCount(output, "loadsgf"));
+        assertEquals(0, payloadCount(output, "kata-analyze"));
+        harness.frame.rulesFailureChoice = javax.swing.JOptionPane.YES_OPTION;
+        javax.swing.SwingUtilities.invokeAndWait(harness.frame::togglePonderMannul);
+        awaitKifuResume(harness.frame);
+        javax.swing.SwingUtilities.invokeAndWait(harness.frame.scheduledResume);
+        awaitRawCommand(output, "kata-analyze", 0);
+        assertEquals(3, harness.frame.rulesFailurePromptCount);
+        assertEquals(1, payloadCount(output, "loadsgf"));
+        assertEquals(1, payloadCount(output, "kata-analyze"));
+      } finally {
+        harness.frame.shutdownKifuEngineSyncCoordinator();
+        LizzieFrame.canGoAfterload = previousCanGo;
+      }
+    }
+  }
+
+  private static long beginKifuRestart(
+      Harness harness, EngineManager.EngineSwitchUiTracker tracker) {
+    long token = tracker.begin(true, 0, "old", harness.engine, 0, "restart", harness.engine).token();
+    harness.frame.continueKifuSyncAfterLocalRestart(
+        harness.engine, Lizzie.capturePrimaryEngineGeneration(harness.engine), Lizzie.engineManager, token);
+    return token;
+  }
+
+  private static void awaitKifuResume(RecordingFrame frame) throws Exception {
+    long deadline = System.nanoTime() + OBSERVATION_TIMEOUT_NANOS;
+    while (frame.scheduledResume == null && System.nanoTime() < deadline) {
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+      Thread.sleep(5L);
+    }
+    assertNotNull(frame.scheduledResume, "restart must obtain a fresh import confirmation");
+  }
+
+  private static void drainKifuWorker(LizzieFrame frame) throws Exception {
+    javax.swing.SwingUtilities.invokeAndWait(() -> {});
+    Field field = LizzieFrame.class.getDeclaredField("kifuEngineSyncCoordinator");
+    field.setAccessible(true);
+    Object coordinator = field.get(frame);
+    Field executorField = coordinator.getClass().getDeclaredField("executor");
+    executorField.setAccessible(true);
+    ((java.util.concurrent.ScheduledExecutorService) executorField.get(coordinator))
+        .submit(() -> {}).get(2, TimeUnit.SECONDS);
+    javax.swing.SwingUtilities.invokeAndWait(() -> {});
+  }
+
   @Test
   void failedImportedRulesKeepNavigationLocalUntilExplicitRestore() throws Exception {
     try (Harness harness = Harness.open()) {

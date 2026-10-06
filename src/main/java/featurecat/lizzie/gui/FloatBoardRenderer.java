@@ -61,8 +61,8 @@ public class FloatBoardRenderer {
 
   private boolean isShowingBranch = false;
   private boolean shouldHideMouseOverInfo = false;
-  private String mouseOverCoords = "";
   private Branch branch;
+  private VariationPreviewGenerator.Style publishedStyle;
 
   private int cachedBoardWidth = 0, cachedBoardHeight = 0;
   private int cachedBoardWidth2 = 0, cachedBoardHeight2 = 0;
@@ -92,7 +92,8 @@ public class FloatBoardRenderer {
 
   // private boolean lastInScoreMode = false;
 
-  public Optional<List<String>> variationOpt;
+  private final VariationPreviewState preview = new VariationPreviewState();
+  private boolean previewCancelled;
 
   // special values of displayedBranchLength
   public static final int SHOW_RAW_BOARD = -1;
@@ -110,10 +111,6 @@ public class FloatBoardRenderer {
   private int maxAlpha = 240;
   // int number = 1;
   TexturePaint paint;
-  List<String> variation;
-  List<String> cachedVariation = new ArrayList<String>();
-  private int cachedDisplayedBranchLengthFroBranch;
-  List<String> pvVistis;
   private int drawUnimportantSuggCount = 100;
   public boolean editMode = false;
 
@@ -683,25 +680,37 @@ public class FloatBoardRenderer {
     isShowingEstimate = hasDraw;
   }
 
-  /** Draw the 'ghost stones' which show a variationOpt Leelaz is thinking about */
-  private void drawBranch() {
-    if (Lizzie.board != null && Lizzie.board.isSetupMode()) {
+  public void selectHoveredVariation() {
+    previewCancelled = false;
+    drawBranch(false);
+  }
+
+  public void selectNormalVariation() {
+    displayedBranchLength = SHOW_NORMAL_BOARD;
+    selectHoveredVariation();
+  }
+
+  private VariationPreviewState.Selection prepareSelection(boolean refresh) {
+    if (Lizzie.board == null || Lizzie.board.isSetupMode() || Lizzie.frame.isInScoreMode) {
       clearBranch();
-      return;
+      return null;
     }
-    if (cachedBoardWidth != boardWidth || cachedBoardHeight != boardHeight) {
-      cachedBoardWidth = boardWidth;
-      cachedBoardHeight = boardHeight;
-      cachedShadow = null;
-      cachedGhostShadow2 = null;
-      invalidateBranchImageCache();
+    VariationPreviewState.Selection selected = validSelection();
+    BranchInputCapture capture =
+        BranchInputCapture.begin(
+            Lizzie.board,
+            () -> Lizzie.board.getHistory().getCurrentHistoryNode(),
+            () -> Lizzie.board.getHistory().getCurOrMainEnd(editMode));
+    if (capture == null) {
+      clearBranch();
+      return null;
     }
-    showingBranch = false;
-    branchOpt = Optional.empty();
-    BoardData mainEndData = Lizzie.board.getHistory().getCurOrMainEnd(editMode).getData();
-    bestMoves = mainEndData.bestMoves;
-    estimateArray = mainEndData.estimateArray;
-    estimateBlackToPlay = mainEndData.blackToPlay;
+    BoardData mainEndData = capture.analysisData;
+    synchronized (mainEndData) {
+      bestMoves = new ArrayList<>(mainEndData.bestMoves);
+      estimateArray = mainEndData.estimateArray;
+      estimateBlackToPlay = mainEndData.blackToPlay;
+    }
     if (Lizzie.config.showKataGoEstimate
         && estimateArray == null
         && Lizzie.board.getHistory().getCurOrMainEnd(editMode).previous().isPresent()) {
@@ -710,30 +719,19 @@ public class FloatBoardRenderer {
       estimateBlackToPlay = mainEndData.blackToPlay;
     } else preEstimateArray = null;
     if ((Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.showBlackCandidates)
-        || (!Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.showWhiteCandidates))
-      return;
-    variationOpt = Optional.empty();
-
-    if ((isShowingRawBoard() || !Lizzie.config.showBranchNow())) {
-      return;
+        || (!Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.showWhiteCandidates)
+        || isShowingRawBoard() || !Lizzie.config.showBranchNow()
+        || Lizzie.frame.isShowingPolicy || Lizzie.frame.isShowingHeatmap) {
+      clearBranch();
+      return null;
     }
-
-    if (!isSuggestionHoverPreviewReady()) {
-      return;
-    }
-
     Optional<MoveData> suggestedMove = mouseOveredMove();
-
-    if (!suggestedMove.isPresent()
-        || Lizzie.frame.isShowingPolicy
-        || Lizzie.frame.isShowingHeatmap) {
-      mouseOverTemp = null;
-      return;
+    if (suggestedMove.isEmpty() || !capture.isEmptyPoint(suggestedMove.get().coordinate)) {
+      clearBranch();
+      return null;
     }
     boolean notChangedMouseOverMove =
-        mouseOverTemp != null
-            && mouseOverTempNode == Lizzie.board.getHistory().getCurOrMainEnd(editMode)
-            && mouseOverTemp.coordinate.equals(suggestedMove.get().coordinate);
+        selected != null && selected.coordinate().equals(suggestedMove.get().coordinate);
     mouseOverTemp = suggestedMove.get();
     if (Lizzie.config.useMovesOwnership) {
       List<Double> array = mouseOverTemp.movesEstimateArray;
@@ -747,183 +745,108 @@ public class FloatBoardRenderer {
 
     float percentPlayouts = (float) suggestedMove.get().allocationRatio(maxPlayouts);
 
-    if (notChangedMouseOverMove) {
-      if (displayedBranchLength == 1) if (!Lizzie.config.autoReplayBranch) return;
-    } else {
-      if (!(Lizzie.config.autoReplayBranch
-          && Lizzie.config.autoReplayDisplayEntireVariationsFirst)) {
-        if (displayedBranchLength < 2
-            && (percentPlayouts <= Lizzie.config.minPlayoutRatioForStats
-                || Lizzie.config.autoReplayBranch)) {
-          displayedBranchLength = 1;
-          if (!Lizzie.config.autoReplayBranch) return;
-        }
-        if (displayedBranchLength < 2
-            && Lizzie.config.limitMaxSuggestion > 0
-            && mouseOverOrder > Lizzie.config.limitMaxSuggestion
-            && !suggestedMove.get().lastTimeUnlimited) {
-          displayedBranchLength = 1;
-          if (!Lizzie.config.autoReplayBranch) return;
-        }
+    if (!notChangedMouseOverMove
+        && !(Lizzie.config.autoReplayBranch
+            && Lizzie.config.autoReplayDisplayEntireVariationsFirst)
+        && displayedBranchLength < 2
+        && (percentPlayouts <= Lizzie.config.minPlayoutRatioForStats
+            || Lizzie.config.autoReplayBranch
+            || (Lizzie.config.limitMaxSuggestion > 0
+                && mouseOverOrder > Lizzie.config.limitMaxSuggestion
+                && !suggestedMove.get().lastTimeUnlimited))) {
+      displayedBranchLength = 1;
+    }
+    if (notChangedMouseOverMove
+        && (!refresh || Lizzie.config.noRefreshOnMouseMove)) {
+      return selected.withSimulation(
+          Lizzie.config.removeDeadChainInVariation && !Lizzie.config.noCapture,
+          Lizzie.config.showPvVisitsAllMove || Lizzie.config.showPvVisitsLastMove);
+    }
+    Branch.Input input = capture.capture(
+        () -> suggestedMove.get().variation, () -> suggestedMove.get().pvVisits,
+        displayedBranchLength > 0 ? displayedBranchLength : 199,
+        Lizzie.config.removeDeadChainInVariation && !Lizzie.config.noCapture,
+        Lizzie.config.showPvVisitsAllMove || Lizzie.config.showPvVisitsLastMove, null, null);
+    if (input == null) {
+      clearBranch();
+      return null;
+    }
+    if (notChangedMouseOverMove && input.variation.equals(selected.input().variation)
+        && java.util.Objects.equals(input.pvVisits, selected.input().pvVisits)) {
+      return selected.withSimulation(input.removeDeadChains, input.recordPvVisits);
+    }
+    VariationPreviewState.Selection replacement = new VariationPreviewState.Selection(
+        capture, suggestedMove.get().coordinate, input, displayedBranchLength);
+    return replacement;
+  }
+
+  private void drawBranch() {
+    drawBranch(true);
+  }
+
+  private void drawBranch(boolean refresh) {
+    validSelection();
+    long capturedGeneration = preview.generation();
+    VariationPreviewState.Selection replacement = prepareSelection(refresh);
+    if (replacement == null || previewCancelled) return;
+    long requestGeneration = preview.selectIfCurrent(capturedGeneration, replacement);
+    if (requestGeneration < 0) return;
+    if (displayedBranchLength == 1 && !Lizzie.config.autoReplayBranch) {
+      synchronized (preview) {
+        preview.cancelPreview();
+        clearPublishedPreview();
       }
-    }
-    if (displayedBranchLength == 1 && !Lizzie.config.autoReplayBranch) displayedBranchLength = -2;
-    // List<String>
-    if (!Lizzie.config.noRefreshOnMouseMove
-        || (!isShowingBranch || !mouseOverCoords.equals(suggestedMove.get().coordinate))) {
-      variation = branchPreviewList(suggestedMove.get().variation);
-      pvVistis = branchPreviewList(suggestedMove.get().pvVisits);
-    }
-    if (variation == null) {
       return;
     }
-    if (Lizzie.config.noRefreshOnMouseMove
-        && notChangedMouseOverMove
-        && variation == cachedVariation
-        && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
-        && branch != null
-        && hasRenderedBranchImages()) {
-      mouseOverCoords = suggestedMove.get().coordinate;
+    if (cachedBoardWidth != boardWidth || cachedBoardHeight != boardHeight) {
+      cachedBoardWidth = boardWidth;
+      cachedBoardHeight = boardHeight;
+      cachedShadow = null;
+      cachedGhostShadow2 = null;
+    }
+    drawShadowCache();
+    int[] hover = Lizzie.frame.floatBoard.mouseOverCoordinate;
+    VariationPreviewGenerator.Geometry geometry = new VariationPreviewGenerator.Geometry(
+        Board.boardWidth, Board.boardHeight, boardWidth, boardHeight,
+        scaledMarginWidth, scaledMarginHeight, squareWidth, squareHeight, stoneRadius,
+        hover[0], hover[1]);
+    VariationPreviewGenerator.Style style = new VariationPreviewGenerator.Style(
+        true, editMode, Lizzie.config.removeDeadChainInVariation, false,
+        Lizzie.config.usePureStone, isFancyBoard, false, false, Lizzie.frame.isTrying,
+        Lizzie.config.showPvVisitsAllMove, Lizzie.config.showPvVisitsLastMove,
+        Lizzie.config.pvVisitsLimit, maxBranchMoves(false), maxBranchMoves(true), boardType,
+        LizzieFrame.uiFont,
+        Lizzie.config.usePureStone ? null : getScaleStone(true, stoneRadius * 2 + 1),
+        Lizzie.config.usePureStone ? null : getScaleStone(false, stoneRadius * 2 + 1),
+        Lizzie.config.showStoneShadow ? cachedShadow : null, cachedStoneCenter,
+        paint, noFancyColor,
+        replacement.source().captureCurrentStones(publishedStyle),
+        null);
+    if (style.sourceStones() == null || !replacement.source().isCurrent()) {
+      clearBranch();
+      return;
+    }
+    preview.request(requestGeneration, replacement, geometry, style,
+        new VariationPreviewState.Mode(Lizzie.config.extraMode,
+            Lizzie.config.noRefreshOnMouseMove, Lizzie.config.autoReplayBranch),
+        this::drawBranch, result -> {
+      branch = result.branch();
       branchOpt = Optional.of(branch);
-      variationOpt = Optional.of(variation);
+      branchStonesImage = result.stones();
+      branchStonesShadowImage = result.shadows();
+      shouldHideMouseOverInfo = result.hideMouseOverInfo();
+      isMouseOverStoneBlack = result.mouseOverStoneBlack();
       showingBranch = true;
       isShowingBranch = true;
-      return;
+      publishedStyle = style;
+      Lizzie.frame.floatBoard.repaint();
+    });
+    synchronized (preview) {
+      if (preview.published() == null) clearPublishedPreview();
     }
-    branch = null;
-    //    if (Lizzie.engineManager.isEngineGame && Lizzie.engineManager.engineGameInfo.isGenmove)
-    //      branch =
-    //          new Branch(
-    //              Lizzie.board,
-    //              variation,
-    //              pvVistis,
-    //              true,
-    //              this.displayedBranchLength > 0 ? displayedBranchLength : 199,
-    //              false,
-    //              false,
-    //              null);
-    //    else
-    branch =
-        new Branch(
-            Lizzie.board,
-            variation,
-            pvVistis,
-            this.displayedBranchLength > 0 ? displayedBranchLength : 199,
-            false,
-            false,
-            null,
-            false,
-            null);
-    mouseOverCoords = suggestedMove.get().coordinate;
-    branchOpt = Optional.of(branch);
-    variationOpt = Optional.of(variation);
-    showingBranch = true;
-    isShowingBranch = true;
-
-    if (Lizzie.config.noRefreshOnMouseMove) {
-      if (variation == cachedVariation
-          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
-          && hasRenderedBranchImages()) return;
-    } else {
-      if (compareVariationListEquals(variation, cachedVariation)
-          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
-          && hasRenderedBranchImages()) return;
-    }
-    cachedVariation = variation;
-    cachedDisplayedBranchLengthFroBranch = displayedBranchLength;
-
-    BufferedImage tempBranchStonesImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
-    BufferedImage tempBranchStonesShadowImage =
-        new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
-
-    Graphics2D g = (Graphics2D) tempBranchStonesImage.getGraphics();
-    g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-    Graphics2D gShadow = (Graphics2D) tempBranchStonesShadowImage.getGraphics();
-    gShadow.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-
-    g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
-    drawShadowCache();
-    for (int i = 0; i < Board.boardWidth; i++) {
-      for (int j = 0; j < Board.boardHeight; j++) {
-        // Display latest stone for ghost dead stone
-        int index = Board.getIndex(i, j);
-        Stone stone = branch.data.stones[index];
-        int stoneX = scaledMarginWidth + squareWidth * i;
-        int stoneY = scaledMarginHeight + squareHeight * j;
-
-        boolean isCaptured = (stone == Stone.BLACK_CAPTURED || stone == Stone.WHITE_CAPTURED);
-        // if (!Lizzie.config.removeDeadChainInVariation)
-        if (!editMode) {
-          if (Lizzie.board.getData().stones[index] != Stone.EMPTY
-              && !branch.isNewStone[index]
-              && !isCaptured) continue;
-        }
-        if (branch.data.moveNumberList[index] > maxBranchMoves(false)) continue;
-        boolean isMouseOver =
-            (i == Lizzie.frame.floatBoard.mouseOverCoordinate[0]
-                && j == Lizzie.frame.floatBoard.mouseOverCoordinate[1]);
-        if (Lizzie.config.removeDeadChainInVariation) {
-          if (isCaptured) {
-            g.setPaint(paint);
-            fillCircle(g, stoneX, stoneY, stoneRadius + 1);
-            if (!isMouseOver) {
-              g.setColor(Color.BLACK);
-              g.setStroke(new BasicStroke(1));
-              g.drawLine(
-                  stoneX - (i == 0 ? 0 : (stoneRadius + 1)),
-                  stoneY + (boardType == 0 ? 1 : 0),
-                  stoneX + (i == Board.boardWidth - 1 ? 0 : (stoneRadius + 1)),
-                  stoneY + (boardType == 0 ? 1 : 0));
-              g.drawLine(
-                  stoneX + (boardType == 0 ? 1 : 0),
-                  stoneY - (j == 0 ? 0 : (stoneRadius + 1)),
-                  stoneX + (boardType == 0 ? 1 : 0),
-                  stoneY + (j == Board.boardHeight - 1 ? 0 : (stoneRadius + 1)));
-            }
-          }
-        }
-        if (Lizzie.config.usePureStone) drawStoneSimple(g, gShadow, stoneX, stoneY, stone, i, j);
-        else drawStone(g, gShadow, stoneX, stoneY, stone, i, j);
-        if (isMouseOver) isMouseOverStoneBlack = stone.isBlack();
-      }
-    }
-    g.dispose();
-    gShadow.dispose();
-    branchStonesImage = tempBranchStonesImage;
-    branchStonesShadowImage = tempBranchStonesShadowImage;
   }
 
-  private boolean isSuggestionHoverPreviewReady() {
-    FloatBoard board = Lizzie.frame.floatBoard;
-    if (board == null) {
-      return true;
-    }
-    int[] coords = board.mouseOverCoordinate;
-    return board.isSuggestionHoverPreviewReady(coords[0], coords[1]);
-  }
 
-  private boolean compareVariationListEquals(List<String> variation, List<String> variation2) {
-    if (variation.size() != variation2.size()) return false;
-    else
-      for (int i = 0; i < variation.size(); i++) {
-        if (!variation.get(i).equals(variation2.get(i))) return false;
-      }
-    return true;
-  }
-
-  private boolean hasRenderedBranchImages() {
-    return branchStonesImage != emptyImage && branchStonesShadowImage != emptyImage;
-  }
-
-  private List<String> branchPreviewList(List<String> source) {
-    if (source == null) return null;
-    return Lizzie.config.noRefreshOnMouseMove ? new ArrayList<String>(source) : source;
-  }
-
-  private void invalidateBranchImageCache() {
-    cachedVariation = new ArrayList<String>();
-    cachedDisplayedBranchLengthFroBranch = SHOW_RAW_BOARD;
-  }
 
   private Optional<MoveData> mouseOveredMove() {
     if (bestMoves != null && !bestMoves.isEmpty())
@@ -994,6 +917,7 @@ public class FloatBoardRenderer {
   }
 
   private void renderImagesUnimportant(Graphics2D g) {
+    if (editMode && preview.isPending()) return;
     if (Lizzie.frame.isShowingPolicy || Lizzie.frame.isShowingHeatmap) return;
     if (!branchOpt.isPresent()) {
       g.drawImage(unImportantSugg, x, y, null);
@@ -1130,211 +1054,11 @@ public class FloatBoardRenderer {
     return MoveRankDefinition.severityColor(severity);
   }
 
-  /** Draw move numbers and/or mark the last played move */
+  /** Composite the annotations published with the candidate stones. */
   private void drawMoveNumbers(Graphics2D g) {
-    g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
-    Board board = Lizzie.board;
-    BoardData data = getDisplayedBoardData(board);
-    if (data.isSnapshotNode()) {
-      return;
-    }
-    Optional<int[]> lastMoveOpt = getDisplayedLastMove(board);
-    if (!branchOpt.isPresent()) {
-      return;
-    }
-    shouldHideMouseOverInfo = false;
-    int[] moveNumberList;
-    moveNumberList = branchOpt.map(b -> b.data.moveNumberList).orElse(board.getMoveNumberList());
-    for (int i = 0; i < Board.boardWidth; i++) {
-      for (int j = 0; j < Board.boardHeight; j++) {
-        int stoneX = x + scaledMarginWidth + squareWidth * i;
-        int stoneY = y + scaledMarginHeight + squareHeight * j;
-        int here = Board.getIndex(i, j);
-        // Allow to display only last move number
-        Stone stoneHere = branchOpt.map(b -> b.data.stones[here]).orElse(board.getStones()[here]);
-        int mvNum = moveNumberList[Board.getIndex(i, j)];
-        // don't write the move number if either: the move number is 0, or there will
-        // already be
-        // playout information written
-        if ((mvNum > 0 || Lizzie.frame.isTrying && mvNum < 0)) {
-          if (isShowingBranch) {
-            boolean isMouseOver = Lizzie.frame.floatBoard.isMouseOver(i, j);
-            if (isMouseOver) {
-              if (mvNum > 1) shouldHideMouseOverInfo = true;
-              else continue;
-            }
-          }
-          boolean isShowingPvVists = false;
-          boolean reverse = (moveNumberList[Board.getIndex(i, j)] > maxBranchMoves(true));
-          if ((lastMoveOpt.isPresent() && lastMoveOpt.get()[0] == i && lastMoveOpt.get()[1] == j)) {
-
-            if (isShowingBranch
-                && Lizzie.config.showPvVisitsLastMove
-                && branch.pvVisitsList[here] > Lizzie.config.pvVisitsLimit) {
-              int pvVisits = branch.pvVisitsList[here];
-              g.setColor(Color.ORANGE);
-              if (pvVisits >= 1000)
-                g.fillRect(
-                    (int) (stoneX - squareWidth * 0.43),
-                    (int) (stoneY - squareWidth * 0.5),
-                    (int) (squareWidth * 0.93),
-                    (int) round(squareWidth * 0.33));
-              else if (pvVisits < 10)
-                g.fillRect(
-                    (int) (stoneX - squareWidth * 0.43),
-                    (int) (stoneY - squareWidth * 0.5),
-                    (int) (squareWidth * 0.9),
-                    (int) round(squareWidth * 0.33));
-              else
-                g.fillRect(
-                    (int) (stoneX - squareWidth * 0.43),
-                    (int) (stoneY - squareWidth * 0.5),
-                    (int) (squareWidth * 0.9),
-                    (int) round(squareWidth * 0.33));
-              g.setColor(Color.BLACK);
-              drawString(
-                  g,
-                  (int) (stoneX + squareWidth * 0.1),
-                  (int) (stoneY - squareWidth * 0.2),
-                  LizzieFrame.uiFont,
-                  Font.PLAIN,
-                  Utils.getPlayoutsString(pvVisits),
-                  (float) (squareWidth * 0.33),
-                  squareWidth * 0.8,
-                  1);
-              g.setColor(Color.RED);
-              drawPolygonSmallPv(g, stoneX, stoneY, squareWidth);
-
-              drawString(
-                  g,
-                  stoneX,
-                  (int) (stoneY + squareWidth * 0.12),
-                  LizzieFrame.uiFont,
-                  String.valueOf(mvNum),
-                  (float) (stoneRadius * 1.3),
-                  (int) (stoneRadius * 1.4));
-
-              continue;
-            } else {
-              g.setColor(Color.RED);
-              drawPolygonSmall(g, stoneX, stoneY, stoneRadius);
-            }
-          }
-          // Draw white letters on black stones nomally.
-          // But use black letters for showing black moves without stones.
-          else {
-            if (reverse) continue;
-            if (isShowingBranch
-                && Lizzie.config.showPvVisitsAllMove
-                && branch.pvVisitsList[here] > Lizzie.config.pvVisitsLimit) {
-              int pvVisits = branch.pvVisitsList[here];
-              isShowingPvVists = true;
-              g.setColor(Color.ORANGE);
-              if (pvVisits >= 1000)
-                g.fillRect(
-                    (int) (stoneX - squareWidth * 0.3),
-                    (int) (stoneY - squareWidth * 0.5),
-                    (int) (squareWidth * 0.8),
-                    (int) round(squareWidth * 0.33));
-              else if (pvVisits < 10)
-                g.fillRect(
-                    (int) (stoneX - squareWidth * 0.25),
-                    (int) (stoneY - squareWidth * 0.5),
-                    (int) (squareWidth * 0.72),
-                    (int) round(squareWidth * 0.33));
-              else
-                g.fillRect(
-                    (int) (stoneX - squareWidth * 0.25),
-                    (int) (stoneY - squareWidth * 0.5),
-                    (int) (squareWidth * 0.72),
-                    (int) round(squareWidth * 0.33));
-              g.setColor(Color.BLACK);
-              drawString(
-                  g,
-                  (int) (stoneX + squareWidth * 0.1),
-                  (int) (stoneY - squareWidth * 0.2),
-                  LizzieFrame.uiFont,
-                  Font.PLAIN,
-                  Utils.getPlayoutsString(pvVisits),
-                  (float) (squareWidth * 0.33),
-                  squareWidth * 0.8,
-                  1);
-            }
-            g.setColor(
-                stoneHere.isBlack() || stoneHere == Stone.WHITE_CAPTURED
-                    ? Color.WHITE
-                    : Color.BLACK);
-          }
-          String moveNumberString = String.valueOf(mvNum);
-          if (isShowingPvVists) {
-            if (Lizzie.frame.isTrying) {
-              if (mvNum < 0) {
-                moveNumberString = String.valueOf(-mvNum);
-                drawString(
-                    g,
-                    stoneX,
-                    (int) (stoneY + squareWidth * 0.12),
-                    LizzieFrame.uiFont,
-                    moveNumberString,
-                    (float) (stoneRadius * 1.3),
-                    (int) (stoneRadius * 1.4));
-              }
-
-            } else if (mvNum >= 100) {
-              drawString(
-                  g,
-                  stoneX,
-                  (int) (stoneY + squareWidth * 0.12),
-                  LizzieFrame.uiFont,
-                  moveNumberString,
-                  (float) (stoneRadius * 1.3),
-                  (int) (stoneRadius * 1.85));
-            } else {
-              drawString(
-                  g,
-                  stoneX,
-                  (int) (stoneY + squareWidth * 0.12),
-                  LizzieFrame.uiFont,
-                  moveNumberString,
-                  (float) (stoneRadius * 1.3),
-                  (int) (stoneRadius * 1.4));
-            }
-          } else {
-            if (Lizzie.frame.isTrying) {
-              if (mvNum < 0) {
-                moveNumberString = String.valueOf(-mvNum);
-                drawString(
-                    g,
-                    stoneX,
-                    stoneY,
-                    LizzieFrame.uiFont,
-                    moveNumberString,
-                    (float) (stoneRadius * 1.4),
-                    (int) (stoneRadius * 1.4));
-              }
-
-            } else if (mvNum >= 100) {
-              drawString(
-                  g,
-                  stoneX,
-                  stoneY,
-                  LizzieFrame.uiFont,
-                  moveNumberString,
-                  (float) (stoneRadius * 1.4),
-                  (int) (stoneRadius * 1.85));
-            } else {
-              drawString(
-                  g,
-                  stoneX,
-                  stoneY,
-                  LizzieFrame.uiFont,
-                  moveNumberString,
-                  (float) (stoneRadius * 1.4),
-                  (int) (stoneRadius * 1.4));
-            }
-          }
-        }
-      }
+    VariationPreviewGenerator.Result visible = preview.published();
+    if (visible != null && isShowingBranch) {
+      g.drawImage(visible.annotations(), x, y, null);
     }
   }
 
@@ -1358,6 +1082,8 @@ public class FloatBoardRenderer {
    * Draw all of Leelaz's suggestions as colored stones with winrate/playout statistics overlayed
    */
   private void drawLeelazSuggestions(Graphics2D g) {
+    // A transparent browse overlay must keep its hover target until the first image is ready.
+    if (editMode && preview.isPending()) return;
     //  g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
     int minAlpha = 32;
     // float winrateHueFactor = 0.9f;
@@ -1587,9 +1313,12 @@ public class FloatBoardRenderer {
 
           int suggestionX = x + scaledMarginWidth + squareWidth * coords[0];
           int suggestionY = y + scaledMarginHeight + squareHeight * coords[1];
+          VariationPreviewState.Selection visible = preview.publishedSelection();
           boolean isMouseOver =
-              Lizzie.frame.floatBoard != null
-                  && Lizzie.frame.floatBoard.isMouseOver(coords[0], coords[1]);
+              visible != null
+                  ? visible.coordinate().equals(move.coordinate)
+                  : Lizzie.frame.floatBoard != null
+                      && Lizzie.frame.floatBoard.isMouseOver(coords[0], coords[1]);
           boolean lackOfPlayouts = percentPlayouts <= Lizzie.config.minPlayoutRatioForStats;
           boolean outOfOrder =
               Lizzie.config.limitMaxSuggestion > 0
@@ -2787,7 +2516,35 @@ public class FloatBoardRenderer {
   }
 
   public void setDisplayedBranchLength(int n) {
-    displayedBranchLength = n;
+    boolean changed;
+    synchronized (preview) {
+      preview.stopReplay();
+      displayedBranchLength = n;
+      changed = preview.setDisplayedLength(n);
+    }
+    if (changed) {
+      previewCancelled = false;
+      drawBranch(false);
+    }
+  }
+
+  long replayTarget() {
+    return validSelection() == null ? -1 : preview.replayTarget();
+  }
+
+  boolean setReplayLength(long target, int n) {
+    if (validSelection() == null) return false;
+    boolean changed;
+    synchronized (preview) {
+      if (target < 0 || preview.replayTarget() != target) return false;
+      displayedBranchLength = n;
+      changed = preview.setDisplayedLength(n);
+    }
+    if (changed) {
+      previewCancelled = false;
+      drawBranch(false);
+    }
+    return true;
   }
 
   public int getDisplayedBranchLength() {
@@ -2795,37 +2552,67 @@ public class FloatBoardRenderer {
   }
 
   public int getReplayBranch() {
-
-    return mouseOveredMove().isPresent() ? mouseOveredMove().get().variation.size() : 0;
+    return selectedVariation().map(List::size).orElse(0);
   }
 
   public int getBranchLength() {
-
-    return branchOpt.isPresent() ? branchOpt.get().length : 0;
+    VariationPreviewState.Selection selected = validSelection();
+    return selected == null ? 0 : min(selected.input().maxLength, selected.input().variation.size());
   }
 
   public boolean incrementDisplayedBranchLength(int n) {
-    if (isShowingBranch && displayedBranchLength == SHOW_NORMAL_BOARD) {
-      displayedBranchLength = 2;
+    if (!hasSelectedVariation()) return false;
+    if (displayedBranchLength == SHOW_NORMAL_BOARD) {
+      setDisplayedBranchLength(2);
       return true;
     }
     switch (displayedBranchLength) {
       case 1:
-        if (Lizzie.config.autoReplayBranch) displayedBranchLength = 2;
-        else if (!isShowingBranch && n == 1) displayedBranchLength = 256;
-        else if (n == 1) displayedBranchLength = 2;
+        if (Lizzie.config.autoReplayBranch || n == 1) setDisplayedBranchLength(2);
         return true;
-      case SHOW_NORMAL_BOARD:
       case SHOW_RAW_BOARD:
         return false;
       default:
-        // force nonnegative
-        displayedBranchLength = max(0, displayedBranchLength + n);
-        if (variation != null) {
-          displayedBranchLength = min(displayedBranchLength, variation.size() + 1);
-        } else displayedBranchLength = 0;
+        setDisplayedBranchLength(min(max(0, displayedBranchLength + n), getReplayBranch() + 1));
         return true;
     }
+  }
+
+  private VariationPreviewState.Selection validSelection() {
+    VariationPreviewState.Selection selected = preview.selected();
+    if (selected != null && !selected.source().isCurrent()) {
+      clearBranch();
+      return null;
+    }
+    return selected;
+  }
+
+  public boolean hasSelectedVariation() {
+    return validSelection() != null;
+  }
+
+  public Optional<List<String>> selectedVariation() {
+    VariationPreviewState.Selection selected = validSelection();
+    return selected == null ? Optional.empty() : Optional.of(selected.input().variation);
+  }
+
+  public void cancelPreview() {
+    synchronized (preview) {
+      preview.stopReplay();
+      preview.cancelPreview();
+      previewCancelled = true;
+      clearPublishedPreview();
+    }
+  }
+
+  private void clearPublishedPreview() {
+    isShowingBranch = false;
+    showingBranch = false;
+    branchOpt = Optional.empty();
+    branchStonesImage = emptyImage;
+    branchStonesShadowImage = emptyImage;
+    branch = null;
+    publishedStyle = null;
   }
 
   public void startNormalBoard() {
@@ -2834,14 +2621,12 @@ public class FloatBoardRenderer {
   }
 
   public void clearBranch() {
-    isShowingBranch = false;
-    showingBranch = false;
-    branchOpt = Optional.empty();
-    variationOpt = Optional.empty();
-    mouseOverTemp = null;
-    branchStonesImage = emptyImage;
-    branchStonesShadowImage = emptyImage;
-    invalidateBranchImageCache();
+    synchronized (preview) {
+      preview.clear();
+      previewCancelled = false;
+      mouseOverTemp = null;
+      clearPublishedPreview();
+    }
   }
 
   public boolean isInside(int x1, int y1) {
@@ -2922,9 +2707,10 @@ public class FloatBoardRenderer {
   }
 
   public void refreshVariation() {
-    if (isShowingBranch) {
-      isShowingBranch = false;
-      displayedBranchLength = SHOW_NORMAL_BOARD;
+    if (hasSelectedVariation()) {
+      clearBranch();
+      startNormalBoard();
+      selectHoveredVariation();
       Lizzie.frame.refresh();
     }
   }

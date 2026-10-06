@@ -12,11 +12,13 @@ import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.AnalysisResourceCoordinator;
+import featurecat.lizzie.analysis.AutomaticQuickAnalysisTask;
 import featurecat.lizzie.analysis.CaptureTsumeGo;
 import featurecat.lizzie.analysis.ContributeEngine;
 import featurecat.lizzie.analysis.EngineFollowController;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.EngineRulesResult;
+import featurecat.lizzie.analysis.ForegroundRestoreResult;
 import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
@@ -48,7 +50,6 @@ import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.NodeInfo;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
-import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.teacher.CommentDisplayRenderer;
 import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.training.HumanSlTrainingSession;
@@ -90,14 +91,11 @@ import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -129,7 +127,6 @@ public class LizzieFrame extends JFrame {
     GAME_CHANGED,
     CANCELLED
   }
-
 
   enum PasteSgfDecision {
     IGNORE_EMPTY,
@@ -214,7 +211,6 @@ public class LizzieFrame extends JFrame {
   private final MenuPresentationMode menuPresentationMode;
   private int windowMenuHeight = Config.menuHeight;
   // public static EditToolbar editToolbar;
-  public Optional<List<String>> variationOpt;
 
   public static volatile boolean urlSgf = false;
   public boolean syncBoard = false;
@@ -263,7 +259,6 @@ public class LizzieFrame extends JFrame {
   public int[] suggestionclick = outOfBoundCoordinate;
   public int[] clickbadmove = outOfBoundCoordinate;
   public int[] mouseOverCoordinate = outOfBoundCoordinate;
-  private transient SuggestionHoverIntent suggestionHoverIntent;
   private int curSuggestionMoveOrderByNumber = -1;
   public boolean showControls = false;
   private long showControlTime;
@@ -287,7 +282,13 @@ public class LizzieFrame extends JFrame {
   // private int autoInterval;
   // private long lastAutosaveTime = System.currentTimeMillis();
   private int autosaveTime = 0;
-  public boolean isReplayVariation = false;
+  public volatile boolean isReplayVariation = false;
+  private javax.swing.Timer replayTimer;
+  private boolean replayPonder;
+  private final java.util.concurrent.atomic.AtomicBoolean replayStartQueued =
+      new java.util.concurrent.atomic.AtomicBoolean();
+  private final java.util.concurrent.atomic.AtomicBoolean autoReplayStartQueued =
+      new java.util.concurrent.atomic.AtomicBoolean();
   public RightClickMenu RightClickMenu;
   public RightClickMenu2 RightClickMenu2;
   //  private int boardPos = 0;
@@ -334,26 +335,17 @@ public class LizzieFrame extends JFrame {
   private transient KifuEngineSyncCoordinator kifuEngineSyncCoordinator;
   private volatile BoardHistoryNode pendingKifuEngineSyncRoot;
   private Runnable pendingKifuRulesConsent;
-  private javax.swing.Timer quickAnalysisLoadRetryTimer;
-  private volatile long loadedGameQuickAnalysisGeneration;
-  private volatile BoardHistoryNode loadedGameQuickAnalysisRoot;
-  private volatile boolean loadedGameQuickAnalysisActive;
-  private volatile boolean loadedGameQuickAnalysisPositionAlreadyConfirmed;
-  private volatile boolean loadedGameQuickAnalysisRunning;
-  private volatile AnalysisEngine loadedGameQuickAnalysisEngine;
-  private volatile long loadedGameQuickAnalysisEngineGeneration = -1;
-  private volatile long loadedGameQuickAnalysisDispatchStartedAt;
-  private int loadedGameQuickAnalysisFailureCount;
+  private AutomaticQuickAnalysisTask automaticQuickAnalysisTask;
+  private BoardHistoryNode automaticQuickAnalysisRoot;
+  private AutomaticQuickAnalysisEngineAdapter automaticQuickAnalysisAdapter;
   private volatile boolean userAnalysisPaused;
   private volatile BoardHistoryNode userCancelledQuickAnalysisRoot;
   private volatile boolean pendingForegroundResumeAfterCleanup;
   private volatile boolean analysisControlCleanupInProgress;
   private volatile long analysisControlCleanupGeneration;
   private boolean kifuOpenWaitingForQuickAnalysisRestore;
+  private ForegroundUnrestoredPrompt foregroundUnrestoredPrompt;
   private DeferredKifuOpen pendingKifuOpen;
-  private static final int LOADED_GAME_QUICK_ANALYSIS_RETRY_MS = 1800;
-  private static final int LOADED_GAME_QUICK_ANALYSIS_MAX_RETRY_MS = 30_000;
-  private static final int LOADED_GAME_QUICK_ANALYSIS_WATCHDOG_MS = 30_000;
   private static final long KIFU_RULES_CAPABILITY_WAIT_MILLIS = 30_000L;
   private javax.swing.Timer quickAnalysisWarmupTimer;
   private boolean quickAnalysisWarmupRequiresAutoAnalyze;
@@ -600,12 +592,6 @@ public class LizzieFrame extends JFrame {
   private boolean reopenWholeGameAnalysisAfterHandoff;
   private WholeGameAnalysisResultView wholeGameAnalysisResultView;
   private FlashAnalysisRequest pendingFlashAnalysisAfterSettings;
-  private final java.util.concurrent.atomic.AtomicBoolean quickAnalysisEngineStarting =
-      new java.util.concurrent.atomic.AtomicBoolean(false);
-  private final java.util.concurrent.atomic.AtomicLong quickAnalysisEngineGeneration =
-      new java.util.concurrent.atomic.AtomicLong(0L);
-  private Runnable pendingQuickAnalysisCallback;
-  private javax.swing.Timer quickAnalysisNavigationResumeTimer;
   private boolean manualAutoAnalysisStarting;
   private long manualAutoAnalysisStartGeneration;
   private Runnable pendingManualAutoAnalysisReady;
@@ -620,8 +606,8 @@ public class LizzieFrame extends JFrame {
   private boolean redrawVariationTreeOnly;
   private javax.swing.Timer deferredMoveUiRefreshTimer;
   private static final int DEFERRED_MOVE_UI_REFRESH_MS = 180;
-  public boolean mouseOverChanged = false;
-  public boolean isAutoReplying = false;
+  public volatile boolean mouseOverChanged = false;
+  public volatile boolean isAutoReplying = false;
   public boolean isBatchAnalysisMode = false;
   // int testFontSize = 12;
   private Color blunderBackground =
@@ -869,19 +855,10 @@ public class LizzieFrame extends JFrame {
     listTable = new JTable(listDataModel);
     TableCellRenderer tcr = new ColorTableCellRenderer();
     listTable.setDefaultRenderer(Object.class, tcr);
-    listTable
-        .getTableHeader()
-        .setPreferredSize(
-            new Dimension(
-                listTable.getColumnModel().getTotalColumnWidth(),
-                Lizzie.config.isFrameFontSmall()
-                    ? 20
-                    : (Lizzie.config.isFrameFontMiddle() ? 24 : 28)));
 
     listTable
         .getTableHeader()
         .setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
-    listTable.setRowHeight(Config.menuHeight - 4);
     listTable.getTableHeader().setReorderingAllowed(false);
     listTable.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     DefaultTableCellRenderer cellRenderer = new DefaultTableCellRenderer();
@@ -898,11 +875,7 @@ public class LizzieFrame extends JFrame {
       if (i == 2 || i == 4) column.setHeaderRenderer(cellRenderer);
       else column.setHeaderRenderer(cellRenderer2);
     }
-    listScrollpane = new JScrollPane(listTable);
-    listScrollpane
-        .getViewport()
-        .setBackground(
-            Lizzie.config.useMorandiColors ? MorandiPalette.CREAM_WHITE : new Color(243, 243, 243));
+    listScrollpane = new SuggestionTableScrollPane(listTable);
     refreshSuggestionTableStyle();
     varTreePane.addMouseMotionListener(
         new MouseAdapter() {
@@ -922,11 +895,7 @@ public class LizzieFrame extends JFrame {
             setCommentEditable(false);
           }
         });
-    listScrollpane.setVerticalScrollBarPolicy(
-        javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
     listScrollpane.getVerticalScrollBar().setUI(new DemoScrollBarUI2(false));
-    listScrollpane.setBackground(
-        Lizzie.config.useMorandiColors ? MorandiPalette.BG_SECONDARY : new Color(235, 235, 235));
     hiddenColumn(1, listTable);
     listTable.getColumnModel().getColumn(0).setPreferredWidth(10);
     listTable.getColumnModel().getColumn(2).setPreferredWidth(30);
@@ -1058,7 +1027,7 @@ public class LizzieFrame extends JFrame {
                       hiddenColumn(5, listTable);
                     }
                   }
-                  listTable.revalidate();
+                  ((SuggestionTableScrollPane) listScrollpane).refreshData();
                 }
                 if (Lizzie.config.isShowingBlunderTabel) {
                   if (Lizzie.leelaz != null && Lizzie.leelaz.isLoaded()) {
@@ -2706,15 +2675,17 @@ public class LizzieFrame extends JFrame {
   //  }
 
   void refreshSuggestionTableStyle() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::refreshSuggestionTableStyle);
+      return;
+    }
     if (listTable == null || listScrollpane == null) return;
     Color surface = AppleStyleSupport.workspaceSurface();
     listTable.setBackground(surface);
     listTable.setForeground(AppleStyleSupport.dialogTextColor());
     listTable.setFont(AppleStyleSupport.workspaceFont(Font.PLAIN, Config.frameFontSize));
-    listTable.setRowHeight(
-        Math.max(
-            Config.menuHeight - 4, listTable.getFontMetrics(listTable.getFont()).getHeight() + 8));
     listScrollpane.getViewport().setBackground(surface);
+    listScrollpane.setBackground(surface);
     listScrollpane.setBorder(BorderFactory.createLineBorder(AppleStyleSupport.workspaceBorder()));
     for (int i = 0; i < listTable.getColumnCount(); i++) {
       TableCellRenderer renderer = listTable.getColumnModel().getColumn(i).getHeaderRenderer();
@@ -2729,6 +2700,11 @@ public class LizzieFrame extends JFrame {
             BorderFactory.createMatteBorder(0, 0, 1, 0, AppleStyleSupport.workspaceBorder()));
       }
     }
+    ((SuggestionTableScrollPane) listScrollpane)
+        .refreshStyle(
+            Math.max(
+                Config.menuHeight - 4,
+                listTable.getFontMetrics(listTable.getFont()).getHeight() + 8));
   }
 
   public void openAnalysisTable() {
@@ -3023,10 +2999,11 @@ public class LizzieFrame extends JFrame {
   }
 
   public void openConfigDialog2(int index) {
-    openConfigDialog2(dialog -> {
-      dialog.switchTab(index);
-      return true;
-    });
+    openConfigDialog2(
+        dialog -> {
+          dialog.switchTab(index);
+          return true;
+        });
   }
 
   public boolean openConfigDialog2AtSetting(String targetId) {
@@ -4079,26 +4056,16 @@ public class LizzieFrame extends JFrame {
       kifuOpenWaitingForQuickAnalysisRestore = true;
       DeferredKifuOpen previous = pendingKifuOpen;
       pendingKifuOpen = new DeferredKifuOpen(continuation, superseded);
-      if (previous != null) {
-        previous.notifySuperseded();
-      }
+      if (previous != null) previous.notifySuperseded();
       return true;
     }
-    AnalysisEngine currentEngine = analysisEngine;
-    if (currentEngine == null
-        || !currentEngine.isAutomaticBackgroundTask()
-        || !currentEngine.usesSharedForegroundEngine()
-        || !currentEngine.hasRequestLifecycleInProgress()) {
-      return false;
-    }
+    if (!hasActiveAutomaticQuickAnalysis()
+        || !automaticQuickAnalysisTask.requiresForegroundRestore()) return false;
     kifuOpenWaitingForQuickAnalysisRestore = true;
     pendingKifuOpen = new DeferredKifuOpen(continuation, superseded);
-    stopQuickAnalysisNavigationResumeTimer();
-    stopLoadedGameQuickAnalysisRetry();
-    analysisEngine = null;
-    currentEngine.clearRequestCallbacks();
-    currentEngine.normalQuit(
-        () -> SwingUtilities.invokeLater(this::finishDeferredKifuOpenAfterQuickAnalysisRestore));
+    releaseAutomaticQuickAnalysis(
+        AutomaticQuickAnalysisTask.CancelReason.GAME_CHANGED,
+        result -> finishDeferredKifuOpenAfterQuickAnalysisRestore());
     return true;
   }
 
@@ -4125,26 +4092,15 @@ public class LizzieFrame extends JFrame {
    * active.
    */
   public void runAfterAutomaticQuickAnalysisReleased(Runnable continuation) {
-    if (continuation == null) {
-      return;
-    }
+    if (continuation == null) return;
     if (!SwingUtilities.isEventDispatchThread()) {
       SwingUtilities.invokeLater(() -> runAfterAutomaticQuickAnalysisReleased(continuation));
       return;
     }
-    AnalysisEngine currentEngine = analysisEngine;
-    if (currentEngine == null || !currentEngine.isAutomaticBackgroundTask()) {
-      continuation.run();
-      return;
-    }
-    quickAnalysisEngineGeneration.incrementAndGet();
     stopQuickAnalysisWarmupTimer();
-    stopQuickAnalysisNavigationResumeTimer();
-    stopLoadedGameQuickAnalysisRetry();
-    clearPendingQuickAnalysisCallback();
-    analysisEngine = null;
-    currentEngine.clearRequestCallbacks();
-    currentEngine.normalQuit(() -> SwingUtilities.invokeLater(continuation));
+    releaseAutomaticQuickAnalysis(
+        AutomaticQuickAnalysisTask.CancelReason.ENGINE_SWITCH, result -> continuation.run());
+    quickAnalysisAdapter().invalidateStartup();
   }
 
   /**
@@ -4153,8 +4109,11 @@ public class LizzieFrame extends JFrame {
    */
   BatchAutoAnalysis beginBatchAutoAnalysis(List<File> files) {
     AnalysisEngine automatic =
-        analysisEngine != null && analysisEngine.isAutomaticBackgroundTask() ? analysisEngine : null;
-    if (files.isEmpty() || manualAutoAnalysisStarting
+        analysisEngine != null && analysisEngine.isAutomaticBackgroundTask()
+            ? analysisEngine
+            : null;
+    if (files.isEmpty()
+        || manualAutoAnalysisStarting
         || hasManualAutoAnalysisStartConflict(automatic, null)) {
       return null;
     }
@@ -4210,7 +4169,10 @@ public class LizzieFrame extends JFrame {
       toolbar.showAutoAnalysisStartFailure(ManualAutoAnalysisStartFailure.ANALYSIS_CONFLICT);
       return;
     }
-    loadBatchAutoAnalysisFile(batch, 0, fromTemp,
+    loadBatchAutoAnalysisFile(
+        batch,
+        0,
+        fromTemp,
         () -> {
           toolbar.chkAnaAutoSave.setSelected(true);
           StartAnaDialog dialog = new StartAnaDialog(false, this, batch);
@@ -4228,7 +4190,8 @@ public class LizzieFrame extends JFrame {
     if (!ownsBatchAutoAnalysis(batch)) return;
     // Release automatic analysis before changing games, with the same ownership and failure
     // boundary as startup. An unrelated task must never be displaced by a batch load.
-    requestManualAutoAnalysisStart(batch,
+    requestManualAutoAnalysisStart(
+        batch,
         () -> {
           if (!loadFile(batch.files.get(index), fromTemp, true)) {
             endBatchAutoAnalysis(batch);
@@ -4240,16 +4203,18 @@ public class LizzieFrame extends JFrame {
           batch.loaded = true;
           // SGF establishes its new analysis context on the next EDT turn. Admission then
           // waits for that context's engine synchronization before starting analysis.
-          SwingUtilities.invokeLater(() -> {
-            if (!ownsBatchAutoAnalysis(batch)) return;
-            if (batch.root != currentHistoryRoot()) {
-              endBatchAutoAnalysis(batch);
-              return;
-            }
-            if (analysisTable != null) analysisTable.refreshTable();
-            loaded.run();
-          });
-        }, toolbar::showAutoAnalysisStartFailure);
+          SwingUtilities.invokeLater(
+              () -> {
+                if (!ownsBatchAutoAnalysis(batch)) return;
+                if (batch.root != currentHistoryRoot()) {
+                  endBatchAutoAnalysis(batch);
+                  return;
+                }
+                if (analysisTable != null) analysisTable.refreshTable();
+                loaded.run();
+              });
+        },
+        toolbar::showAutoAnalysisStartFailure);
   }
 
   void requestManualAutoAnalysisStart(
@@ -4266,10 +4231,11 @@ public class LizzieFrame extends JFrame {
       SwingUtilities.invokeLater(() -> requestManualAutoAnalysisStart(batch, ready, failure));
       return;
     }
-    Consumer<ManualAutoAnalysisStartFailure> failed = reason -> {
-      endBatchAutoAnalysis(batch);
-      notifyManualAutoAnalysisStartFailure(failure, reason);
-    };
+    Consumer<ManualAutoAnalysisStartFailure> failed =
+        reason -> {
+          endBatchAutoAnalysis(batch);
+          notifyManualAutoAnalysisStartFailure(failure, reason);
+        };
     if (batch != null && (!ownsBatchAutoAnalysis(batch) || batch.root != currentHistoryRoot())) {
       failed.accept(ManualAutoAnalysisStartFailure.GAME_CHANGED);
       return;
@@ -4280,16 +4246,9 @@ public class LizzieFrame extends JFrame {
 
     BoardHistoryNode root = currentHistoryRoot();
     AnalysisEngine currentEngine = analysisEngine;
-    long loadedGeneration = loadedGameQuickAnalysisGeneration;
-    AnalysisEngine loadedEngine = loadedGameQuickAnalysisEngine;
-    boolean loadedEngineOwnsCurrentQuickAnalysis =
-        loadedGameQuickAnalysisActive
-            && loadedEngine != null
-            && loadedGameQuickAnalysisEngineGeneration == loadedGeneration
-            && loadedGameQuickAnalysisRoot == root;
     AnalysisEngine interruptibleEngine =
-        loadedEngineOwnsCurrentQuickAnalysis
-            ? loadedEngine
+        hasActiveAutomaticQuickAnalysis() && automaticQuickAnalysisRoot == root
+            ? quickAnalysisAdapter().ownedEngine()
             : currentEngine != null && currentEngine.isAutomaticBackgroundTask()
                 ? currentEngine
                 : null;
@@ -4313,27 +4272,13 @@ public class LizzieFrame extends JFrame {
     pendingManualAutoAnalysisRoot = root;
     userCancelledQuickAnalysisRoot = root;
 
-    quickAnalysisEngineGeneration.incrementAndGet();
     stopQuickAnalysisWarmupTimer();
-    stopQuickAnalysisNavigationResumeTimer();
-    stopLoadedGameQuickAnalysisRetry();
-    clearPendingQuickAnalysisCallback();
-
-    if (interruptibleEngine == null) {
-      SwingUtilities.invokeLater(() -> finishManualAutoAnalysisStart(startGeneration, root, true));
-      return;
-    }
-    if (analysisEngine == interruptibleEngine) {
-      analysisEngine = null;
-    }
-    interruptibleEngine.clearRequestCallbacks();
-    interruptibleEngine.normalQuit(
-        () ->
-            SwingUtilities.invokeLater(
-                () -> finishManualAutoAnalysisStart(startGeneration, root, true)),
-        () ->
-            SwingUtilities.invokeLater(
-                () -> finishManualAutoAnalysisStart(startGeneration, root, false)));
+    releaseAutomaticQuickAnalysis(
+        AutomaticQuickAnalysisTask.CancelReason.MANUAL_AUTO,
+        result ->
+            finishManualAutoAnalysisStart(
+                startGeneration, root, result.permitsForegroundAnalysis()));
+    quickAnalysisAdapter().invalidateStartup();
   }
 
   void cancelPendingManualAutoAnalysisStart() {
@@ -4382,7 +4327,7 @@ public class LizzieFrame extends JFrame {
       completeManualAutoAnalysisStartFailure(ManualAutoAnalysisStartFailure.ANALYSIS_CONFLICT);
       return;
     }
-    if (quickAnalysisEngineStarting != null && quickAnalysisEngineStarting.get()) {
+    if (quickAnalysisAdapter().isStarting()) {
       waitForPrimaryEngineBeforeManualAutoAnalysis(generation, root);
       return;
     }
@@ -5237,8 +5182,7 @@ public class LizzieFrame extends JFrame {
       // snapshot capture after that work, then restore the engine away from the UI thread.
       SwingUtilities.invokeLater(
           () ->
-              scheduleEngineSyncAndResumeAfterKifuLoad(
-                  0, this::resumeAnalysisAfterConfirmedLoad));
+              scheduleEngineSyncAndResumeAfterKifuLoad(0, this::resumeAnalysisAfterConfirmedLoad));
     }
     refresh();
     return true;
@@ -5336,7 +5280,7 @@ public class LizzieFrame extends JFrame {
     canGoAfterload = false;
     pendingKifuEngineSyncRoot = root;
     Lizzie.board.requireEngineAlignment();
-    stopLoadedGameQuickAnalysisRetry();
+    cancelAutomaticQuickAnalysis(AutomaticQuickAnalysisTask.CancelReason.GAME_CHANGED);
     if (newAnalysisContext) startNewKifuAnalysisContextAfterSuccessfulLoad();
     if (deferKifuSyncUntilEngineSwitchSettles(root, rulesTarget, delayMillis, action)) {
       return;
@@ -5348,8 +5292,9 @@ public class LizzieFrame extends JFrame {
         () ->
             submitKifuEngineSync(
                 root, rulesTarget, primary, primaryGeneration, mirror, delayMillis, action);
-    if (stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(
-        () -> SwingUtilities.invokeLater(submit))) {
+    AutomaticQuickAnalysisTask task = automaticQuickAnalysisTask;
+    if (task != null && task.requiresForegroundRestore()) {
+      task.whenSettled(result -> SwingUtilities.invokeLater(submit));
       return;
     }
     submit.run();
@@ -5465,7 +5410,20 @@ public class LizzieFrame extends JFrame {
               }
 
               @Override
+              public void onLocalPrimaryRestart(
+                  Leelaz restarted, long previousGeneration, EngineManager manager, long token) {
+                if (restarted == primary && previousGeneration == primaryGeneration) {
+                  deferKifuSyncAfterLocalRestart(
+                      root, rulesTarget, primary, mirror, manager, token, delayMillis, action);
+                }
+              }
+
+              @Override
               public void onContextChanged() {
+                if (resumeKifuSyncAfterRemoteReconnect(
+                    root, rulesTarget, primary, primaryGeneration, mirror, delayMillis, action)) {
+                  return;
+                }
                 resubmitKifuSyncAfterComparisonExit(
                     root,
                     rulesTarget,
@@ -5487,9 +5445,15 @@ public class LizzieFrame extends JFrame {
                 if (primary == null || EngineManager.isEmpty) {
                   return KifuEngineSyncCoordinator.AttemptResult.COMPLETE;
                 }
+                if (remoteRulesSynchronizationMustWait(primary)) {
+                  return KifuEngineSyncCoordinator.AttemptResult.RETRY;
+                }
                 SessionRulesSynchronizer.Result primaryRules =
                     SessionRulesSynchronizer.synchronize(rulesTarget, primary);
                 if (!primaryRules.satisfied()) {
+                  if (remoteRulesSynchronizationMustWait(primary)) {
+                    return KifuEngineSyncCoordinator.AttemptResult.RETRY;
+                  }
                   if (primaryRules.failure() == SessionRulesSynchronizer.Failure.ENGINE_UNAVAILABLE
                       && rulesCapabilityDiscoveryMayStillComplete(
                           primary, rulesCapabilityDeadlineNanos)) {
@@ -5577,6 +5541,17 @@ public class LizzieFrame extends JFrame {
 
               @Override
               public void onFailed() {
+                if (remoteRulesSynchronizationMustWait(primary)
+                    && resumeKifuSyncAfterRemoteReconnect(
+                        root,
+                        rulesTarget,
+                        primary,
+                        primaryGeneration,
+                        mirror,
+                        delayMillis,
+                        action)) {
+                  return;
+                }
                 if (rulesFailure == null) {
                   failBatchKifuLoad(root);
                   return;
@@ -5592,6 +5567,178 @@ public class LizzieFrame extends JFrame {
                     action);
               }
             });
+  }
+
+  /** Called only by the admitted local restart owner, before publishing its new primary. */
+  public synchronized void continueKifuSyncAfterLocalRestart(
+      Leelaz primary, long previousGeneration, EngineManager manager, long switchToken) {
+    if (kifuEngineSyncCoordinator != null) {
+      kifuEngineSyncCoordinator.onLocalPrimaryRestart(
+          primary, previousGeneration, manager, switchToken);
+    }
+  }
+
+  private void deferKifuSyncAfterLocalRestart(
+      BoardHistoryNode root,
+      BoardHistoryList.SessionRulesTarget rulesTarget,
+      Leelaz primary,
+      Leelaz capturedMirror,
+      EngineManager manager,
+      long switchToken,
+      int delayMillis,
+      Runnable action) {
+    // Comparison exit may precede delivery of the admitted restart notification.
+    Leelaz mirror =
+        capturedMirror != null && Lizzie.config != null && !Lizzie.config.isDoubleEngineMode()
+            ? null
+            : capturedMirror;
+    KifuEngineSyncCoordinator.Request wait =
+        new KifuEngineSyncCoordinator.Request() {
+          private long successorGeneration;
+          private Object successorReader;
+          private Object mirrorReader;
+
+          private boolean sameImport() {
+            BoardHistoryList history = Lizzie.board == null ? null : Lizzie.board.getHistory();
+            return primary != null
+                && !primary.useRemoteCompute
+                && Lizzie.leelaz == primary
+                && Lizzie.engineManager == manager
+                && pendingKifuEngineSyncRoot == root
+                && currentHistoryRoot() == root
+                && history != null
+                && history.captureSessionRules() == rulesTarget
+                && primary.activeComparisonEngine() == mirror;
+          }
+
+          @Override
+          public boolean isCurrent() {
+            return sameImport() && manager.engineSwitchUiSnapshot(true).token() == switchToken;
+          }
+
+          @Override
+          public KifuEngineSyncCoordinator.AttemptResult synchronize() {
+            EngineManager.EngineSwitchUiSnapshot state = manager.engineSwitchUiSnapshot(true);
+            if (state.phase() == EngineManager.EngineSwitchUiPhase.SWITCHING) {
+              return KifuEngineSyncCoordinator.AttemptResult.RETRY;
+            }
+            if (state.phase() != EngineManager.EngineSwitchUiPhase.ACTIVE
+                || !manager.isSnapshotActiveEngineAvailable(state)) {
+              return KifuEngineSyncCoordinator.AttemptResult.PERMANENT_FAILURE;
+            }
+            successorGeneration = Lizzie.capturePrimaryEngineGeneration(primary);
+            successorReader = primary.engineIncarnationToken();
+            mirrorReader = mirror == null ? null : mirror.engineIncarnationToken();
+            return KifuEngineSyncCoordinator.AttemptResult.COMPLETE;
+          }
+
+          @Override
+          public void onSynchronized() {
+            if (isCurrent()
+                && isCurrentKifuRulesRequest(
+                    root, rulesTarget, primary, successorGeneration, mirror)
+                && exactEngineIncarnationsRemainCurrent(
+                    primary, successorReader, mirror, mirrorReader)) {
+              // READY is not import confirmation. Re-run rules and position under the new reader;
+              // neither the old rules permit nor a late old restore can release this gate.
+              submitKifuEngineSync(
+                  root, rulesTarget, primary, successorGeneration, mirror, delayMillis, action);
+            }
+          }
+
+          @Override
+          public void onContextChanged() {
+            if (mirror != null && Lizzie.config != null && !Lizzie.config.isDoubleEngineMode()) {
+              // Keep the admitted restart token: its successor reader still needs confirmation.
+              deferKifuSyncAfterLocalRestart(
+                  root, rulesTarget, primary, null, manager, switchToken, delayMillis, action);
+            }
+          }
+
+          @Override
+          public void onFailed() {
+            if (isCurrent()) failBatchKifuLoad(root);
+          }
+
+          @Override
+          public void onLocalPrimaryRestart(
+              Leelaz restarted, long previousGeneration, EngineManager nextManager, long token) {
+            if (sameImport() && restarted == primary && nextManager == manager) {
+              deferKifuSyncAfterLocalRestart(
+                  root, rulesTarget, primary, mirror, manager, token, delayMillis, action);
+            }
+          }
+        };
+    if (wait.isCurrent()) {
+      pendingKifuRulesConsent = null;
+      kifuEngineSyncCoordinator().submit(wait);
+    }
+  }
+
+  private boolean resumeKifuSyncAfterRemoteReconnect(
+      BoardHistoryNode root,
+      BoardHistoryList.SessionRulesTarget rulesTarget,
+      Leelaz primary,
+      long primaryGeneration,
+      Leelaz mirror,
+      int delayMillis,
+      Runnable action) {
+    if (primary == null
+        || primary != Lizzie.leelaz
+        || primaryGeneration < 0L
+        || !primary.useRemoteCompute
+        || mirror != null
+        || !isCurrentKifuRulesRequest(root, rulesTarget, primary, primaryGeneration, null)) {
+      return false;
+    }
+    // A replaced reader retires the old restore, not the current import. Wait without sending
+    // commands, then capture fresh reader/rules/position fences through the ordinary load path.
+    kifuEngineSyncCoordinator()
+        .submit(
+            new KifuEngineSyncCoordinator.Request() {
+              @Override
+              public boolean isCurrent() {
+                return isCurrentKifuRulesRequest(
+                    root, rulesTarget, primary, primaryGeneration, null);
+              }
+
+              @Override
+              public KifuEngineSyncCoordinator.AttemptResult synchronize() {
+                if (primary.isNormalEnd || EngineManager.isEmpty) {
+                  return KifuEngineSyncCoordinator.AttemptResult.PERMANENT_FAILURE;
+                }
+                return primary.isLoaded()
+                        && primary.isStarted()
+                        && !primary.isDownWithError
+                        && !remoteRulesSynchronizationMustWait(primary)
+                        && primary.isCurrentEngineIncarnationToken(primary.engineIncarnationToken())
+                    ? KifuEngineSyncCoordinator.AttemptResult.COMPLETE
+                    : KifuEngineSyncCoordinator.AttemptResult.RETRY;
+              }
+
+              @Override
+              public void onSynchronized() {
+                if (isCurrent()) {
+                  scheduleEngineSyncAndResumeAfterKifuLoad(delayMillis, action, false);
+                }
+              }
+
+              @Override
+              public void onFailed() {
+                if (isCurrent()) {
+                  pendingKifuEngineSyncRoot = null;
+                  canGoAfterload = true;
+                  failBatchKifuLoad(root);
+                }
+              }
+            });
+    return true;
+  }
+
+  static boolean remoteRulesSynchronizationMustWait(Leelaz primary) {
+    return primary != null
+        && primary.useRemoteCompute
+        && (primary.isRemoteSessionRecoveryRequested() || primary.hasExclusiveGtpWorkInProgress());
   }
 
   private void resubmitKifuSyncAfterComparisonExit(
@@ -5859,7 +6006,7 @@ public class LizzieFrame extends JFrame {
       pendingKifuRulesConsent = null;
       pendingKifuEngineSyncRoot = null;
       kifuAnalysisResumeGeneration++;
-      stopLoadedGameQuickAnalysisRetry();
+      cancelAutomaticQuickAnalysis(AutomaticQuickAnalysisTask.CancelReason.GAME_CHANGED);
       canGoAfterload = true;
       history.revokeAnalysisOverride(target);
     }
@@ -5888,7 +6035,7 @@ public class LizzieFrame extends JFrame {
             }
             canGoAfterload = false;
             pendingKifuEngineSyncRoot = root;
-            stopLoadedGameQuickAnalysisRetry();
+            cancelAutomaticQuickAnalysis(AutomaticQuickAnalysisTask.CancelReason.GAME_CHANGED);
             submitKifuEngineSync(
                 root,
                 target,
@@ -5924,6 +6071,15 @@ public class LizzieFrame extends JFrame {
                         root, rulesTarget, primary, primaryGeneration, mirror)
                     && exactEngineIncarnationsRemainCurrent(
                         primary, primaryIncarnation, mirror, mirrorIncarnation);
+              }
+
+              @Override
+              public void onLocalPrimaryRestart(
+                  Leelaz restarted, long previousGeneration, EngineManager manager, long token) {
+                if (restarted == primary && previousGeneration == primaryGeneration) {
+                  deferKifuSyncAfterLocalRestart(
+                      root, rulesTarget, primary, mirror, manager, token, delayMillis, action);
+                }
               }
 
               @Override
@@ -6792,8 +6948,7 @@ public class LizzieFrame extends JFrame {
               drawPonderingState(g, weightText, text2, ponderingX, ponderingY);
               vh = ponderingY;
             } else {
-              String loadingText = getLoadingText();
-              drawPonderingState(g, loadingText, ponderingX, ponderingY);
+              drawLoadingState(g, ponderingX, ponderingY);
               vh = ponderingY;
             }
           }
@@ -7323,8 +7478,7 @@ public class LizzieFrame extends JFrame {
                 String text2 = ponderingText + " " + statusText; // + " " + switchingText;
                 drawPonderingState(g, weightText, text2, ponderingX, ponderingY);
               } else {
-                String loadingText = getLoadingText();
-                drawPonderingState(g, loadingText, ponderingX, ponderingY);
+                drawLoadingState(g, ponderingX, ponderingY);
               }
             }
 
@@ -7560,8 +7714,7 @@ public class LizzieFrame extends JFrame {
             // if (Lizzie.leelaz != null && Lizzie.leelaz.isLoaded()) {
             if (Lizzie.config.showStatus && !Lizzie.config.isMinMode()) {
               if (Lizzie.leelaz == null || !Lizzie.leelaz.isLoaded()) {
-                String loadingText = getLoadingText();
-                drawPonderingState(g, loadingText, ponderingX, ponderingY);
+                drawLoadingState(g, ponderingX, ponderingY);
               }
             }
 
@@ -7630,9 +7783,37 @@ public class LizzieFrame extends JFrame {
     }
   }
 
-  private String getLoadingText() {
-    return Lizzie.resourceBundle.getString(loadingTextResourceKey(Lizzie.leelaz));
+  private void drawLoadingState(Graphics2D g, int x, int statusAreaTop) {
+    String[] lines = loadingStatusLines(Lizzie.leelaz);
+    if (lines.length == 2) {
+      drawPonderingState(g, lines[0], lines[1], x, statusAreaTop);
+    } else {
+      drawPonderingState(g, lines[0], x, statusAreaTop);
+    }
   }
+
+  /** The unrestored state keeps its cause and recovery action on separate, fully readable lines. */
+  static String[] loadingStatusLines(Leelaz engine) {
+    String key = loadingTextResourceKey(engine);
+    if (FOREGROUND_UNRESTORED_STATUS_KEY.equals(key)) {
+      Optional<Leelaz.ForegroundAnalysisLeaseFailure> reason =
+          engine.unrestoredForegroundLeaseFailure();
+      if (reason.isPresent()) {
+        return new String[] {
+          MessageFormat.format(
+              Lizzie.resourceBundle.getString(key), foregroundUnrestoredReasonText(reason.get())),
+          MessageFormat.format(
+              Lizzie.resourceBundle.getString("LizzieFrame.display.foregroundUnrestoredAction"),
+              Lizzie.resourceBundle.getString("Menu.restartCurrentEngine"))
+        };
+      }
+      // The reader was retired between both reads; its successor is still starting.
+      key = "LizzieFrame.display.loading";
+    }
+    return new String[] {Lizzie.resourceBundle.getString(key)};
+  }
+
+  static final String FOREGROUND_UNRESTORED_STATUS_KEY = "LizzieFrame.display.foregroundUnrestored";
 
   static String loadingTextResourceKey(Leelaz engine) {
     if (engine != null && engine.isBenchmark()) {
@@ -7648,10 +7829,55 @@ public class LizzieFrame extends JFrame {
     if (engine == null || engine.isDownWithError) {
       return "LizzieFrame.display.down";
     }
+    if (engine.unrestoredForegroundLeaseFailure().isPresent()) {
+      return FOREGROUND_UNRESTORED_STATUS_KEY;
+    }
     if (engine.isTuning) {
       return "LizzieFrame.display.tuning";
     }
     return "LizzieFrame.display.loading";
+  }
+
+  private static String foregroundUnrestoredReasonText(
+      Leelaz.ForegroundAnalysisLeaseFailure reason) {
+    return Lizzie.resourceBundle.getString(
+        reason == Leelaz.ForegroundAnalysisLeaseFailure.RESTORE_FAILED
+            ? "LizzieFrame.foregroundUnrestored.reason.restore"
+            : "LizzieFrame.foregroundUnrestored.reason.stop");
+  }
+
+  /** Recovery guidance for the current primary reader, or null when it is not unrestored. */
+  String foregroundUnrestoredGuidance() {
+    Leelaz engine = Lizzie.leelaz;
+    if (engine == null) {
+      return null;
+    }
+    return engine
+        .unrestoredForegroundLeaseFailure()
+        .map(
+            reason ->
+                MessageFormat.format(
+                    Lizzie.resourceBundle.getString("LizzieFrame.foregroundUnrestored.guidance"),
+                    foregroundUnrestoredReasonText(reason),
+                    Lizzie.resourceBundle.getString("Menu.restartCurrentEngine")))
+        .orElse(null);
+  }
+
+  /** Presents an owner-published unrestored primary reader without opening a dialog. */
+  public void presentUnrestoredForegroundEngine(Leelaz engine) {
+    if (Lizzie.leelaz != engine || engine.unrestoredForegroundLeaseFailure().isEmpty()) {
+      return;
+    }
+    showAnalysisControlAsStopped();
+  }
+
+  private void showAnalysisControlAsStopped() {
+    if (menu != null) {
+      menu.toggleEngineMenuStatus(false, false);
+    }
+    if (mainPanel != null) {
+      refresh();
+    }
   }
 
   /**
@@ -7756,14 +7982,7 @@ public class LizzieFrame extends JFrame {
           useMorandi ? MorandiPalette.BG_PRIMARY : new Color(100, 100, 100));
     if (topPanel != null)
       topPanel.setBackground(useMorandi ? MorandiPalette.TOOLBAR_BG : new Color(232, 232, 232));
-    if (listScrollpane != null) {
-      listScrollpane.setBackground(
-          useMorandi ? MorandiPalette.BG_SECONDARY : new Color(235, 235, 235));
-      if (listScrollpane.getViewport() != null)
-        listScrollpane
-            .getViewport()
-            .setBackground(useMorandi ? MorandiPalette.CREAM_WHITE : new Color(243, 243, 243));
-    }
+    refreshSuggestionTableStyle();
     if (minScrollpaneBlack != null)
       minScrollpaneBlack.setBackground(
           useMorandi ? MorandiPalette.COOL_GRAY : new Color(158, 158, 158));
@@ -8393,7 +8612,7 @@ public class LizzieFrame extends JFrame {
 
   private void drawCommandString(Graphics2D g, int statusAreaTop) {
     String commandString =
-        loadedGameQuickAnalysisActive && loadedGameQuickAnalysisFailureCount > 0
+        hasActiveAutomaticQuickAnalysis() && automaticQuickAnalysisTask.isRetrying()
             ? Lizzie.resourceBundle.getString("LizzieFrame.quickAnalysis.retrying")
             : Lizzie.resourceBundle.getString("LizzieFrame.prompt.showControlsHint");
     int[][] lines = statusLineBounds(statusAreaTop, currentStatusAreaBottom(), 3);
@@ -9544,57 +9763,37 @@ public class LizzieFrame extends JFrame {
       v -> Board.asCoordinates(v).ifPresent(c -> Lizzie.board.place(c[0], c[1]));
 
   public boolean playCurrentVariation() {
-    if (Lizzie.config.showSuggestionVariations) {
-      if (boardRenderer.getDisplayedBranchLength() > 0) {
-        if (boardRenderer.variationOpt.isPresent()) {
-          for (int i = 0;
-              i
-                  < Math.min(
-                      boardRenderer.variationOpt.get().size(),
-                      boardRenderer.getDisplayedBranchLength());
-              i++) {
-            Optional<int[]> coords = Board.asCoordinates(boardRenderer.variationOpt.get().get(i));
-            if (coords.isPresent()) Lizzie.board.place(coords.get()[0], coords.get()[1]);
-          }
-        }
-      } else boardRenderer.variationOpt.ifPresent(vs -> vs.forEach(placeVariation));
-      redrawTreeLater = true;
-      return boardRenderer.variationOpt.isPresent();
-    } else {
-      variationOpt.ifPresent(vs -> vs.forEach(placeVariation));
-      redrawTreeLater = true;
-      return variationOpt.isPresent();
-    }
+    return playCurrentVariation(boardRenderer);
   }
 
-  //  public boolean playCurrentVariation2() {
-  //    if (Lizzie.engineManager.currentEngineNo >= 0) Lizzie.engineManager.isEmpty = true;
-  //    if (Lizzie.config.showSuggestionVariations) {
-  //      boardRenderer.variationOpt.ifPresent(vs -> vs.forEach(placeVariation));
-  //      if (!boardRenderer.variationOpt.isPresent())
-  //        if (Lizzie.engineManager.currentEngineNo >= 0) Lizzie.engineManager.isEmpty = false;
-  //      return boardRenderer.variationOpt.isPresent();
-  //    } else {
-  //      variationOpt.ifPresent(vs -> vs.forEach(placeVariation));
-  //      if (!variationOpt.isPresent())
-  //        if (Lizzie.engineManager.currentEngineNo >= 0) Lizzie.engineManager.isEmpty = false;
-  //      return variationOpt.isPresent();
-  //    }
-  //  }
+  public boolean playCurrentVariation(BoardRenderer owner) {
+    Optional<VariationPreviewState.Selection> selected = owner.applicationSelection();
+    if (selected.isEmpty()) return false;
+    VariationPreviewState.Selection visible = selected.get();
+    return playVariation(visible.input().variation, visible.displayedLength());
+  }
+
+  boolean playMiddleVariation(BoardRenderer owner) {
+    Optional<VariationPreviewState.Selection> selected = owner.takeMiddlePreview();
+    if (!selected.isPresent()) return false;
+    VariationPreviewState.Selection snapshot = selected.get();
+    return playVariation(snapshot.input().variation, snapshot.displayedLength());
+  }
+
+  private boolean playVariation(List<String> variation, int displayedLength) {
+    int length =
+        Lizzie.config.showSuggestionVariations && displayedLength > 0
+            ? Math.min(variation.size(), displayedLength)
+            : variation.size();
+    for (int i = 0; i < length; i++) {
+      placeVariation.accept(variation.get(i));
+    }
+    redrawTreeLater = true;
+    return true;
+  }
 
   public boolean isMouseOverSuggestions() {
-    List<MoveData> bestMoves = Lizzie.board.getHistory().getData().bestMoves;
-    for (int i = 0; i < bestMoves.size(); i++) {
-      Optional<int[]> c = Board.asCoordinates(bestMoves.get(i).coordinate);
-      if (c.isPresent()) {
-        if (Lizzie.frame.isMouseOver2(c.get()[0], c.get()[1])) {
-          List<String> variation = bestMoves.get(i).variation;
-          variationOpt = Optional.of(variation);
-          return true;
-        }
-      }
-    }
-    return false;
+    return boardRenderer.hasSelectedVariation();
   }
 
   public void playBestMove() {
@@ -9859,10 +10058,11 @@ public class LizzieFrame extends JFrame {
         }
 
         if (isCurMouseOver) {
-          clearMoved();
+          isReplayVariation = false;
           needRepaint = true;
           isMouseOver = true;
-          armSuggestionHoverPreview(curCoords[0], curCoords[1]);
+          boardRenderer.selectNormalVariation();
+          if (Lizzie.config.isDoubleEngineMode()) boardRenderer2.selectNormalVariation();
           if (Lizzie.config.autoReplayBranch) {
             mouseOverChanged = true;
             if (!Lizzie.config.autoReplayDisplayEntireVariationsFirst)
@@ -9987,14 +10187,7 @@ public class LizzieFrame extends JFrame {
     }
   }
 
-  private SuggestionHoverIntent suggestionHoverIntent() {
-    if (suggestionHoverIntent == null) {
-      suggestionHoverIntent = new SuggestionHoverIntent(this::repaintSuggestionHoverPreview);
-    }
-    return suggestionHoverIntent;
-  }
-
-  private void repaintSuggestionHoverPreview() {
+  void repaintSuggestionHoverPreview() {
     if (mainPanel == null) {
       return;
     }
@@ -10002,14 +10195,51 @@ public class LizzieFrame extends JFrame {
     mainPanel.repaint();
   }
 
-  private void armSuggestionHoverPreview(int x, int y) {
-    suggestionHoverIntent().arm(x, y);
+  public void cancelPendingSuggestionHoverPreview() {
+    if (boardRenderer != null) boardRenderer.cancelPreview();
+    if (boardRenderer2 != null) boardRenderer2.cancelPreview();
   }
 
-  public void cancelPendingSuggestionHoverPreview() {
-    if (suggestionHoverIntent != null) {
-      suggestionHoverIntent.cancel();
+  public void shutdownVariationPreviews() {
+    VariationPreviewScheduler.shutdown();
+    clearVariationPreviews();
+  }
+
+  private void clearVariationPreviews() {
+    if (boardRenderer != null) boardRenderer.clearBranch();
+    if (boardRenderer2 != null) boardRenderer2.clearBranch();
+    if (independentMainBoard != null) independentMainBoard.boardRenderer.clearBranch();
+    if (floatBoard != null) floatBoard.boardRenderer.clearBranch();
+  }
+
+  @Override
+  public void setVisible(boolean visible) {
+    if (!visible && boardRenderer != null) {
+      cancelPendingSuggestionHoverPreview();
+      isMouseOver = false;
+      mouseOverCoordinate = outOfBoundCoordinate;
+      suggestionclick = outOfBoundCoordinate;
+      boardRenderer.clearBranch();
+      if (boardRenderer2 != null) boardRenderer2.clearBranch();
     }
+    super.setVisible(visible);
+  }
+
+  @Override
+  public void dispose() {
+    cancelPendingSuggestionHoverPreview();
+    isMouseOver = false;
+    mouseOverCoordinate = outOfBoundCoordinate;
+    suggestionclick = outOfBoundCoordinate;
+    if (boardRenderer != null) boardRenderer.clearBranch();
+    if (boardRenderer2 != null) boardRenderer2.clearBranch();
+    super.dispose();
+  }
+
+  void cancelSuggestionPreviewKeepingSelection() {
+    boardRenderer.beginMiddlePreview();
+    if (Lizzie.config.isDoubleEngineMode()) boardRenderer2.cancelPreview();
+    repaintSuggestionHoverPreview();
   }
 
   /** Prevents a settled PV overlay from covering the stone committed by the same mouse press. */
@@ -10019,13 +10249,9 @@ public class LizzieFrame extends JFrame {
     suggestionclick = outOfBoundCoordinate;
     boolean hadVisiblePreview = isMouseOver;
     isMouseOver = false;
-    if (hadVisiblePreview) {
+    if (hadVisiblePreview || boardRenderer.hasSelectedVariation()) {
       clearMoved();
     }
-  }
-
-  boolean isSuggestionHoverPreviewReady(int x, int y) {
-    return suggestionHoverIntent == null || suggestionHoverIntent.permits(x, y);
   }
 
   //  public void clearMoved2() {
@@ -10761,7 +10987,10 @@ public class LizzieFrame extends JFrame {
 
   static void appendSpeedModelNotice(StringBuilder title, Leelaz engine) {
     if (engine != null && engine.usesB11ForSpeedNotice()) {
-      title.append(" · ").append(Lizzie.resourceBundle.getString("B11SpeedNotice.title")).append(" ");
+      title
+          .append(" · ")
+          .append(Lizzie.resourceBundle.getString("B11SpeedNotice.title"))
+          .append(" ");
     }
   }
 
@@ -10778,7 +11007,7 @@ public class LizzieFrame extends JFrame {
   //  }
 
   public void startRawBoard() {
-    boolean onBranch = boardRenderer.isShowingBranch();
+    boolean onBranch = boardRenderer.hasSelectedVariation();
     int n = (onBranch ? 1 : BoardRenderer.SHOW_RAW_BOARD);
     boardRenderer.setDisplayedBranchLength(n);
   }
@@ -11241,91 +11470,141 @@ public class LizzieFrame extends JFrame {
   }
 
   public void autoReplayBranch() {
-    if (isAutoReplying) return;
+    if (!SwingUtilities.isEventDispatchThread()) {
+      if (autoReplayStartQueued.compareAndSet(false, true)) {
+        SwingUtilities.invokeLater(
+            () -> {
+              autoReplayStartQueued.set(false);
+              autoReplayBranch();
+            });
+      }
+      return;
+    }
+    if (isAutoReplying || !Lizzie.config.autoReplayBranch || !isDisplayable()) return;
     isAutoReplying = true;
-    Runnable runnable =
-        new Runnable() {
-          public void run() {
-            while (Lizzie.config.autoReplayBranch) {
-              if (mouseOverChanged) {
-                mouseOverChanged = false;
-                if (Lizzie.config.autoReplayDisplayEntireVariationsFirst) {
-                  for (int s = 0; s < 100; s++) {
-                    if (mouseOverChanged) break;
-                    try {
-                      Thread.sleep((int) (Lizzie.config.displayEntireVariationsFirstSeconds * 10));
-                    } catch (InterruptedException e) {
-                      // TODO Auto-generated catch block
-                      e.printStackTrace();
-                    }
+    javax.swing.Timer replay =
+        new javax.swing.Timer(
+            20,
+            new ActionListener() {
+              private long nextStepAt;
+              private long mainTarget = -1;
+              private long floatingTarget = -1;
+
+              @Override
+              public void actionPerformed(ActionEvent event) {
+                if (!Lizzie.config.autoReplayBranch || !isDisplayable()) {
+                  ((javax.swing.Timer) event.getSource()).stop();
+                  isAutoReplying = false;
+                  return;
+                }
+                long now = System.nanoTime();
+                long currentMainTarget = isVisible() ? boardRenderer.replayTarget() : -1;
+                long currentFloatingTarget =
+                    floatBoard != null && floatBoard.isVisible()
+                        ? floatBoard.boardRenderer.replayTarget()
+                        : -1;
+                if (mouseOverChanged
+                    || mainTarget != currentMainTarget
+                    || floatingTarget != currentFloatingTarget) {
+                  mouseOverChanged = false;
+                  mainTarget = currentMainTarget;
+                  floatingTarget = currentFloatingTarget;
+                  double delay =
+                      Lizzie.config.autoReplayDisplayEntireVariationsFirst
+                          ? Lizzie.config.displayEntireVariationsFirstSeconds
+                          : Lizzie.config.replayBranchIntervalSeconds * 0.3;
+                  nextStepAt = now + (long) (delay * 1_000_000_000L);
+                }
+                if (now < nextStepAt) return;
+                if (mainTarget != -1) {
+                  int length = boardRenderer.getDisplayedBranchLength();
+                  if (length != BoardRenderer.SHOW_RAW_BOARD) {
+                    boardRenderer.setReplayLength(
+                        mainTarget,
+                        length == BoardRenderer.SHOW_NORMAL_BOARD || length == 1
+                            ? 2
+                            : Math.min(
+                                Math.max(0, length + 1), boardRenderer.getReplayBranch() + 1));
                   }
-                } else {
-                  for (int s = 0; s < 20; s++) {
-                    if (mouseOverChanged) break;
-                    try {
-                      Thread.sleep((int) (Lizzie.config.replayBranchIntervalSeconds * 15));
-                    } catch (InterruptedException e) {
-                      // TODO Auto-generated catch block
-                      e.printStackTrace();
-                    }
+                }
+                if (floatingTarget != -1) {
+                  int length = floatBoard.boardRenderer.getDisplayedBranchLength();
+                  if (length != FloatBoardRenderer.SHOW_RAW_BOARD) {
+                    floatBoard.boardRenderer.setReplayLength(
+                        floatingTarget,
+                        length == FloatBoardRenderer.SHOW_NORMAL_BOARD || length == 1
+                            ? 2
+                            : Math.min(
+                                Math.max(0, length + 1),
+                                floatBoard.boardRenderer.getReplayBranch() + 1));
                   }
                 }
+                refresh();
+                nextStepAt =
+                    now + (long) (Lizzie.config.replayBranchIntervalSeconds * 1_000_000_000L);
               }
-              if (!mouseOverChanged) {
-                if (floatBoard != null) floatBoard.boardRenderer.incrementDisplayedBranchLength(1);
-                boardRenderer.incrementDisplayedBranchLength(1);
-              }
-              refresh();
-              for (int i = 0; i < 20; i++) {
-                try {
-                  Thread.sleep((int) (Lizzie.config.replayBranchIntervalSeconds * 50));
-                } catch (InterruptedException e) {
-                  e.printStackTrace();
-                }
-                if (!Lizzie.config.autoReplayBranch) break;
-                if (mouseOverChanged) {
-                  break;
-                }
-              }
-            }
-            isAutoReplying = false;
-          }
-        };
-    Thread thread = new Thread(runnable);
-    thread.start();
+            });
+    replay.setInitialDelay(0);
+    replay.start();
   }
 
   public void replayBranch() {
-    if (isReplayVariation || Lizzie.config.autoReplayBranch) return;
+    if (!SwingUtilities.isEventDispatchThread()) {
+      if (replayStartQueued.compareAndSet(false, true)) {
+        SwingUtilities.invokeLater(
+            () -> {
+              replayStartQueued.set(false);
+              replayBranch();
+            });
+      }
+      return;
+    }
+    if (isReplayVariation || Lizzie.config.autoReplayBranch || !isVisible()) return;
+    if (replayTimer != null) finishReplayBranch();
+    long target = boardRenderer.replayTarget();
     int replaySteps = boardRenderer.getReplayBranch();
-    if (replaySteps <= 0) return; // Bad steps or no branch
+    if (target == -1 || replaySteps <= 0) return;
     int oriBranchLength = boardRenderer.getDisplayedBranchLength();
     isReplayVariation = true;
-    final boolean oriPonder = Lizzie.leelaz.isPondering();
-    if (!Lizzie.config.noRefreshOnMouseMove && Lizzie.leelaz.isPondering())
-      Lizzie.leelaz.togglePonder();
-    Runnable runnable =
-        new Runnable() {
-          public void run() {
-            int secs = (int) (Lizzie.config.replayBranchIntervalSeconds * 1000);
-            for (int i = 1; i < replaySteps + 1; i++) {
-              if (!isReplayVariation) break;
-              setDisplayedBranchLength(i + 1);
-              repaint();
-              try {
-                Thread.sleep(secs);
-              } catch (InterruptedException e) {
-                e.printStackTrace();
+    replayPonder = Lizzie.leelaz.isPondering();
+    if (!Lizzie.config.noRefreshOnMouseMove && replayPonder) Lizzie.leelaz.togglePonder();
+    replayTimer =
+        new javax.swing.Timer(
+            Math.max(1, (int) (Lizzie.config.replayBranchIntervalSeconds * 1000)),
+            new ActionListener() {
+              private int nextLength = 2;
+
+              @Override
+              public void actionPerformed(ActionEvent event) {
+                javax.swing.Timer replay = (javax.swing.Timer) event.getSource();
+                if (replay != replayTimer) {
+                  replay.stop();
+                  return;
+                }
+                if (!isReplayVariation || !isVisible() || Lizzie.config.autoReplayBranch) {
+                  finishReplayBranch();
+                  return;
+                }
+                boolean complete = nextLength > replaySteps + 1;
+                if (!boardRenderer.setReplayLength(
+                    target, complete ? oriBranchLength : nextLength++)) {
+                  finishReplayBranch();
+                  return;
+                }
+                repaint();
+                if (complete) finishReplayBranch();
               }
-            }
-            boardRenderer.setDisplayedBranchLength(oriBranchLength);
-            isReplayVariation = false;
-            if (!Lizzie.config.noRefreshOnMouseMove && oriPonder && !Lizzie.leelaz.isPondering())
-              Lizzie.leelaz.togglePonder();
-          }
-        };
-    Thread thread = new Thread(runnable);
-    thread.start();
+            });
+    replayTimer.setInitialDelay(0);
+    replayTimer.start();
+  }
+
+  private void finishReplayBranch() {
+    replayTimer.stop();
+    replayTimer = null;
+    isReplayVariation = false;
+    if (!Lizzie.config.noRefreshOnMouseMove && replayPonder && !Lizzie.leelaz.isPondering())
+      Lizzie.leelaz.togglePonder();
   }
 
   public void replayBranchIndependentMainBoard() {
@@ -11635,10 +11914,14 @@ public class LizzieFrame extends JFrame {
   }
 
   public void addSuggestionAsBranch() {
+    addSuggestionAsBranch(boardRenderer);
+  }
+
+  public void addSuggestionAsBranch(BoardRenderer owner) {
     if (!Lizzie.board.getHistory().getCurrentHistoryNode().isMainTrunk()
         && !Lizzie.board.getHistory().getCurrentHistoryNode().next().isPresent())
-      Lizzie.frame.playCurrentVariation();
-    else boardRenderer.addSuggestionAsBranch();
+      playCurrentVariation(owner);
+    else owner.addSuggestionAsBranch();
     if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.ponder();
   }
 
@@ -11685,6 +11968,8 @@ public class LizzieFrame extends JFrame {
   }
 
   public void doBranch(int moveTo) {
+    if (!boardRenderer.hasSelectedVariation()
+        && !(Lizzie.config.isDoubleEngineMode() && boardRenderer2.hasSelectedVariation())) return;
     if (moveTo > 0) {
       if (boardRenderer.isShowingNormalBoard()) {
         setDisplayedBranchLength(2);
@@ -11711,7 +11996,7 @@ public class LizzieFrame extends JFrame {
       }
       if (Lizzie.config.isDoubleEngineMode()) {
         if (boardRenderer2.isShowingNormalBoard()) {
-          setDisplayedBranchLength2(boardRenderer.getReplayBranch());
+          setDisplayedBranchLength2(boardRenderer2.getReplayBranch());
         } else {
           if (boardRenderer2.getDisplayedBranchLength() > 1) {
             boardRenderer2.incrementDisplayedBranchLength(-1);
@@ -12446,10 +12731,11 @@ public class LizzieFrame extends JFrame {
     }
     AtomicBoolean finished = new AtomicBoolean(false);
     targetEngine.setCompletionCallback(
-        () ->
+        restore ->
             finishYikeCurveCompletion(targetEngine, statusUrl, generation, root, false, finished));
     targetEngine.setFailureCallback(
-        () -> finishYikeCurveCompletion(targetEngine, statusUrl, generation, root, true, finished));
+        restore ->
+            finishYikeCurveCompletion(targetEngine, statusUrl, generation, root, true, finished));
     Thread requestSender =
         new Thread(
             () -> {
@@ -12912,7 +13198,9 @@ public class LizzieFrame extends JFrame {
       case "menu.maxTreeWidth", "menu.ignoreOutOfWidth":
         return Lizzie.config.showScrollVariation ? null : "FunctionSearch.unavailable.context";
       case "menu.moveNumberAlwaysFromOne", "menu.showAllMoveNumberInBranch":
-        return Lizzie.config.allowMoveNumber == -1 ? "FunctionSearch.unavailable.allMoveNumbers" : null;
+        return Lizzie.config.allowMoveNumber == -1
+            ? "FunctionSearch.unavailable.allMoveNumbers"
+            : null;
       case "toolbar.detailed":
         return Lizzie.config.isChinese ? null : "FunctionSearch.unavailable.context";
       case "menu.pauseEngineGame", "menu.changeEngineGameNumbers", "menu.breakEngineGame":
@@ -13289,12 +13577,17 @@ public class LizzieFrame extends JFrame {
       listScrollpane.setVisible(true);
     }
     int overlayY = windowMenuHeight + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0);
+    vx = Utils.zoomIn(vx);
+    vy = Utils.zoomIn(vy) + overlayY;
+    vw = Utils.zoomIn(vw);
+    vh = Utils.zoomIn(vh);
     if (listScrollpane.getX() != vx
-        || listScrollpane.getY() != vy + overlayY
+        || listScrollpane.getY() != vy
         || listScrollpane.getWidth() != vw
-        || listScrollpane.getHeight() != vh)
-      listScrollpane.setBounds(
-          Utils.zoomIn(vx), Utils.zoomIn(vy) + overlayY, Utils.zoomIn(vw), Utils.zoomIn(vh));
+        || listScrollpane.getHeight() != vh) {
+      listScrollpane.setBounds(vx, vy, vw, vh);
+      listScrollpane.revalidate();
+    }
   }
 
   public void setHideListScrollpane(boolean visible) {
@@ -13684,7 +13977,7 @@ public class LizzieFrame extends JFrame {
 
   public void togglePonderMannul() {
     if (Lizzie.leelaz == null) {
-      if (loadedGameQuickAnalysisActive) {
+      if (hasActiveAutomaticQuickAnalysis()) {
         pauseFromAnalysisControl();
       } else if (Lizzie.engineManager != null) {
         Lizzie.engineManager.retryUnavailablePrimaryEngine();
@@ -13692,6 +13985,16 @@ public class LizzieFrame extends JFrame {
       return;
     }
     if (stopAiPlayingAndPolicy()) {
+      return;
+    }
+    String unrestoredGuidance = foregroundUnrestoredGuidance();
+    if (unrestoredGuidance != null) {
+      // Explain the safe rejection only: pause intent, pending resumes and the engine stay as-is.
+      showAnalysisControlAsStopped();
+      showForegroundUnrestoredPrompt(
+          Lizzie.resourceBundle.getString("AnalysisEngine.foregroundRestoreFailed")
+              + "<br>"
+              + unrestoredGuidance);
       return;
     }
     if (shouldPauseFromAnalysisControl()) {
@@ -13702,7 +14005,8 @@ public class LizzieFrame extends JFrame {
   }
 
   private boolean shouldPauseFromAnalysisControl() {
-    return (Lizzie.leelaz != null && Lizzie.leelaz.isPondering()) || loadedGameQuickAnalysisActive;
+    return (Lizzie.leelaz != null && Lizzie.leelaz.isPondering())
+        || hasActiveAutomaticQuickAnalysis();
   }
 
   public boolean isUserAnalysisPaused() {
@@ -13745,6 +14049,49 @@ public class LizzieFrame extends JFrame {
     }
     Lizzie.leelaz.togglePonder();
   }
+
+  /**
+   * Shows at most one recovery prompt at a time; a closed prompt can be shown again. The prompt
+   * belongs to the unrestored reader that produced it and closes once that failure is no longer
+   * current, so a restarted or newly selected engine never inherits it.
+   */
+  void showForegroundUnrestoredPrompt(String message) {
+    Leelaz engine = Lizzie.leelaz;
+    Object reader = engine == null ? null : engine.engineIncarnationToken();
+    ForegroundUnrestoredPrompt shown = foregroundUnrestoredPrompt;
+    if (shown != null && shown.dialog.isShowing()) {
+      if (shown.engine == engine && shown.reader == reader && shown.message.equals(message)) {
+        shown.dialog.toFront();
+        return;
+      }
+      shown.dialog.dispose();
+    }
+    if (engine == null || GraphicsEnvironment.isHeadless() || !isDisplayable()) {
+      return;
+    }
+    HtmlMessage dialog =
+        new HtmlMessage(Lizzie.resourceBundle.getString("Message.title"), message, this);
+    ForegroundUnrestoredPrompt prompt =
+        new ForegroundUnrestoredPrompt(dialog, engine, reader, message);
+    foregroundUnrestoredPrompt = prompt;
+    javax.swing.Timer retirement = new javax.swing.Timer(500, null);
+    retirement.addActionListener(
+        event -> {
+          if (!dialog.isDisplayable()) {
+            retirement.stop();
+          } else if (Lizzie.leelaz != engine
+              || engine.engineIncarnationToken() != reader
+              || engine.unrestoredForegroundLeaseFailure().isEmpty()) {
+            retirement.stop();
+            dialog.dispose();
+          }
+        });
+    retirement.start();
+    dialog.setVisible(true);
+  }
+
+  private record ForegroundUnrestoredPrompt(
+      HtmlMessage dialog, Leelaz engine, Object reader, String message) {}
 
   public void drawKataEstimate(Leelaz engine, ArrayList<Double> tempcount) {
     if (isInScoreMode || !isShowingHeatmap) return;
@@ -14042,96 +14389,90 @@ public class LizzieFrame extends JFrame {
   }
 
   void reSetLocNow() {
-            Insets insets = getInsets();
-            int width =
-                resolvedContentLength(
-                    preferLaidOutLength(basePanel.getWidth(), getContentPane().getWidth()),
-                    getWidth(),
-                    insets.left,
-                    insets.right,
-                    0);
-            if (menuPresentationMode.usesNativeMenuBar()) {
-              windowMenuHeight = 0;
-              windowMenuStrip.setVisible(false);
-            } else {
-              windowMenuStrip.rebuild();
-              int preferredMenuHeight =
-                  windowMenuStrip.getPreferredSize().height > 0
-                      ? windowMenuStrip.getPreferredSize().height
-                      : Config.menuHeight;
-              windowMenuHeight = menuPresentationMode.contentOffset(preferredMenuHeight);
-              windowMenuStrip.setBounds(0, 0, width, windowMenuHeight);
-              windowMenuStrip.setPreferredSize(new Dimension(width, windowMenuHeight));
-              windowMenuStrip.invalidate();
-              windowMenuStrip.revalidate();
-              windowMenuStrip.doLayout();
-              windowMenuStrip.repaint();
-              windowMenuStrip.setVisible(true);
-            }
-            if (Lizzie.config.showTopToolBar) {
-              if (Lizzie.config.autoWrapToolBar) {
-                // To allow FlowLayout wrapping properly, let it take its preferred height
-                // based on the actual layout, rather than blindly assuming Config.menuHeight.
-                topPanel.setBounds(
-                    0, windowMenuHeight, width, 9999); // give it space to calculate preferred size
-                topPanel.invalidate();
-                topPanel.doLayout();
-                int curHeight = topPanel.getPreferredSize().height;
-                topPanelHeight = curHeight > 0 ? curHeight : Config.menuHeight;
+    Insets insets = getInsets();
+    int width =
+        resolvedContentLength(
+            preferLaidOutLength(basePanel.getWidth(), getContentPane().getWidth()),
+            getWidth(),
+            insets.left,
+            insets.right,
+            0);
+    if (menuPresentationMode.usesNativeMenuBar()) {
+      windowMenuHeight = 0;
+      windowMenuStrip.setVisible(false);
+    } else {
+      windowMenuStrip.rebuild();
+      int preferredMenuHeight =
+          windowMenuStrip.getPreferredSize().height > 0
+              ? windowMenuStrip.getPreferredSize().height
+              : Config.menuHeight;
+      windowMenuHeight = menuPresentationMode.contentOffset(preferredMenuHeight);
+      windowMenuStrip.setBounds(0, 0, width, windowMenuHeight);
+      windowMenuStrip.setPreferredSize(new Dimension(width, windowMenuHeight));
+      windowMenuStrip.invalidate();
+      windowMenuStrip.revalidate();
+      windowMenuStrip.doLayout();
+      windowMenuStrip.repaint();
+      windowMenuStrip.setVisible(true);
+    }
+    if (Lizzie.config.showTopToolBar) {
+      if (Lizzie.config.autoWrapToolBar) {
+        // To allow FlowLayout wrapping properly, let it take its preferred height
+        // based on the actual layout, rather than blindly assuming Config.menuHeight.
+        topPanel.setBounds(
+            0, windowMenuHeight, width, 9999); // give it space to calculate preferred size
+        topPanel.invalidate();
+        topPanel.doLayout();
+        int curHeight = topPanel.getPreferredSize().height;
+        topPanelHeight = curHeight > 0 ? curHeight : Config.menuHeight;
 
-                // Adjust bounds with actual wrapped height
-                topPanel.setBounds(
-                    0,
-                    windowMenuHeight,
-                    width,
-                    topPanelHeight + (Lizzie.config.useJavaLooks ? 1 : 0));
-                topPanel.revalidate();
-              } else {
-                topPanel.setBounds(
-                    0,
-                    windowMenuHeight,
-                    9999,
-                    Config.menuHeight + (Lizzie.config.useJavaLooks ? 1 : 0));
-                topPanelHeight = Config.menuHeight;
-              }
-            } else {
-              topPanelHeight = 0;
-              topPanel.setVisible(false);
-            }
-            int trainingBarHeight = humanSlTrainingBar.isVisible() ? 58 : 0;
-            int contentHeight =
-                resolvedContentLength(
-                    preferLaidOutLength(basePanel.getHeight(), getContentPane().getHeight()),
-                    getHeight(),
-                    insets.top,
-                    insets.bottom,
-                    currentNativeMenuBarReserve());
-            MainContentLayout layout =
-                layoutMainContent(
-                    width,
-                    contentHeight,
-                    windowMenuHeight,
-                    topPanelHeight,
-                    Lizzie.config.showDoubleMenu,
-                    toolbarHeight,
-                    trainingBarHeight);
-            mainPanel.setBounds(
-                layout.mainPanel.x,
-                layout.mainPanel.y,
-                Utils.zoomOut(layout.mainPanel.width),
-                Utils.zoomOut(layout.mainPanel.height));
-            humanSlTrainingBar.setBounds(layout.trainingBar);
-            toolbar.setBounds(layout.toolbar);
-            layoutEngineStartupStatus(width);
-            if (toolbar.showDetail) toolbar.setDetailIcon();
-            toolbar.reSetButtonLocation();
-            if (tempGamePanelAll.isVisible()) showTempGamePanel();
-            if (Lizzie.frame.getExtendedState() != Frame.MAXIMIZED_BOTH) {
-              noneMaxX = Lizzie.frame.getX();
-              noneMaxY = Lizzie.frame.getY();
-              noneMaxWidth = Lizzie.frame.getWidth();
-              noneMaxHeight = Lizzie.frame.getHeight();
-            }
+        // Adjust bounds with actual wrapped height
+        topPanel.setBounds(
+            0, windowMenuHeight, width, topPanelHeight + (Lizzie.config.useJavaLooks ? 1 : 0));
+        topPanel.revalidate();
+      } else {
+        topPanel.setBounds(
+            0, windowMenuHeight, 9999, Config.menuHeight + (Lizzie.config.useJavaLooks ? 1 : 0));
+        topPanelHeight = Config.menuHeight;
+      }
+    } else {
+      topPanelHeight = 0;
+      topPanel.setVisible(false);
+    }
+    int trainingBarHeight = humanSlTrainingBar.isVisible() ? 58 : 0;
+    int contentHeight =
+        resolvedContentLength(
+            preferLaidOutLength(basePanel.getHeight(), getContentPane().getHeight()),
+            getHeight(),
+            insets.top,
+            insets.bottom,
+            currentNativeMenuBarReserve());
+    MainContentLayout layout =
+        layoutMainContent(
+            width,
+            contentHeight,
+            windowMenuHeight,
+            topPanelHeight,
+            Lizzie.config.showDoubleMenu,
+            toolbarHeight,
+            trainingBarHeight);
+    mainPanel.setBounds(
+        layout.mainPanel.x,
+        layout.mainPanel.y,
+        Utils.zoomOut(layout.mainPanel.width),
+        Utils.zoomOut(layout.mainPanel.height));
+    humanSlTrainingBar.setBounds(layout.trainingBar);
+    toolbar.setBounds(layout.toolbar);
+    layoutEngineStartupStatus(width);
+    if (toolbar.showDetail) toolbar.setDetailIcon();
+    toolbar.reSetButtonLocation();
+    if (tempGamePanelAll.isVisible()) showTempGamePanel();
+    if (Lizzie.frame.getExtendedState() != Frame.MAXIMIZED_BOTH) {
+      noneMaxX = Lizzie.frame.getX();
+      noneMaxY = Lizzie.frame.getY();
+      noneMaxWidth = Lizzie.frame.getWidth();
+      noneMaxHeight = Lizzie.frame.getHeight();
+    }
   }
 
   public void testFilter(Integer txtFieldIntValue) {
@@ -14230,7 +14571,6 @@ public class LizzieFrame extends JFrame {
   }
 
   public void setMouseOverCoords(int index) {
-    cancelPendingSuggestionHoverPreview();
     if (Lizzie.config.isFloatBoardMode()) {
       this.independentMainBoard.setMouseOverCoords(index);
       return;
@@ -14249,10 +14589,11 @@ public class LizzieFrame extends JFrame {
     mouseOverCoordinate =
         Board.convertNameToCoordinates(
             Lizzie.board.getHistory().getData().bestMoves.get(index).coordinate);
+    boardRenderer.selectHoveredVariation();
+    if (Lizzie.config.isDoubleEngineMode()) boardRenderer2.selectHoveredVariation();
   }
 
   private void handleTableClick(int row, int col) {
-    cancelPendingSuggestionHoverPreview();
     LizzieFrame.boardRenderer.startNormalBoard();
     if (listTable.getValueAt(row, 1).toString().startsWith("pass")) return;
     int[] coords = Board.convertNameToCoordinates(listTable.getValueAt(row, 1).toString());
@@ -14270,10 +14611,14 @@ public class LizzieFrame extends JFrame {
       Lizzie.frame.mouseOverCoordinate = coords;
       isMouseOver = true;
       Lizzie.frame.suggestionclick = coords;
+      boardRenderer.selectHoveredVariation();
+      if (Lizzie.config.isDoubleEngineMode()) boardRenderer2.selectHoveredVariation();
       Lizzie.frame.refresh();
     }
     if (Lizzie.frame.independentMainBoard != null) {
       Lizzie.frame.independentMainBoard.mouseOverCoordinate = Lizzie.frame.mouseOverCoordinate;
+      independentMainBoard.isMouseOver = isMouseOver;
+      independentMainBoard.boardRenderer.selectHoveredVariation();
     }
   }
 
@@ -14455,8 +14800,7 @@ public class LizzieFrame extends JFrame {
           case 3:
             return Utils.getPlayoutsString(data.playouts);
           case 4:
-            return String.format(
-                Locale.ENGLISH, "%.1f", data.allocationRatio(totalPlayouts) * 100);
+            return String.format(Locale.ENGLISH, "%.1f", data.allocationRatio(totalPlayouts) * 100);
           case 5:
             double score = data.scoreMean;
             if (EngineGamePresentation.current().playingGenmove()) {
@@ -15963,23 +16307,12 @@ public class LizzieFrame extends JFrame {
       SwingUtilities.invokeLater(this::prepareQuickAnalysisForPrimaryOpenClRecovery);
       return;
     }
-    quickAnalysisEngineGeneration.incrementAndGet();
     stopQuickAnalysisWarmupTimer();
-    stopQuickAnalysisNavigationResumeTimer();
-    clearPendingQuickAnalysisCallback();
-    if (loadedGameQuickAnalysisActive) {
-      loadedGameQuickAnalysisRunning = false;
-      scheduleLoadedGameQuickAnalysisRetry();
-    }
-    AnalysisEngine staleEngine = analysisEngine;
-    analysisEngine = null;
-    if (staleEngine != null) {
-      staleEngine.clearRequestCallbacks();
-      staleEngine.normalQuit();
-    }
-    if (!quickAnalysisEngineStarting.get()) {
-      scheduleQuickAnalysisWarmupWhenPrimaryReady(1200, false);
-    }
+    releaseAutomaticQuickAnalysis(
+        AutomaticQuickAnalysisTask.CancelReason.ENGINE_SWITCH,
+        result -> ensureAnalysisResumedAfterLoad());
+    quickAnalysisAdapter().invalidateStartup();
+    scheduleQuickAnalysisWarmupWhenPrimaryReady(1200, false);
   }
 
   /** Recreates only the automatic quick-analysis worker after its optional model changes. */
@@ -15988,21 +16321,11 @@ public class LizzieFrame extends JFrame {
       SwingUtilities.invokeLater(this::refreshAutomaticQuickAnalysisModelSelection);
       return;
     }
-    quickAnalysisEngineGeneration.incrementAndGet();
     stopQuickAnalysisWarmupTimer();
-    stopQuickAnalysisNavigationResumeTimer();
-    stopLoadedGameQuickAnalysisRetry();
-    clearPendingQuickAnalysisCallback();
-    AnalysisEngine staleEngine = analysisEngine;
-    if (staleEngine != null && staleEngine.isAutomaticBackgroundTask()) {
-      analysisEngine = null;
-      staleEngine.clearRequestCallbacks();
-      staleEngine.normalQuit();
-    }
-    if ((analysisEngine == null || !analysisEngine.isAnalysisInProgress())
-        && shouldAutoQuickAnalyzeLoadedGame()) {
-      ensureAnalysisResumedAfterLoad();
-    }
+    releaseAutomaticQuickAnalysis(
+        AutomaticQuickAnalysisTask.CancelReason.ENGINE_SWITCH,
+        result -> ensureAnalysisResumedAfterLoad());
+    quickAnalysisAdapter().invalidateStartup();
   }
 
   public void openWholeGameDeepAnalysis() {
@@ -16084,9 +16407,8 @@ public class LizzieFrame extends JFrame {
     WholeGameAnalysisSession session = new WholeGameAnalysisSession(this, plan, dialog);
     wholeGameAnalysisSession = session;
     dialog.setSession(session);
-    stopQuickAnalysisNavigationResumeTimer();
-    stopLoadedGameQuickAnalysisRetry();
-    clearPendingQuickAnalysisCallback();
+    cancelAutomaticQuickAnalysis(AutomaticQuickAnalysisTask.CancelReason.MANUAL_AUTO);
+    quickAnalysisAdapter().invalidateStartup();
     activateWholeGameAnalysisResultView(Lizzie.board.getHistory().getStart());
     session.start();
     try {
@@ -16249,7 +16571,7 @@ public class LizzieFrame extends JFrame {
         || isTrying;
   }
 
-  private boolean isWholeGameAnalysisStartingOrRunning() {
+  boolean isWholeGameAnalysisStartingOrRunning() {
     return wholeGameAnalysisSession != null;
   }
 
@@ -16273,11 +16595,9 @@ public class LizzieFrame extends JFrame {
     }
   }
 
-
   protected void showForegroundEngineModeReservationConflict() {
     Utils.showMsg(Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"));
   }
-
 
   public TrackingAnalysisController trackingAnalysisController() {
     TrackingAnalysisController controller = trackingAnalysisController;
@@ -16432,7 +16752,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onMainEnginePonder() {
-    if (manualAutoAnalysisStarting || loadedGameQuickAnalysisOwnsAnalysisResources()) {
+    if (manualAutoAnalysisStarting || automaticQuickAnalysisOwnsAnalysisResources()) {
       return;
     }
     releaseSecondaryAnalysisResourcesForForeground();
@@ -16444,16 +16764,6 @@ public class LizzieFrame extends JFrame {
   }
 
   AnalysisResourceCoordinator.ForegroundDecision releaseSecondaryAnalysisResourcesForForeground() {
-    boolean resumeLoadedGameQuickAnalysis =
-        loadedGameQuickAnalysisActive && shouldAutoQuickAnalyzeLoadedGame();
-    boolean quickAnalysisStartupInProgress =
-        quickAnalysisEngineStarting != null && quickAnalysisEngineStarting.get();
-    if (quickAnalysisEngineGeneration != null) {
-      quickAnalysisEngineGeneration.incrementAndGet();
-    }
-    stopQuickAnalysisWarmupTimer();
-    stopQuickAnalysisNavigationResumeTimer();
-    clearPendingQuickAnalysisCallback();
     AnalysisEngine secondary = analysisEngine;
     AnalysisResourceCoordinator.ForegroundDecision decision =
         AnalysisResourceCoordinator.decideForegroundStart(
@@ -16461,26 +16771,17 @@ public class LizzieFrame extends JFrame {
             secondary != null && secondary.isLocalDedicatedProcess(),
             secondary != null && secondary.isAnalysisInProgress(),
             secondary != null && secondary.isAutomaticBackgroundTask());
-    boolean quickAnalysisWasInterrupted =
-        quickAnalysisStartupInProgress
-            || decision == AnalysisResourceCoordinator.ForegroundDecision.RELEASE_IDLE_SECONDARY
-            || decision
-                == AnalysisResourceCoordinator.ForegroundDecision.PREEMPT_AUTOMATIC_SECONDARY;
-    if (resumeLoadedGameQuickAnalysis) {
-      if (quickAnalysisWasInterrupted) {
-        loadedGameQuickAnalysisRunning = false;
-      }
-    } else {
-      stopLoadedGameQuickAnalysisRetry();
+    if (hasActiveAutomaticQuickAnalysis()) {
+      // A failed attempt may offer foreground work without ending the automatic task.
+      return decision;
     }
+    stopQuickAnalysisWarmupTimer();
+    quickAnalysisAdapter().invalidateStartup();
     if (decision == AnalysisResourceCoordinator.ForegroundDecision.RELEASE_IDLE_SECONDARY
         || decision == AnalysisResourceCoordinator.ForegroundDecision.PREEMPT_AUTOMATIC_SECONDARY) {
       analysisEngine = null;
       secondary.clearRequestCallbacks();
       secondary.normalQuit();
-    }
-    if (resumeLoadedGameQuickAnalysis) {
-      scheduleLoadedGameQuickAnalysisRetry();
     }
     return decision;
   }
@@ -16549,49 +16850,35 @@ public class LizzieFrame extends JFrame {
   }
 
   public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches) {
-    flashAnalyzeGame(isAllGame, isAllBranches, false);
-  }
-
-  public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
-    if (isWholeGameAnalysisStartingOrRunning()) {
-      if (!silentAnalyze) {
-        Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.conflict.analysis"));
-      }
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> flashAnalyzeGame(isAllGame, isAllBranches));
       return;
     }
-    if (!silentAnalyze) {
-      cancelPendingManualAutoAnalysisForExclusiveTask();
+    if (hasActiveAutomaticQuickAnalysis()) {
+      automaticQuickAnalysisTask.whenSettled(result -> flashAnalyzeGame(isAllGame, isAllBranches));
       prepareForManualFlashAnalysis();
-      releaseDedicatedLightweightQuickAnalysisEngine();
+      return;
     }
-    boolean hasAutomaticQuickAnalysisCommand =
-        silentAnalyze && KataGoAutoSetupHelper.resolveQuickAnalysisEngineCommand().isPresent();
+    if (isWholeGameAnalysisStartingOrRunning()) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.conflict.analysis"));
+      return;
+    }
+    cancelPendingManualAutoAnalysisForExclusiveTask();
+    prepareForManualFlashAnalysis();
+    releaseDedicatedLightweightQuickAnalysisEngine();
     if (!Lizzie.config.analysisReuseCurrentEngine
         && !isAnalysisEngineReusable(analysisEngine)
-        && !hasAutomaticQuickAnalysisCommand
         && (Lizzie.config.analysisEngineCommand == null
             || Lizzie.config.analysisEngineCommand.trim().isEmpty())) {
-      if (silentAnalyze) {
-        finishLoadedGameQuickAnalysisAttempt(
-            loadedGameQuickAnalysisGeneration, loadedGameQuickAnalysisRoot, true);
-        return;
-      }
-      promptForMissingFlashAnalysisCommand(isAllGame, isAllBranches, silentAnalyze);
+      promptForMissingFlashAnalysisCommand(isAllGame, isAllBranches);
       return;
     }
-    if (!silentAnalyze) {
-      Lizzie.config.analysisRecentIsPartGame = isAllGame;
-      Lizzie.config.analysisRecentIsAllBranches = isAllBranches;
-    }
-    if (silentAnalyze) {
-      startSilentQuickAnalyzeGame(isAllGame, isAllBranches);
-      return;
-    }
+    Lizzie.config.analysisRecentIsPartGame = isAllGame;
+    Lizzie.config.analysisRecentIsAllBranches = isAllBranches;
     if (needsNewFlashAnalysisEngine()) {
-      startFlashAnalyzeGameWithNewEngine(isAllGame, isAllBranches, silentAnalyze);
+      startFlashAnalyzeGameWithNewEngine(isAllGame, isAllBranches);
     } else {
-      startFlashAnalyzeRequestsInBackground(
-          analysisEngine, isAllGame, isAllBranches, silentAnalyze);
+      startFlashAnalyzeRequestsInBackground(analysisEngine, isAllGame, isAllBranches);
     }
   }
 
@@ -16611,11 +16898,10 @@ public class LizzieFrame extends JFrame {
     return new File(saveDirectory, "autoGame" + index + "." + extension);
   }
 
-  private void promptForMissingFlashAnalysisCommand(
-      boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+  private void promptForMissingFlashAnalysisCommand(boolean isAllGame, boolean isAllBranches) {
     if (!SwingUtilities.isEventDispatchThread()) {
       SwingUtilities.invokeLater(
-          () -> promptForMissingFlashAnalysisCommand(isAllGame, isAllBranches, silentAnalyze));
+          () -> promptForMissingFlashAnalysisCommand(isAllGame, isAllBranches));
       return;
     }
     int result =
@@ -16625,17 +16911,16 @@ public class LizzieFrame extends JFrame {
             Lizzie.resourceBundle.getString("LizzieFrame.analysisCommandMissingTitle"),
             JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.WARNING_MESSAGE);
-    handleMissingFlashAnalysisCommandChoice(result, isAllGame, isAllBranches, silentAnalyze);
+    handleMissingFlashAnalysisCommandChoice(result, isAllGame, isAllBranches);
   }
 
   void handleMissingFlashAnalysisCommandChoice(
-      int result, boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+      int result, boolean isAllGame, boolean isAllBranches) {
     if (result != JOptionPane.OK_OPTION) {
       pendingFlashAnalysisAfterSettings = null;
       return;
     }
-    pendingFlashAnalysisAfterSettings =
-        new FlashAnalysisRequest(isAllGame, isAllBranches, silentAnalyze);
+    pendingFlashAnalysisAfterSettings = new FlashAnalysisRequest(isAllGame, isAllBranches);
     showMissingFlashAnalysisSettings();
   }
 
@@ -16648,7 +16933,7 @@ public class LizzieFrame extends JFrame {
     FlashAnalysisRequest request = pendingFlashAnalysisAfterSettings;
     pendingFlashAnalysisAfterSettings = null;
     if (request != null) {
-      flashAnalyzeGame(request.isAllGame, request.isAllBranches, request.silentAnalyze);
+      flashAnalyzeGame(request.isAllGame, request.isAllBranches);
     }
   }
 
@@ -16659,169 +16944,27 @@ public class LizzieFrame extends JFrame {
   private static final class FlashAnalysisRequest {
     private final boolean isAllGame;
     private final boolean isAllBranches;
-    private final boolean silentAnalyze;
 
-    private FlashAnalysisRequest(boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+    private FlashAnalysisRequest(boolean isAllGame, boolean isAllBranches) {
       this.isAllGame = isAllGame;
       this.isAllBranches = isAllBranches;
-      this.silentAnalyze = silentAnalyze;
     }
   }
 
-  private void startSilentQuickAnalyzeGame(boolean isAllGame, boolean isAllBranches) {
-    long generation =
-        loadedGameQuickAnalysisActive
-            ? loadedGameQuickAnalysisGeneration
-            : beginLoadedGameQuickAnalysis();
-    BoardHistoryNode root = loadedGameQuickAnalysisRoot;
-    Runnable startWhenPreviousEngineRestored =
-        new Runnable() {
-          public void run() {
-            if (!isCurrentLoadedGameQuickAnalysis(generation, root)) {
-              return;
-            }
-            Runnable startRequests =
-                new Runnable() {
-                  public void run() {
-                    if (!isCurrentLoadedGameQuickAnalysis(generation, root)) {
-                      return;
-                    }
-                    if (!isAnalysisEngineReusable(analysisEngine)) {
-                      finishLoadedGameQuickAnalysisAttempt(generation, root, true);
-                      return;
-                    }
-                    AnalysisEngine targetEngine = analysisEngine;
-                    loadedGameQuickAnalysisEngine = targetEngine;
-                    loadedGameQuickAnalysisEngineGeneration = generation;
-                    targetEngine.setCompletionCallback(
-                        () -> finishLoadedGameQuickAnalysisAttempt(generation, root, false));
-                    targetEngine.setFailureCallback(
-                        () -> finishLoadedGameQuickAnalysisAttempt(generation, root, true));
-                    Thread requestSender =
-                        new Thread(
-                            () -> {
-                              if (!isCurrentLoadedGameQuickAnalysis(generation, root)
-                                  || targetEngine != analysisEngine) {
-                                return;
-                              }
-                              int requestCount = targetEngine.startRequestMissingMainline(false);
-                              if (requestCount < 0) {
-                                targetEngine.clearRequestCallbacks();
-                                finishLoadedGameQuickAnalysisAttempt(generation, root, true);
-                              } else if (requestCount == 0) {
-                                targetEngine.clearRequestCallbacks();
-                                finishLoadedGameQuickAnalysisAttempt(generation, root, false);
-                              }
-                            },
-                            "loaded-game-quick-analysis-request");
-                    requestSender.setDaemon(true);
-                    requestSender.start();
-                  }
-                };
-            if (!isAnalysisEngineReusable(analysisEngine)) {
-              ensureQuickAnalysisEngineAsync(startRequests, false);
-              return;
-            }
-            startRequests.run();
-          }
-        };
-    if (stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(
-        () -> SwingUtilities.invokeLater(startWhenPreviousEngineRestored))) {
-      return;
-    }
-    startWhenPreviousEngineRestored.run();
-  }
-
-  private void finishLoadedGameQuickAnalysisAttempt(
-      long generation, BoardHistoryNode root, boolean failed) {
-    if (!SwingUtilities.isEventDispatchThread()) {
-      SwingUtilities.invokeLater(
-          () -> finishLoadedGameQuickAnalysisAttempt(generation, root, failed));
-      return;
-    }
-    if (!isCurrentLoadedGameQuickAnalysis(generation, root)) {
-      return;
-    }
-    boolean positionAlreadyConfirmed = loadedGameQuickAnalysisPositionAlreadyConfirmed;
-    clearLoadedGameQuickAnalysisEngine(generation);
-    loadedGameQuickAnalysisRunning = false;
-    loadedGameQuickAnalysisDispatchStartedAt = 0;
-    if (failed) {
-      loadedGameQuickAnalysisFailureCount++;
-      refresh();
-    } else {
-      loadedGameQuickAnalysisFailureCount = 0;
-    }
-    if (shouldAutoQuickAnalyzeLoadedGame()) {
-      if (failed) {
-        releaseIdleAutomaticQuickAnalysisEngine();
-      } else {
-        refreshCompletedSilentAnalysisProgress();
-      }
-      scheduleLoadedGameQuickAnalysisRetry();
-      if (failed) {
-        resumeForegroundAnalysisAfterQuickAnalysisComplete(positionAlreadyConfirmed);
-      }
-      return;
-    }
-    releaseIdleAutomaticQuickAnalysisEngine();
-    stopLoadedGameQuickAnalysisRetry();
-    if (!failed) {
-      refreshCompletedSilentAnalysisProgress();
-    }
-    resumeForegroundAnalysisAfterQuickAnalysisComplete(positionAlreadyConfirmed);
-  }
-
-  private void releaseIdleAutomaticQuickAnalysisEngine() {
-    AnalysisEngine completedEngine = analysisEngine;
-    if (completedEngine == null
-        || !completedEngine.isAutomaticBackgroundTask()
-        || completedEngine.usesSharedForegroundEngine()
-        || completedEngine.hasRequestLifecycleInProgress()) {
-      return;
-    }
-    completedEngine.clearRequestCallbacks();
-    completedEngine.normalQuit();
-    if (analysisEngine == completedEngine) {
-      analysisEngine = null;
-    }
-  }
-
-  private void stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis() {
-    stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(null);
-  }
-
-  private boolean stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(Runnable afterRestore) {
-    if (analysisEngine == null) {
-      return false;
-    }
+  boolean shouldReplaceQuickAnalysisWorker(AnalysisEngine worker) {
     boolean lightweightQuickModelRequested =
         KataGoAutoSetupHelper.resolveQuickAnalysisEngineCommand().isPresent();
-    boolean bundledTensorRtPrimary = isCurrentPrimaryEngineBundledTensorRt();
     boolean needsAutomaticPrimaryForegroundReuse =
-        (isCurrentPrimaryEngineRemote() && !lightweightQuickModelRequested)
-            || (isCurrentPrimaryEngineBundledNvidia()
-                && (bundledTensorRtPrimary || !lightweightQuickModelRequested));
+        AnalysisEngine.automaticallyReusesPrimaryForeground(lightweightQuickModelRequested);
     boolean needsDedicatedLightweightModel =
         lightweightQuickModelRequested && !needsAutomaticPrimaryForegroundReuse;
-    if (shouldReplaceAutomaticQuickAnalysisEngine(
+    return shouldReplaceAutomaticQuickAnalysisEngine(
         needsDedicatedLightweightModel,
-        analysisEngine.usesDedicatedLightweightQuickModel(),
+        worker.usesDedicatedLightweightQuickModel(),
         needsAutomaticPrimaryForegroundReuse,
-        analysisEngine.usesAutomaticPrimaryForegroundReuse(),
-        analysisEngine.matchesCurrentAnalysisBackend(),
-        analysisEngine.isAnalysisInProgress())) {
-      AnalysisEngine staleEngine = analysisEngine;
-      analysisEngine = null;
-      staleEngine.clearRequestCallbacks();
-      if (afterRestore == null) {
-        staleEngine.normalQuit();
-      } else {
-        staleEngine.normalQuit(afterRestore);
-      }
-      return true;
-    }
-    return false;
+        worker.usesAutomaticPrimaryForegroundReuse(),
+        worker.matchesCurrentAnalysisBackend(),
+        worker.isAnalysisInProgress());
   }
 
   static boolean shouldReplaceAutomaticQuickAnalysisEngine(
@@ -16850,13 +16993,8 @@ public class LizzieFrame extends JFrame {
     return !isAnalysisEngineReusable(analysisEngine);
   }
 
-  private void startFlashAnalyzeGameWithNewEngine(
-      boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
-    WaitForAnalysis loadingFrame = null;
-    if (!silentAnalyze) {
-      loadingFrame = createFlashAnalysisLoadingFrame();
-    }
-    WaitForAnalysis waitFrame = loadingFrame;
+  private void startFlashAnalyzeGameWithNewEngine(boolean isAllGame, boolean isAllBranches) {
+    WaitForAnalysis waitFrame = createFlashAnalysisLoadingFrame();
     Thread starter =
         new Thread(
             () -> {
@@ -16877,7 +17015,7 @@ public class LizzieFrame extends JFrame {
                         showFlashAnalysisReuseUnavailable(newAnalysisEngine);
                       } else {
                         startFlashAnalyzeRequestsInBackground(
-                            newAnalysisEngine, isAllGame, isAllBranches, silentAnalyze);
+                            newAnalysisEngine, isAllGame, isAllBranches);
                       }
                     });
               } catch (IOException e) {
@@ -16901,14 +17039,11 @@ public class LizzieFrame extends JFrame {
   }
 
   private void startFlashAnalyzeRequestsInBackground(
-      AnalysisEngine targetEngine,
-      boolean isAllGame,
-      boolean isAllBranches,
-      boolean silentAnalyze) {
+      AnalysisEngine targetEngine, boolean isAllGame, boolean isAllBranches) {
     if (isWholeGameAnalysisStartingOrRunning() || targetEngine != analysisEngine) {
       return;
     }
-    if (!silentAnalyze && targetEngine.waitFrame == null) {
+    if (targetEngine.waitFrame == null) {
       targetEngine.waitFrame = createFlashAnalysisLoadingFrame();
       targetEngine.waitFrame.setVisible(true);
     }
@@ -16918,16 +17053,12 @@ public class LizzieFrame extends JFrame {
               if (isWholeGameAnalysisStartingOrRunning() || targetEngine != analysisEngine) {
                 return;
               }
-              if (isAllBranches) targetEngine.startRequestAllBranches(!silentAnalyze);
+              if (isAllBranches) targetEngine.startRequestAllBranches(true);
               else
                 targetEngine.startRequest(
                     isAllGame ? -1 : Lizzie.config.analysisStartMove,
                     isAllGame ? -1 : Lizzie.config.analysisEndMove,
-                    !silentAnalyze);
-              if (silentAnalyze && !targetEngine.isAnalysisInProgress()) {
-                targetEngine.setCompletionCallback(null);
-                resumeForegroundAnalysisAfterQuickAnalysisComplete();
-              }
+                    true);
             },
             "flash-analysis-request-sender");
     requestSender.setDaemon(true);
@@ -20256,25 +20387,23 @@ public class LizzieFrame extends JFrame {
         return;
       }
     }
-    if (!EngineGamePresentation.current().startingOrPlaying()) {
-      Lizzie.board.navigateHistorySteps(movesToAdvance);
-    }
+    navigateHistoryNoRefresh(movesToAdvance);
   }
 
   public static void undo(int movesToAdvance) {
     if (Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz) return;
-    if (boardRenderer.ownsBranchNavigation()) {
+    if (boardRenderer.hasSelectedVariation()) {
       Lizzie.frame.doBranch(-movesToAdvance);
       Lizzie.frame.refresh();
       return;
     }
-    if (Lizzie.config.isDoubleEngineMode() && boardRenderer2.ownsBranchNavigation()) {
+    if (Lizzie.config.isDoubleEngineMode() && boardRenderer2.hasSelectedVariation()) {
       Lizzie.frame.doBranch(-movesToAdvance);
       Lizzie.frame.refresh();
       return;
     }
     if (Lizzie.frame.independentMainBoard != null) {
-      if (Lizzie.frame.independentMainBoard.boardRenderer.ownsBranchNavigation()) {
+      if (Lizzie.frame.independentMainBoard.boardRenderer.hasSelectedVariation()) {
         Lizzie.frame.independentMainBoard.doBranch(-movesToAdvance);
         Lizzie.frame.refresh();
         return;
@@ -20289,25 +20418,31 @@ public class LizzieFrame extends JFrame {
 
   public static void undoNoRefresh(int movesToAdvance) {
     if (Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz) return;
-    if (boardRenderer.ownsBranchNavigation()) {
+    if (boardRenderer.hasSelectedVariation()) {
       Lizzie.frame.doBranch(-movesToAdvance);
       Lizzie.frame.refresh();
       return;
     }
-    if (Lizzie.config.isDoubleEngineMode() && boardRenderer2.ownsBranchNavigation()) {
+    if (Lizzie.config.isDoubleEngineMode() && boardRenderer2.hasSelectedVariation()) {
       Lizzie.frame.doBranch(-movesToAdvance);
       Lizzie.frame.refresh();
       return;
     }
     if (Lizzie.frame.independentMainBoard != null) {
-      if (Lizzie.frame.independentMainBoard.boardRenderer.ownsBranchNavigation()) {
+      if (Lizzie.frame.independentMainBoard.boardRenderer.hasSelectedVariation()) {
         Lizzie.frame.independentMainBoard.doBranch(-movesToAdvance);
         Lizzie.frame.refresh();
         return;
       }
     }
+    navigateHistoryNoRefresh(-movesToAdvance);
+  }
+
+  /** History fallback after the input host has ruled out its own selected variation. */
+  static void navigateHistoryNoRefresh(int steps) {
+    if (Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz) return;
     if (!EngineGamePresentation.current().startingOrPlaying()) {
-      Lizzie.board.navigateHistorySteps(-movesToAdvance);
+      Lizzie.board.navigateHistorySteps(steps);
     }
   }
 
@@ -20394,11 +20529,14 @@ public class LizzieFrame extends JFrame {
   public void clearMouseOverCoordinate(boolean isIndependBoard) {
     // TODO Auto-generated method stub
     if (isIndependBoard) {
-      if (independentMainBoard != null)
+      if (independentMainBoard != null) {
         independentMainBoard.mouseOverCoordinate = outOfBoundCoordinate;
+        independentMainBoard.clearMoved();
+      }
     } else {
       cancelPendingSuggestionHoverPreview();
       mouseOverCoordinate = outOfBoundCoordinate;
+      clearMoved();
     }
   }
 
@@ -20637,6 +20775,7 @@ public class LizzieFrame extends JFrame {
     ponderStatusBeforeScore = Lizzie.leelaz.isPondering();
     if (ponderStatusBeforeScore) Lizzie.leelaz.togglePonder();
     isInScoreMode = true;
+    clearVariationPreviews();
     Lizzie.board.getGroupInfo();
     clearKataEstimate();
     boardRenderer.removeblock();
@@ -20923,6 +21062,10 @@ public class LizzieFrame extends JFrame {
   }
 
   private boolean ensureAnalysisResumedAfterLoad(boolean positionAlreadyConfirmed) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> ensureAnalysisResumedAfterLoad(positionAlreadyConfirmed));
+      return false;
+    }
     if (EngineGamePresentation.current().startingOrPlaying()
         || isPlayingAgainstLeelaz
         || isAnaPlayingAgainstLeelaz) {
@@ -20933,21 +21076,10 @@ public class LizzieFrame extends JFrame {
       return false;
     }
     if (shouldAutoQuickAnalyzeLoadedGame()) {
-      long generation = beginLoadedGameQuickAnalysis(positionAlreadyConfirmed);
-      QuickAnalysisWarmupAction action = currentQuickAnalysisWarmupAction(true);
-      if (action == QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY) {
-        scheduleLoadedGameQuickAnalysisRetry();
-        return true;
-      }
-      if (action == QuickAnalysisWarmupAction.STOP) {
-        stopLoadedGameQuickAnalysisRetry();
-        return resumeForegroundAnalysisForCurrentPosition(positionAlreadyConfirmed);
-      }
-      dispatchLoadedGameQuickAnalysis(generation);
-      scheduleLoadedGameQuickAnalysisRetry();
+      startAutomaticQuickAnalysis(positionAlreadyConfirmed);
       return true;
     }
-    stopLoadedGameQuickAnalysisRetry();
+    cancelAutomaticQuickAnalysis(AutomaticQuickAnalysisTask.CancelReason.GAME_CHANGED);
     return resumeForegroundAnalysisForCurrentPosition(positionAlreadyConfirmed);
   }
 
@@ -20993,26 +21125,84 @@ public class LizzieFrame extends JFrame {
     }
   }
 
-  private long beginLoadedGameQuickAnalysis() {
-    return beginLoadedGameQuickAnalysis(false);
+  private void startAutomaticQuickAnalysis(boolean positionAlreadyConfirmed) {
+    BoardHistoryNode root = currentHistoryRoot();
+    if (hasActiveAutomaticQuickAnalysis() && automaticQuickAnalysisRoot == root) {
+      return;
+    }
+    cancelAutomaticQuickAnalysis(AutomaticQuickAnalysisTask.CancelReason.GAME_CHANGED);
+    AutomaticQuickAnalysisTask task =
+        new AutomaticQuickAnalysisTask(
+            Lizzie.board,
+            quickAnalysisAdapter(),
+            new AutomaticQuickAnalysisTask.Listener() {
+              @Override
+              public void failedAttempt(AutomaticQuickAnalysisTask.Opportunity opportunity) {
+                if (automaticQuickAnalysisRoot != root || currentHistoryRoot() != root) return;
+                refresh();
+                if (opportunity.restore().permitsForegroundAnalysis()) {
+                  resumeForegroundAnalysisForCurrentPosition(
+                      opportunity.positionAlreadyConfirmed());
+                }
+              }
+
+              @Override
+              public void completed(AutomaticQuickAnalysisTask.Settlement settlement) {
+                if (automaticQuickAnalysisRoot != root || currentHistoryRoot() != root) return;
+                refreshCompletedSilentAnalysisProgress();
+                if (settlement.restore().permitsForegroundAnalysis()) {
+                  resumeForegroundAnalysisForCurrentPosition(settlement.positionAlreadyConfirmed());
+                }
+              }
+            },
+            positionAlreadyConfirmed);
+    automaticQuickAnalysisRoot = root;
+    automaticQuickAnalysisTask = task;
+    task.start();
   }
 
-  private long beginLoadedGameQuickAnalysis(boolean positionAlreadyConfirmed) {
-    BoardHistoryNode root = currentHistoryRoot();
-    if (!loadedGameQuickAnalysisActive || root != loadedGameQuickAnalysisRoot) {
-      loadedGameQuickAnalysisGeneration++;
-      loadedGameQuickAnalysisRoot = root;
-      loadedGameQuickAnalysisActive = true;
-      loadedGameQuickAnalysisPositionAlreadyConfirmed = positionAlreadyConfirmed;
-      loadedGameQuickAnalysisRunning = false;
-      loadedGameQuickAnalysisEngine = null;
-      loadedGameQuickAnalysisEngineGeneration = -1;
-      loadedGameQuickAnalysisFailureCount = 0;
-      clearPendingQuickAnalysisCallback();
-    } else if (positionAlreadyConfirmed) {
-      loadedGameQuickAnalysisPositionAlreadyConfirmed = true;
+  private AutomaticQuickAnalysisEngineAdapter quickAnalysisAdapter() {
+    if (automaticQuickAnalysisAdapter == null) {
+      automaticQuickAnalysisAdapter = createAutomaticQuickAnalysisAdapter();
     }
-    return loadedGameQuickAnalysisGeneration;
+    return automaticQuickAnalysisAdapter;
+  }
+
+  AutomaticQuickAnalysisEngineAdapter createAutomaticQuickAnalysisAdapter() {
+    return new AutomaticQuickAnalysisEngineAdapter(this);
+  }
+
+  private boolean hasActiveAutomaticQuickAnalysis() {
+    return automaticQuickAnalysisTask != null && automaticQuickAnalysisTask.isActive();
+  }
+
+  private void cancelAutomaticQuickAnalysis(AutomaticQuickAnalysisTask.CancelReason reason) {
+    if (automaticQuickAnalysisTask != null) automaticQuickAnalysisTask.cancel(reason);
+  }
+
+  private void releaseAutomaticQuickAnalysis(
+      AutomaticQuickAnalysisTask.CancelReason reason, Consumer<ForegroundRestoreResult> finished) {
+    AutomaticQuickAnalysisTask task = automaticQuickAnalysisTask;
+    if (task != null && (task.isActive() || task.requiresForegroundRestore())) {
+      task.whenSettled(result -> finished.accept(result.restore()));
+      task.cancel(reason);
+      return;
+    }
+    AnalysisEngine engine = analysisEngine;
+    if (engine == null || !engine.isAutomaticBackgroundTask()) {
+      finished.accept(ForegroundRestoreResult.NOT_REQUIRED);
+      return;
+    }
+    analysisEngine = null;
+    engine.clearRequestCallbacks();
+    Thread release =
+        new Thread(
+            () ->
+                engine.normalQuitWithRestoreResult(
+                    result -> SwingUtilities.invokeLater(() -> finished.accept(result))),
+            "automatic-quick-analysis-idle-close");
+    release.setDaemon(true);
+    release.start();
   }
 
   private BoardHistoryNode currentHistoryRoot() {
@@ -21021,154 +21211,37 @@ public class LizzieFrame extends JFrame {
         : Lizzie.board.getHistory().getStart();
   }
 
-  private boolean isCurrentLoadedGameQuickAnalysis(long generation, BoardHistoryNode root) {
-    return loadedGameQuickAnalysisActive
-        && generation == loadedGameQuickAnalysisGeneration
-        && root != null
-        && root == loadedGameQuickAnalysisRoot
-        && root == currentHistoryRoot();
-  }
-
-  private void dispatchLoadedGameQuickAnalysis(long generation) {
-    BoardHistoryNode root = loadedGameQuickAnalysisRoot;
-    if (!isCurrentLoadedGameQuickAnalysis(generation, root) || loadedGameQuickAnalysisRunning) {
-      return;
+  AutomaticQuickAnalysisTask.Readiness automaticQuickAnalysisReadiness() {
+    if (!canContinueQuickAnalysisAfterHistoryNavigation()
+        || userAnalysisPaused
+        || userCancelledQuickAnalysisRoot == currentHistoryRoot()) {
+      return AutomaticQuickAnalysisTask.Readiness.STOP;
     }
-    loadedGameQuickAnalysisRunning = true;
-    loadedGameQuickAnalysisDispatchStartedAt = System.currentTimeMillis();
-    flashAnalyzeGame(true, false, true);
-  }
-
-  private void scheduleLoadedGameQuickAnalysisRetry() {
-    if (!SwingUtilities.isEventDispatchThread()) {
-      SwingUtilities.invokeLater(this::scheduleLoadedGameQuickAnalysisRetry);
-      return;
-    }
-    if (!loadedGameQuickAnalysisActive) {
-      return;
-    }
-    if (quickAnalysisLoadRetryTimer == null) {
-      quickAnalysisLoadRetryTimer =
-          new javax.swing.Timer(
-              LOADED_GAME_QUICK_ANALYSIS_RETRY_MS, e -> retryLoadedGameQuickAnalysisIfMissing());
-      quickAnalysisLoadRetryTimer.setRepeats(true);
-    }
-    int delay = loadedGameQuickAnalysisRetryDelayMillis();
-    quickAnalysisLoadRetryTimer.setInitialDelay(delay);
-    quickAnalysisLoadRetryTimer.setDelay(delay);
-    quickAnalysisLoadRetryTimer.restart();
-  }
-
-  private int loadedGameQuickAnalysisRetryDelayMillis() {
-    int shift = Math.min(4, Math.max(0, loadedGameQuickAnalysisFailureCount));
-    return Math.min(
-        LOADED_GAME_QUICK_ANALYSIS_MAX_RETRY_MS, LOADED_GAME_QUICK_ANALYSIS_RETRY_MS << shift);
-  }
-
-  private void retryLoadedGameQuickAnalysisIfMissing() {
-    if (!SwingUtilities.isEventDispatchThread()) {
-      SwingUtilities.invokeLater(this::retryLoadedGameQuickAnalysisIfMissing);
-      return;
-    }
-    long generation = loadedGameQuickAnalysisGeneration;
-    BoardHistoryNode root = loadedGameQuickAnalysisRoot;
-    if (!isCurrentLoadedGameQuickAnalysis(generation, root)
-        || !shouldAutoQuickAnalyzeLoadedGame()) {
-      stopLoadedGameQuickAnalysisRetry();
-      return;
-    }
-    QuickAnalysisWarmupAction action = currentQuickAnalysisWarmupAction(true);
-    if (action == QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY) {
-      return;
-    }
-    if (action == QuickAnalysisWarmupAction.STOP) {
-      stopLoadedGameQuickAnalysisRetry();
-      resumeForegroundAnalysisForCurrentPosition();
-      return;
-    }
-    if (loadedGameQuickAnalysisRunning) {
-      AnalysisEngine currentEngine = analysisEngine;
-      boolean startupInProgress =
-          quickAnalysisEngineStarting != null && quickAnalysisEngineStarting.get();
-      boolean requestInProgress =
-          currentEngine != null && currentEngine.hasRequestLifecycleInProgress();
-      boolean watchdogExpired =
-          loadedGameQuickAnalysisDispatchStartedAt > 0
-              && System.currentTimeMillis() - loadedGameQuickAnalysisDispatchStartedAt
-                  >= LOADED_GAME_QUICK_ANALYSIS_WATCHDOG_MS;
-      if (startupInProgress || requestInProgress || !watchdogExpired) {
-        return;
-      }
-      loadedGameQuickAnalysisRunning = false;
-      loadedGameQuickAnalysisFailureCount++;
-      refresh();
-    }
-    dispatchLoadedGameQuickAnalysis(generation);
-  }
-
-  private void stopLoadedGameQuickAnalysisRetry() {
-    loadedGameQuickAnalysisGeneration++;
-    loadedGameQuickAnalysisRoot = null;
-    loadedGameQuickAnalysisActive = false;
-    loadedGameQuickAnalysisPositionAlreadyConfirmed = false;
-    loadedGameQuickAnalysisRunning = false;
-    loadedGameQuickAnalysisEngine = null;
-    loadedGameQuickAnalysisEngineGeneration = -1;
-    loadedGameQuickAnalysisDispatchStartedAt = 0;
-    loadedGameQuickAnalysisFailureCount = 0;
-    clearPendingQuickAnalysisCallback();
-    if (quickAnalysisLoadRetryTimer != null) {
-      quickAnalysisLoadRetryTimer.stop();
-    }
+    return switch (currentQuickAnalysisWarmupAction(true)) {
+      case START -> AutomaticQuickAnalysisTask.Readiness.READY;
+      case WAIT_FOR_PRIMARY -> AutomaticQuickAnalysisTask.Readiness.WAIT;
+      case STOP -> AutomaticQuickAnalysisTask.Readiness.STOP;
+    };
   }
 
   void prepareForManualFlashAnalysis() {
-    if (!loadedGameQuickAnalysisActive) {
-      return;
-    }
-    AnalysisEngine automaticEngine = loadedGameQuickAnalysisEngine;
-    if (quickAnalysisEngineGeneration != null) {
-      quickAnalysisEngineGeneration.incrementAndGet();
-    }
+    cancelAutomaticQuickAnalysis(AutomaticQuickAnalysisTask.CancelReason.MANUAL_FLASH);
     stopQuickAnalysisWarmupTimer();
-    stopQuickAnalysisNavigationResumeTimer();
-    stopLoadedGameQuickAnalysisRetry();
-    if (automaticEngine != null) {
-      automaticEngine.clearRequestCallbacks();
-    }
+    quickAnalysisAdapter().invalidateStartup();
   }
 
   private void cancelLoadedGameQuickAnalysisForUserPause() {
-    boolean hadLoadedGameQuickAnalysis = loadedGameQuickAnalysisActive;
-    AnalysisEngine currentEngine = analysisEngine;
-    boolean currentEngineOwnsLoadedGameQuickAnalysis =
-        currentEngine != null
-            && currentEngine == loadedGameQuickAnalysisEngine
-            && loadedGameQuickAnalysisEngineGeneration == loadedGameQuickAnalysisGeneration;
-    if (quickAnalysisEngineGeneration != null) {
-      quickAnalysisEngineGeneration.incrementAndGet();
-    }
     stopQuickAnalysisWarmupTimer();
-    stopQuickAnalysisNavigationResumeTimer();
-    stopLoadedGameQuickAnalysisRetry();
-    clearPendingQuickAnalysisCallback();
-    if (!hadLoadedGameQuickAnalysis
-        || currentEngine == null
-        || (!currentEngineOwnsLoadedGameQuickAnalysis
-            && !currentEngine.isAutomaticBackgroundTask())) {
-      return;
-    }
+    AutomaticQuickAnalysisTask task = automaticQuickAnalysisTask;
+    if (task == null || !task.isActive()) return;
     analysisControlCleanupInProgress = true;
     long cleanupGeneration = ++analysisControlCleanupGeneration;
-    analysisEngine = null;
-    currentEngine.clearRequestCallbacks();
-    currentEngine.normalQuit(
-        () ->
-            SwingUtilities.invokeLater(
-                () -> finishUserAnalysisPauseCleanup(cleanupGeneration, true)),
-        () ->
-            SwingUtilities.invokeLater(
-                () -> finishUserAnalysisPauseCleanup(cleanupGeneration, false)));
+    task.whenSettled(
+        result ->
+            finishUserAnalysisPauseCleanup(
+                cleanupGeneration, result.restore().permitsForegroundAnalysis()));
+    task.cancel(AutomaticQuickAnalysisTask.CancelReason.USER_PAUSE);
+    quickAnalysisAdapter().invalidateStartup();
   }
 
   private void finishUserAnalysisPauseCleanup(long cleanupGeneration, boolean restoreSucceeded) {
@@ -21199,14 +21272,6 @@ public class LizzieFrame extends JFrame {
     clearUserAnalysisPauseForNewKifuLoadContext();
   }
 
-  private void clearLoadedGameQuickAnalysisEngine(long generation) {
-    if (loadedGameQuickAnalysisEngineGeneration != generation) {
-      return;
-    }
-    loadedGameQuickAnalysisEngine = null;
-    loadedGameQuickAnalysisEngineGeneration = -1;
-  }
-
   private void clearUserAnalysisPauseForNewKifuLoadContext() {
     analysisControlCleanupGeneration++;
     userAnalysisPaused = false;
@@ -21226,7 +21291,7 @@ public class LizzieFrame extends JFrame {
     switch (currentQuickAnalysisWarmupAction(false)) {
       case START:
         stopQuickAnalysisWarmupTimer();
-        ensureQuickAnalysisEngineAsync(null, true);
+        quickAnalysisAdapter().preload();
         break;
       case WAIT_FOR_PRIMARY:
         scheduleQuickAnalysisWarmupWhenPrimaryReady(0, false);
@@ -21270,7 +21335,7 @@ public class LizzieFrame extends JFrame {
     switch (currentQuickAnalysisWarmupAction(quickAnalysisWarmupRequiresAutoAnalyze)) {
       case START:
         stopQuickAnalysisWarmupTimer();
-        ensureQuickAnalysisEngineAsync(null, !quickAnalysisWarmupRequiresAutoAnalyze);
+        quickAnalysisAdapter().preload();
         break;
       case WAIT_FOR_PRIMARY:
         break;
@@ -21341,7 +21406,8 @@ public class LizzieFrame extends JFrame {
         dependsOnPrimary
             && Lizzie.leelaz != null
             && Lizzie.leelaz.isDownWithError
-            && !Lizzie.leelaz.isStarted();
+            && !Lizzie.leelaz.isStarted()
+            && !Lizzie.leelaz.isRemoteSessionRecoveryRequested();
     return decideQuickAnalysisWarmup(
         isQuickAnalysisWarmupContextEligible(requiresAutoAnalyze),
         dependsOnPrimary,
@@ -21388,120 +21454,11 @@ public class LizzieFrame extends JFrame {
     STOP
   }
 
-  private void ensureQuickAnalysisEngineAsync(Runnable onReady, boolean persistentPreload) {
-    if (isAnalysisEngineReusable(analysisEngine)) {
-      if (onReady != null) {
-        SwingUtilities.invokeLater(onReady);
-      }
-      return;
-    }
-    if (onReady != null) {
-      pendingQuickAnalysisCallback = onReady;
-    }
-    if (!quickAnalysisEngineStarting.compareAndSet(false, true)) {
-      return;
-    }
-    final long generation = quickAnalysisEngineGeneration.get();
-    Thread starter =
-        new Thread(
-            new Runnable() {
-              public void run() {
-                AnalysisEngine newAnalysisEngine = null;
-                try {
-                  newAnalysisEngine =
-                      persistentPreload
-                          ? new AnalysisEngine(true)
-                          : AnalysisEngine.createAutomaticQuickAnalysis();
-                } catch (IOException e) {
-                  e.printStackTrace();
-                }
-                final AnalysisEngine warmedEngine = newAnalysisEngine;
-                SwingUtilities.invokeLater(
-                    new Runnable() {
-                      public void run() {
-                        finishQuickAnalysisEngineWarmup(warmedEngine, generation);
-                      }
-                    });
-              }
-            },
-            "quick-analysis-engine-preloader");
-    starter.setDaemon(true);
-    starter.start();
-  }
-
-  private void finishQuickAnalysisEngineWarmup(AnalysisEngine warmedEngine, long generation) {
-    Runnable callback = null;
-    boolean invalidated =
-        shouldDiscardQuickAnalysisWarmup(generation, quickAnalysisEngineGeneration.get());
-    try {
-      if (invalidated) {
-        if (warmedEngine != null) {
-          warmedEngine.clearRequestCallbacks();
-          warmedEngine.normalQuit();
-        }
-        return;
-      }
-      if (isWholeGameAnalysisStartingOrRunning()) {
-        if (warmedEngine != null) {
-          warmedEngine.clearRequestCallbacks();
-          warmedEngine.normalQuit();
-        }
-        clearPendingQuickAnalysisCallback();
-        return;
-      }
-      if (isAnalysisEngineReusable(warmedEngine)) {
-        if (!isAnalysisEngineReusable(analysisEngine)) {
-          analysisEngine = warmedEngine;
-        } else if (analysisEngine != warmedEngine) {
-          warmedEngine.normalQuit();
-        }
-      }
-      callback = drainQuickAnalysisCallback();
-      if (callback != null) {
-        callback.run();
-      } else if (warmedEngine != null && warmedEngine.isAutomaticBackgroundTask()) {
-        if (analysisEngine == warmedEngine) {
-          analysisEngine = null;
-        }
-        warmedEngine.clearRequestCallbacks();
-        warmedEngine.normalQuit();
-      }
-    } finally {
-      quickAnalysisEngineStarting.set(false);
-      if (invalidated
-          && !userAnalysisPaused
-          && !manualAutoAnalysisStarting
-          && (Lizzie.config == null || !Lizzie.config.isAutoAna)) {
-        scheduleQuickAnalysisWarmupWhenPrimaryReady(1200, false);
-      }
-    }
-  }
-
-  static boolean shouldDiscardQuickAnalysisWarmup(long startedGeneration, long currentGeneration) {
-    return startedGeneration != currentGeneration;
-  }
-
-  private Runnable drainQuickAnalysisCallback() {
-    Runnable callback = pendingQuickAnalysisCallback;
-    pendingQuickAnalysisCallback = null;
-    return callback;
-  }
-
-  private void clearPendingQuickAnalysisCallback() {
-    pendingQuickAnalysisCallback = null;
-  }
-
-  private boolean isAnalysisEngineReusable(AnalysisEngine engine) {
-    if (engine == null || !engine.isLoaded()) {
+  boolean isAnalysisEngineReusable(AnalysisEngine engine) {
+    if (engine == null || !engine.isLoaded() || !engine.matchesCurrentAnalysisBackend()) {
       return false;
     }
-    if (!engine.matchesCurrentAnalysisBackend()) {
-      return false;
-    }
-    if (engine.useJavaSSH) {
-      return !engine.javaSSHClosed;
-    }
-    return engine.isRunning();
+    return engine.useJavaSSH ? !engine.javaSSHClosed : engine.isRunning();
   }
 
   void scheduleQuickAnalysisContinuationAfterHistoryNavigation() {
@@ -21509,54 +21466,14 @@ public class LizzieFrame extends JFrame {
       SwingUtilities.invokeLater(this::scheduleQuickAnalysisContinuationAfterHistoryNavigation);
       return;
     }
-    if (!canContinueQuickAnalysisAfterHistoryNavigation() || !shouldAutoQuickAnalyzeLoadedGame()) {
-      return;
-    }
-    beginLoadedGameQuickAnalysis();
-    if (quickAnalysisNavigationResumeTimer == null) {
-      quickAnalysisNavigationResumeTimer =
-          new javax.swing.Timer(700, e -> continueQuickAnalysisAfterHistoryNavigationWhenIdle());
-      quickAnalysisNavigationResumeTimer.setRepeats(true);
-    }
-    quickAnalysisNavigationResumeTimer.restart();
-  }
-
-  void continueQuickAnalysisAfterHistoryNavigationWhenIdle() {
-    if (!SwingUtilities.isEventDispatchThread()) {
-      SwingUtilities.invokeLater(this::continueQuickAnalysisAfterHistoryNavigationWhenIdle);
-      return;
-    }
-    if (!canContinueQuickAnalysisAfterHistoryNavigation() || !shouldAutoQuickAnalyzeLoadedGame()) {
-      stopQuickAnalysisNavigationResumeTimer();
-      if (loadedGameQuickAnalysisActive) {
-        boolean positionAlreadyConfirmed = loadedGameQuickAnalysisPositionAlreadyConfirmed;
-        stopLoadedGameQuickAnalysisRetry();
-        resumeForegroundAnalysisAfterQuickAnalysisComplete(positionAlreadyConfirmed);
+    if (!hasActiveAutomaticQuickAnalysis()) {
+      if (!canContinueQuickAnalysisAfterHistoryNavigation()
+          || !shouldAutoQuickAnalyzeLoadedGame()) {
+        return;
       }
-      return;
+      startAutomaticQuickAnalysis(false);
     }
-    QuickAnalysisWarmupAction warmupAction = currentQuickAnalysisWarmupAction(true);
-    if (warmupAction == QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY) {
-      return;
-    }
-    if (warmupAction == QuickAnalysisWarmupAction.STOP) {
-      stopQuickAnalysisNavigationResumeTimer();
-      boolean positionAlreadyConfirmed = loadedGameQuickAnalysisPositionAlreadyConfirmed;
-      stopLoadedGameQuickAnalysisRetry();
-      resumeForegroundAnalysisAfterQuickAnalysisComplete(positionAlreadyConfirmed);
-      return;
-    }
-    AnalysisEngine currentEngine = analysisEngine;
-    if ((quickAnalysisEngineStarting != null && quickAnalysisEngineStarting.get())
-        || loadedGameQuickAnalysisRunning
-        || (currentEngine != null && currentEngine.isAnalysisInProgress())) {
-      return;
-    }
-    stopQuickAnalysisNavigationResumeTimer();
-    long generation = beginLoadedGameQuickAnalysis();
-    loadedGameQuickAnalysisRunning = false;
-    dispatchLoadedGameQuickAnalysis(generation);
-    scheduleLoadedGameQuickAnalysisRetry();
+    automaticQuickAnalysisTask.navigationChanged();
   }
 
   private boolean canContinueQuickAnalysisAfterHistoryNavigation() {
@@ -21574,12 +21491,6 @@ public class LizzieFrame extends JFrame {
         && !isAnaPlayingAgainstLeelaz
         && Lizzie.board != null
         && Lizzie.board.getHistory() != null;
-  }
-
-  private void stopQuickAnalysisNavigationResumeTimer() {
-    if (quickAnalysisNavigationResumeTimer != null) {
-      quickAnalysisNavigationResumeTimer.stop();
-    }
   }
 
   void resumeForegroundAnalysisAfterQuickAnalysisComplete() {
@@ -21611,14 +21522,13 @@ public class LizzieFrame extends JFrame {
         || isAnaPlayingAgainstLeelaz) {
       return;
     }
-    resumeForegroundAnalysisForCurrentPosition(positionAlreadyConfirmed || sharedForegroundRestored);
+    resumeForegroundAnalysisForCurrentPosition(
+        positionAlreadyConfirmed || sharedForegroundRestored);
   }
 
-  private boolean loadedGameQuickAnalysisOwnsAnalysisResources() {
-    BoardHistoryNode root = loadedGameQuickAnalysisRoot;
-    return loadedGameQuickAnalysisActive
-        && root != null
-        && root == currentHistoryRoot()
+  private boolean automaticQuickAnalysisOwnsAnalysisResources() {
+    return hasActiveAutomaticQuickAnalysis()
+        && automaticQuickAnalysisRoot == currentHistoryRoot()
         && shouldAutoQuickAnalyzeLoadedGame();
   }
 

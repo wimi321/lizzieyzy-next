@@ -15,22 +15,25 @@ public final class WindowsUpdateController {
     SwingUtilities.invokeLater(() -> new CheckUpdateDialog(parent).setVisible(true));
   }
 
-  static void checkForUpdate(
-      UpdateCheckCoordinator.Page page, UpdateCheckSelection snapshot) {
+  static void checkForUpdate(UpdateCheckCoordinator.Page page, UpdateCheckSelection snapshot) {
     COORDINATOR.start(page, snapshot, UpdateDiscovery::check, HANDOFF, RUNNER);
   }
 
   private static final class ProductionHandoff implements UpdateCheckCoordinator.OfferHandoff {
     @Override
-    public void openWindows(UpdateCheckSelection selection, WindowsUpdatePlan plan) {
+    public void openWindows(UpdateCheckSelection selection, UpdateCheckResult result) {
       WindowsUpdateService service = new WindowsUpdateService();
-      new WindowsUpdateDialog(Lizzie.frame, service, plan).setVisible(true);
+      new WindowsUpdateDialog(
+              Lizzie.frame, service, result.windowsPlan, UpdateCheckFeedback.warning(result))
+          .setVisible(true);
     }
 
     @Override
-    public void openPackage(UpdateCheckSelection selection, PackageUpdatePlan plan) {
+    public void openPackage(UpdateCheckSelection selection, UpdateCheckResult result) {
       PlatformUpdateService service = new PlatformUpdateService();
-      new PackageUpdateDialog(Lizzie.frame, service, plan).setVisible(true);
+      new PackageUpdateDialog(
+              Lizzie.frame, service, result.packagePlan, UpdateCheckFeedback.warning(result))
+          .setVisible(true);
     }
   }
 

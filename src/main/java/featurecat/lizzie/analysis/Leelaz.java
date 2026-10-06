@@ -606,6 +606,8 @@ public class Leelaz {
   private volatile ReadBoardGmaPreparation readBoardGmaPreparation;
   private volatile ReadBoardGmaResponseBinding readBoardGmaResponseBinding;
   private volatile boolean engineStateUnrestored;
+  /** Automatic foreground-lease failure that left one exact primary reader unrestored. */
+  private volatile UnrestoredForegroundLease unrestoredForegroundLease;
   private volatile int currentTotalPlayouts;
   private int currentRootVisits = -1;
   private ParsedAnalysisInfo currentOrdinaryPayload;
@@ -1092,18 +1094,20 @@ public class Leelaz {
   private boolean dispatchMoveFocusLine(ReaderStreamBinding binding, String line) {
     MoveFocusResponse boundary = moveFocusBoundary;
     if (boundary == null || boundary.binding != binding) return false;
+    if (line.startsWith("=") || line.startsWith("?")) {
+      PendingResponseHandler pending = peekPendingResponseHandler(line);
+      // Capability probing isolates its analysis stream, not other requests' replies.
+      if (pending == null || pending.handler != boundary) return false;
+      if (!boundary.failed && boundary.finalHeader == null) {
+        if (!boundary.analyze || line.startsWith("?")) boundary.finalHeader = line;
+        else processCommandResponseLine(line, binding);
+      }
+      return true;
+    }
     if (boundary.failed) return true;
     if (boundary.finalHeader != null) {
       if (line.isEmpty()) processCommandResponseLine(boundary.finalHeader, binding);
       return true;
-    }
-    if (line.startsWith("=") || line.startsWith("?")) {
-      PendingResponseHandler pending = peekPendingResponseHandler(line);
-      if (pending != null && pending.handler == boundary) {
-        if (!boundary.analyze || line.startsWith("?")) boundary.finalHeader = line;
-        else processCommandResponseLine(line, binding);
-        return true;
-      }
     }
     return boundary.probe;
   }
@@ -1364,7 +1368,7 @@ public class Leelaz {
       this.javaSSHClosed = false;
       this.isSSH = false;
       try {
-        this.remoteTransport = RemoteComputeConfig.createTransportForCommand(this.engineCommand);
+        this.remoteTransport = createRemoteTransport();
         recordUpdateEngineStartRemoteTransport(this.remoteTransport);
         this.remoteTransport.start();
         requireCurrentEngineGameStartupTransaction(engineGameStartupTransaction);
@@ -1605,6 +1609,19 @@ public class Leelaz {
 
     publishEngineStartupPresentation(
         engineGameStartupTransaction, startedReaderStreamBinding);
+  }
+
+  protected EngineTransport createRemoteTransport() throws IOException {
+    return RemoteComputeConfig.createTransportForCommand(engineCommand);
+  }
+
+  public boolean isRemoteSessionRecoveryRequested() {
+    ReaderStreamBinding binding = readerStreamBinding;
+    EngineTransport transport = binding == null ? null : binding.remoteTransport;
+    return useRemoteCompute
+        && transport != null
+        && transport == remoteTransport
+        && transport.isRecoveryRequested();
   }
 
   public boolean isBenchmark() {
@@ -14670,7 +14687,6 @@ public class Leelaz {
           }
         }
       }
-      acknowledgeExclusiveGtpInitialStop(line);
     } finally {
       currentCommandResponseLine = "";
       currentCommandResponseError = false;
@@ -14717,6 +14733,7 @@ public class Leelaz {
             onClosed,
             exclusiveGtpResponseCommandIds.getAndIncrement());
     session.wasPondering = isPondering();
+    session.readerBinding = readerStreamBinding;
     exclusiveGtpSession = session;
     return session;
   }
@@ -15934,12 +15951,101 @@ public class Leelaz {
         || ((ForegroundAnalysisLease) owner).reportRestoreFailureToUser;
   }
 
+  /**
+   * Returns the failure that left this current primary reader unrestored after an automatic
+   * foreground lease. A replaced reader, primary selection or engine instance never inherits it;
+   * only a new legitimately confirmed reader retires it.
+   */
+  public Optional<ForegroundAnalysisLeaseFailure> unrestoredForegroundLeaseFailure() {
+    UnrestoredForegroundLease record = unrestoredForegroundLease;
+    if (record == null
+        || record.primaryGeneration < 0L
+        || !isUnrestoredForegroundLeaseReaderCurrent(record)
+        || Lizzie.capturePrimaryEngineGeneration(this) != record.primaryGeneration) {
+      return Optional.empty();
+    }
+    return Optional.of(record.reason);
+  }
+
+  private boolean isUnrestoredForegroundLeaseReaderCurrent(UnrestoredForegroundLease record) {
+    ReaderStreamBinding current = readerStreamBinding;
+    return current != null
+        && current == record.binding
+        && !current.terminated
+        && !current.readerShutdownRequested;
+  }
+
+  /** Records a settled automatic-lease failure for the reader that the lease actually borrowed. */
+  private UnrestoredForegroundLease recordUnrestoredForegroundLeaseLocked(
+      ExclusiveGtpSession session) {
+    if (!(session.owner instanceof ForegroundAnalysisLease lease)
+        || lease.reportRestoreFailureToUser
+        || session.readerBinding == null
+        || session.readerBinding != readerStreamBinding) {
+      return null;
+    }
+    ForegroundAnalysisLeaseFailure reason = lease.failureReason().orElse(null);
+    if (!isForegroundHandbackFailure(reason)) {
+      return null;
+    }
+    UnrestoredForegroundLease record = new UnrestoredForegroundLease(session.readerBinding, reason);
+    unrestoredForegroundLease = record;
+    return record;
+  }
+
+  /**
+   * Final-stop and restore failures happen while handing a borrowed engine back. Initial-stop
+   * failures never activated the lease, and a closed transport is reported as an engine failure.
+   */
+  private static boolean isForegroundHandbackFailure(ForegroundAnalysisLeaseFailure reason) {
+    return reason == ForegroundAnalysisLeaseFailure.FINAL_STOP_SEND_FAILED
+        || reason == ForegroundAnalysisLeaseFailure.FINAL_STOP_ERROR_RESPONSE
+        || reason == ForegroundAnalysisLeaseFailure.FINAL_STOP_TIMEOUT
+        || reason == ForegroundAnalysisLeaseFailure.RESTORE_FAILED;
+  }
+
+  /** Binds the record to the primary selection on the EDT, then lets the window present it. */
+  private void publishUnrestoredForegroundLease(UnrestoredForegroundLease record) {
+    if (record == null) {
+      return;
+    }
+    SwingUtilities.invokeLater(
+        () -> {
+          if (unrestoredForegroundLease != record
+              || !isUnrestoredForegroundLeaseReaderCurrent(record)) {
+            return;
+          }
+          long primaryGeneration = Lizzie.capturePrimaryEngineGeneration(this);
+          if (primaryGeneration < 0L) {
+            return;
+          }
+          record.primaryGeneration = primaryGeneration;
+          LizzieFrame frame = Lizzie.frame;
+          if (frame != null) {
+            frame.presentUnrestoredForegroundEngine(this);
+          }
+        });
+  }
+
+  private static final class UnrestoredForegroundLease {
+    private final ReaderStreamBinding binding;
+    private final ForegroundAnalysisLeaseFailure reason;
+    private volatile long primaryGeneration = -1L;
+
+    private UnrestoredForegroundLease(
+        ReaderStreamBinding binding, ForegroundAnalysisLeaseFailure reason) {
+      this.binding = binding;
+      this.reason = reason;
+    }
+  }
+
   private void completeForegroundRestore(ExclusiveGtpSession session) {
     Timer restoreTimeout;
     Thread restoreThread;
     boolean restoreFailed;
     boolean releaseStopFailed;
     boolean retryRestore;
+    UnrestoredForegroundLease unrestored = null;
     Board board = Lizzie.board;
     Object boardLock = board == null ? engineArbitrationLock() : board;
     synchronized (boardLock) {
@@ -15968,6 +16074,7 @@ public class Leelaz {
           restoreThread = session.restoreThread;
           if (restoreFailed) {
             isLoaded = false;
+            unrestored = recordUnrestoredForegroundLeaseLocked(session);
           }
           foregroundRestoreInProgress = false;
           foregroundRestoreSession = null;
@@ -16009,6 +16116,7 @@ public class Leelaz {
       } finally {
         finishForegroundRestoreLifecycle();
       }
+      publishUnrestoredForegroundLease(unrestored);
       runForegroundRestoreFailure(session);
       return;
     }
@@ -16413,7 +16521,11 @@ public class Leelaz {
 
   private boolean dispatchExclusiveGtpLine(ReaderStreamBinding binding, String line) {
     ExclusiveGtpSession session = exclusiveGtpSession;
-    if (session == null) {
+    if (session == null
+        || binding == null
+        || session.readerBinding != binding
+        || readerStreamBinding != binding
+        || binding.terminated) {
       return false;
     }
     String trimmed = line == null ? "" : line.trim();
@@ -16421,12 +16533,24 @@ public class Leelaz {
       if (trimmed.startsWith("info ")) {
         return true;
       }
-      if (trimmed.startsWith("?") && parseResponseCommandId(trimmed) == session.stopCommandId) {
-        abortExclusiveGtpSession(
-            session, true, ForegroundAnalysisLeaseFailure.INITIAL_STOP_ERROR_RESPONSE);
+      if (parseResponseCommandId(trimmed) == session.stopCommandId) {
+        if (trimmed.startsWith("?")) {
+          abortExclusiveGtpSession(
+              session, true, ForegroundAnalysisLeaseFailure.INITIAL_STOP_ERROR_RESPONSE);
+        } else if (trimmed.startsWith("=")) {
+          synchronized (engineArbitrationLock()) {
+            if (exclusiveGtpSession == session
+                && readerStreamBinding == binding
+                && !binding.terminated
+                && !session.active
+                && !session.closing) {
+              session.initialStopAcknowledged = true;
+            }
+          }
+        }
         return true;
       }
-      if (trimmed.isEmpty() && completeExclusiveGtpInitialStopBoundary(session)) {
+      if (trimmed.isEmpty() && completeExclusiveGtpInitialStopBoundary(session, binding)) {
         return true;
       }
       return false;
@@ -16471,27 +16595,16 @@ public class Leelaz {
 
 
 
-  private void acknowledgeExclusiveGtpInitialStop(String line) {
-    synchronized (engineArbitrationLock()) {
-      ExclusiveGtpSession session = exclusiveGtpSession;
-      if (session == null
-          || session.active
-          || session.closing
-          || line == null
-          || !line.trim().startsWith("=")
-          || parseResponseCommandId(line) != session.stopCommandId) {
-        return;
-      }
-      session.initialStopAcknowledged = true;
-    }
-  }
-
-  private boolean completeExclusiveGtpInitialStopBoundary(ExclusiveGtpSession session) {
+  private boolean completeExclusiveGtpInitialStopBoundary(
+      ExclusiveGtpSession session, ReaderStreamBinding binding) {
     Runnable onReady = null;
     boolean restore = false;
     synchronized (engineArbitrationLock()) {
       if (session == null
           || exclusiveGtpSession != session
+          || session.readerBinding != binding
+          || readerStreamBinding != binding
+          || binding.terminated
           || session.active
           || session.closing
           || !session.initialStopAcknowledged) {
@@ -17000,6 +17113,8 @@ public class Leelaz {
     private Thread restoreThread;
     private Timer releaseStopTimeout;
     private Timer restoreTimeout;
+    /** Reader borrowed by this session; a later reader never inherits its restore failure. */
+    private ReaderStreamBinding readerBinding;
 
     private ExclusiveGtpSession(
         Object owner,

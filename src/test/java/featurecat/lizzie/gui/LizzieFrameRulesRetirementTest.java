@@ -11,10 +11,97 @@ import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
 import sun.misc.Unsafe;
 
 class LizzieFrameRulesRetirementTest {
+  @Test
+  void remoteRecoveryWaitsForTransportAndExclusiveRestoreButNotTerminalErrors() throws Exception {
+    class Remote extends Leelaz {
+      boolean recovering;
+      boolean busy;
+
+      Remote() throws Exception {
+        super("");
+      }
+
+      @Override
+      public boolean isRemoteSessionRecoveryRequested() {
+        return recovering;
+      }
+
+      @Override
+      public boolean hasExclusiveGtpWorkInProgress() {
+        return busy;
+      }
+    }
+    Remote engine = new Remote();
+    engine.useRemoteCompute = true;
+    assertFalse(LizzieFrame.remoteRulesSynchronizationMustWait(engine));
+    engine.recovering = true;
+    assertTrue(LizzieFrame.remoteRulesSynchronizationMustWait(engine));
+    engine.recovering = false;
+    engine.busy = true;
+    assertTrue(LizzieFrame.remoteRulesSynchronizationMustWait(engine));
+    engine.busy = false;
+    engine.isDownWithError = true;
+    assertFalse(LizzieFrame.remoteRulesSynchronizationMustWait(engine));
+    engine.useRemoteCompute = false;
+    engine.busy = true;
+    assertFalse(LizzieFrame.remoteRulesSynchronizationMustWait(engine));
+    assertFalse(LizzieFrame.remoteRulesSynchronizationMustWait(null));
+  }
+
+  @Test
+  void remoteReconnectOnlyResubmitsTheSameImportAndPrimaryAuthority() throws Exception {
+    Board previousBoard = Lizzie.board;
+    Leelaz previousPrimary = Lizzie.leelaz;
+    boolean previousCanGoAfterload = LizzieFrame.canGoAfterload;
+    LizzieFrame frame = allocate(LizzieFrame.class);
+    KifuEngineSyncCoordinator coordinator = null;
+    try {
+      Leelaz primary = new Leelaz("");
+      primary.useRemoteCompute = true;
+      Lizzie.leelaz = primary;
+      Lizzie.board = new Board();
+      BoardHistoryList history = Lizzie.board.getHistory();
+      BoardHistoryNode root = history.getStart();
+      BoardHistoryList.SessionRulesTarget target = history.publishExternalRules("Chinese");
+      long generation = Lizzie.capturePrimaryEngineGeneration(primary);
+      setField(frame, "pendingKifuEngineSyncRoot", root);
+      Method resume =
+          LizzieFrame.class.getDeclaredMethod(
+              "resumeKifuSyncAfterRemoteReconnect",
+              BoardHistoryNode.class,
+              BoardHistoryList.SessionRulesTarget.class,
+              Leelaz.class,
+              long.class,
+              Leelaz.class,
+              int.class,
+              Runnable.class);
+      resume.setAccessible(true);
+      assertEquals(true, resume.invoke(frame, root, target, primary, generation, null, 0, null));
+      coordinator = (KifuEngineSyncCoordinator) getField(frame, "kifuEngineSyncCoordinator");
+      assertEquals(
+          false, resume.invoke(frame, root, target, primary, generation + 1, null, 0, null));
+      assertEquals(
+          false, resume.invoke(frame, root, target, primary, generation, new Leelaz(""), 0, null));
+      primary.useRemoteCompute = false;
+      assertEquals(false, resume.invoke(frame, root, target, primary, generation, null, 0, null));
+      primary.useRemoteCompute = true;
+      history.publishExternalRules("Japanese");
+      assertEquals(false, resume.invoke(frame, root, target, primary, generation, null, 0, null));
+      Lizzie.board = new Board();
+      assertEquals(false, resume.invoke(frame, root, target, primary, generation, null, 0, null));
+    } finally {
+      if (coordinator != null) coordinator.close();
+      Lizzie.board = previousBoard;
+      Lizzie.leelaz = previousPrimary;
+      LizzieFrame.canGoAfterload = previousCanGoAfterload;
+    }
+  }
+
   @Test
   void manualSelectionRetiresImportedRequestAndMatchingContinuePermit() throws Exception {
     Board previousBoard = Lizzie.board;

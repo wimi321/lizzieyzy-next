@@ -639,7 +639,7 @@ class BoardRootSetupSeamTest {
     TestEnvironment env = TestEnvironment.open();
     try {
       BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
-      LizzieFrame.boardRenderer = allocate(FakeBoardRenderer.class);
+      LizzieFrame.boardRenderer = new FakeBoardRenderer();
       try {
         Lizzie.board.setSetupMode(true);
         Lizzie.frame.setupTool = LizzieFrame.SETUP_TOOL_BLACK;
@@ -672,7 +672,7 @@ class BoardRootSetupSeamTest {
     TestEnvironment env = TestEnvironment.open();
     try {
       BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
-      LizzieFrame.boardRenderer = allocate(FakeBoardRenderer.class);
+      LizzieFrame.boardRenderer = new FakeBoardRenderer();
       try {
         Lizzie.board.setSetupMode(true);
         Lizzie.frame.setupTool = LizzieFrame.SETUP_TOOL_BLACK;
@@ -699,7 +699,7 @@ class BoardRootSetupSeamTest {
     TestEnvironment env = TestEnvironment.open();
     try {
       BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
-      LizzieFrame.boardRenderer = allocate(FakeBoardRenderer.class);
+      LizzieFrame.boardRenderer = new FakeBoardRenderer();
       Lizzie.frame.humanSlGame = allocate(HumanSlGameController.class);
       try {
         Lizzie.board.setSetupMode(true);
@@ -739,7 +739,7 @@ class BoardRootSetupSeamTest {
     boolean previousTempDrag = Input.tempDrag;
     try {
       BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
-      LizzieFrame.boardRenderer = allocate(FakeBoardRenderer.class);
+      LizzieFrame.boardRenderer = new FakeBoardRenderer();
       Lizzie.frame.humanSlGame = allocate(HumanSlGameController.class);
       try {
         Lizzie.board.setSetupMode(true);
@@ -800,7 +800,7 @@ class BoardRootSetupSeamTest {
     TestEnvironment env = TestEnvironment.open();
     try {
       BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
-      LizzieFrame.boardRenderer = allocate(FakeBoardRenderer.class);
+      LizzieFrame.boardRenderer = new FakeBoardRenderer();
       try {
         Lizzie.board.setSetupMode(true);
         Lizzie.frame.setupTool = LizzieFrame.SETUP_TOOL_BLACK;

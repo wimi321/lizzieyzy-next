@@ -63,6 +63,7 @@ class SnapshotMoveUiGateTest {
   @Test
   void previousBestFilterIgnoresSnapshotLastMoveMarker() throws Exception {
     TestEnvironment env = TestEnvironment.open();
+    BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
     try {
       Board board = allocate(Board.class);
       board.startStonelist = new ArrayList<>();
@@ -77,6 +78,7 @@ class SnapshotMoveUiGateTest {
       EngineGameSnapshotFixtures.publishPlaying();
 
       BoardRenderer renderer = new BoardRenderer(false);
+      LizzieFrame.boardRenderer = renderer;
       invokeDrawBranch(renderer);
 
       assertEquals(
@@ -84,6 +86,50 @@ class SnapshotMoveUiGateTest {
           bestMoves(renderer).size(),
           "previous-best filtering should ignore snapshot marker coordinates.");
     } finally {
+      LizzieFrame.boardRenderer = previousRenderer;
+      EngineGameSnapshotFixtures.publishIdle();
+      env.close();
+    }
+  }
+
+  @Test
+  void pendingSelectionRetiresWhenPreviousSourceRoleChangesWithIdenticalPv() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
+    try {
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData previous = moveNode(0, 0, Stone.BLACK, false, 1);
+      MoveData candidate = bestMove(1, 1);
+      candidate.variation = List.of(candidate.coordinate, Board.convertCoordinatesToName(2, 1));
+      previous.bestMoves = List.of(candidate);
+      history.add(previous);
+      BoardData current = moveNode(2, 2, Stone.WHITE, true, 2);
+      current.bestMoves = List.of(candidate);
+      history.add(current);
+      board.setHistory(history);
+      Lizzie.board = board;
+      EngineGameSnapshotFixtures.publishPlaying();
+      Lizzie.config.showPreviousBestmovesOnlyFirstMove = false;
+      Lizzie.config.noRefreshOnMouseMove = true;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.showSuggestionVariations = true;
+      Lizzie.frame.mouseOverCoordinate = new int[] {1, 1};
+      Lizzie.frame.priorityMoveCoords = new ArrayList<>();
+      BoardRenderer renderer = new BoardRenderer(false);
+      LizzieFrame.boardRenderer = renderer;
+      renderer.selectHoveredVariation();
+      assertEquals(candidate.variation, renderer.selectedVariation().orElseThrow());
+
+      Lizzie.config.showPreviousBestmovesInEngineGame = false;
+      assertFalse(renderer.hasSelectedVariation(), "a source-role change retires a pending choice");
+      renderer.selectHoveredVariation();
+      assertEquals(candidate.variation, renderer.selectedVariation().orElseThrow());
+      assertFalse(renderer.isShowingBranch(), "source recapture does not require painting");
+    } finally {
+      LizzieFrame.boardRenderer = previousRenderer;
       EngineGameSnapshotFixtures.publishIdle();
       env.close();
     }

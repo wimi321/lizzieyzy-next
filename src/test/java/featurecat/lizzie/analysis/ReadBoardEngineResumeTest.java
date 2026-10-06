@@ -2937,7 +2937,7 @@ class ReadBoardEngineResumeTest {
     }
 
     @Override
-    public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+    public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches) {
       flashAnalyzeGameCount++;
     }
 

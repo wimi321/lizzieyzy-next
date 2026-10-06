@@ -4,6 +4,22 @@ package featurecat.lizzie.update;
 final class UpdateCheckFeedback {
   private UpdateCheckFeedback() {}
 
+  static String warning(UpdateCheckResult result) {
+    if (result == null
+        || (result.stableCandidateFailure == null) == (result.betaCandidateFailure == null)) {
+      return "";
+    }
+    return result.stableCandidateFailure != null
+        ? UpdateText.tr(
+            "WindowsUpdate.partialCheck.stable",
+            "检查不完整：无法验证 GitHub 正式版清单，仅使用已验证的测试版结果。",
+            "Check incomplete: the GitHub official release could not be verified. Only the verified test release was considered.")
+        : UpdateText.tr(
+            "WindowsUpdate.partialCheck.beta",
+            "检查不完整：无法验证 GitHub 测试版清单，仅使用已验证的正式版结果。",
+            "Check incomplete: the GitHub test release could not be verified. Only the verified official release was considered.");
+  }
+
   static String key(UpdateCheckResult result, UpdateChannel channel) {
     if (result == null) {
       return "WindowsUpdate.checkFailed";
@@ -24,9 +40,6 @@ final class UpdateCheckFeedback {
           return channel == UpdateChannel.BETA
               ? "WindowsUpdate.fetchFailed.beta"
               : "WindowsUpdate.fetchFailed.stable";
-        }
-        if (result.failureKind == UpdateCheckResult.FailureKind.INVALID_TEST_POINTER) {
-          return "WindowsUpdate.invalidTestPointer";
         }
         return "WindowsUpdate.checkFailed";
       case OFFER:
@@ -50,8 +63,8 @@ final class UpdateCheckFeedback {
       case "WindowsUpdate.noUpdate.beta":
         return UpdateText.tr(
             "WindowsUpdate.noUpdate.beta",
-            "测试通道暂无更新版本。",
-            "There is no newer version on the test channel.");
+            "已验证的正式版或测试版候选没有比当前安装更新的版本。",
+            "No verified official or test release is newer than the installed version.");
       case "WindowsUpdate.noUpdate.stable":
         return UpdateText.tr(
             "WindowsUpdate.noUpdate.stable",
@@ -65,21 +78,15 @@ final class UpdateCheckFeedback {
       case "WindowsUpdate.fetchFailed.beta":
         return UpdateText.tr(
             "WindowsUpdate.fetchFailed.beta",
-            "无法检查测试通道更新，请确认可以访问 GitHub。",
-            "Could not check the test channel. GitHub must be reachable.");
+            "无法验证 GitHub 正式版和测试版清单，请检查网络后重试。",
+            "Neither the GitHub official release nor the test release could be verified. Check your network and retry.");
       case "WindowsUpdate.fetchFailed.stable":
         return UpdateText.tr(
             "WindowsUpdate.fetchFailed.stable",
             "无法检查正式通道更新，请检查网络后重试。",
             "Could not check the official channel. Check your network and retry.");
-      case "WindowsUpdate.invalidTestPointer":
-        return UpdateText.tr(
-            "WindowsUpdate.invalidTestPointer",
-            "测试通道指针不是已签名的测试版清单。",
-            "The test channel pointer is not a signed test release.");
       default:
-        return UpdateText.tr(
-            "WindowsUpdate.checkFailed", "检查更新失败", "Update check failed");
+        return UpdateText.tr("WindowsUpdate.checkFailed", "检查更新失败", "Update check failed");
     }
   }
 }

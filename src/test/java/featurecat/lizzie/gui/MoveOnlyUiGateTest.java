@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,6 +13,9 @@ import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.analysis.MoveRankEvaluationMode;
+import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.EngineFollowController;
+import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
@@ -26,19 +28,26 @@ import java.awt.Graphics2D;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.image.BufferedImage;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.concurrent.Executor;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.Set;
+import java.util.function.Consumer;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
 import javax.swing.table.AbstractTableModel;
+import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
 class MoveOnlyUiGateTest {
@@ -265,6 +274,9 @@ class MoveOnlyUiGateTest {
     try {
       TrackingLizzieFrame frame = configuredFrame();
       Lizzie.frame = frame;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.showSuggestionVariations = true;
       Lizzie.board = boardWith(historyForCurrentNode(currentData()));
       LizzieFrame.boardRenderer = new CoordinateBoardRenderer(new int[] {0, 1});
       frame.clickOrder = 0;
@@ -315,93 +327,6 @@ class MoveOnlyUiGateTest {
     }
   }
 
-  @Test
-  void boardRendererClearBranchDropsStaleBranchState() throws Exception {
-    BoardRenderer renderer = new BoardRenderer(false);
-    setField(BoardRenderer.class, renderer, "isShowingBranch", true);
-    setField(BoardRenderer.class, renderer, "branchOpt", Optional.of(new Object()));
-    setField(BoardRenderer.class, renderer, "variationOpt", Optional.of(List.of("A1")));
-    setField(BoardRenderer.class, renderer, "mouseOverTemp", bestMove(0, 1));
-    setField(
-        BoardRenderer.class,
-        renderer,
-        "branchStonesImage",
-        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
-    setField(
-        BoardRenderer.class,
-        renderer,
-        "branchStonesShadowImage",
-        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
-
-    renderer.clearBranch();
-
-    Object emptyImage = getField(BoardRenderer.class, null, "emptyImage");
-    assertFalse(renderer.isShowingBranch());
-    assertFalse(((Optional<?>) getField(BoardRenderer.class, renderer, "branchOpt")).isPresent());
-    assertFalse(
-        ((Optional<?>) getField(BoardRenderer.class, renderer, "variationOpt")).isPresent());
-    assertNull(getField(BoardRenderer.class, renderer, "mouseOverTemp"));
-    assertSame(emptyImage, getField(BoardRenderer.class, renderer, "branchStonesImage"));
-    assertSame(emptyImage, getField(BoardRenderer.class, renderer, "branchStonesShadowImage"));
-  }
-
-  @Test
-  void floatBoardRendererClearBranchDropsStaleBranchState() throws Exception {
-    FloatBoardRenderer renderer = new FloatBoardRenderer();
-    setField(FloatBoardRenderer.class, renderer, "isShowingBranch", true);
-    setField(FloatBoardRenderer.class, renderer, "showingBranch", true);
-    setField(FloatBoardRenderer.class, renderer, "branchOpt", Optional.of(new Object()));
-    setField(FloatBoardRenderer.class, renderer, "variationOpt", Optional.of(List.of("A1")));
-    setField(FloatBoardRenderer.class, renderer, "mouseOverTemp", bestMove(0, 1));
-    setField(
-        FloatBoardRenderer.class,
-        renderer,
-        "branchStonesImage",
-        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
-    setField(
-        FloatBoardRenderer.class,
-        renderer,
-        "branchStonesShadowImage",
-        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
-
-    renderer.clearBranch();
-
-    Object emptyImage = getField(FloatBoardRenderer.class, null, "emptyImage");
-    assertFalse(renderer.isShowingBranch());
-    assertFalse(
-        ((Optional<?>) getField(FloatBoardRenderer.class, renderer, "branchOpt")).isPresent());
-    assertFalse(
-        ((Optional<?>) getField(FloatBoardRenderer.class, renderer, "variationOpt")).isPresent());
-    assertNull(getField(FloatBoardRenderer.class, renderer, "mouseOverTemp"));
-    assertSame(emptyImage, getField(FloatBoardRenderer.class, renderer, "branchStonesImage"));
-    assertSame(emptyImage, getField(FloatBoardRenderer.class, renderer, "branchStonesShadowImage"));
-  }
-
-  @Test
-  void boardRendererDrawBranchClearsStaleBranchStateWhenHoverHasNoVariation() throws Exception {
-    TestEnvironment env = TestEnvironment.open();
-    try {
-      Lizzie.config.showBranch = true;
-      TrackingLizzieFrame frame = configuredFrame();
-      frame.mouseOverCoordinate = new int[] {0, 1};
-      Lizzie.frame = frame;
-      Lizzie.board = boardWith(historyForCurrentNode(currentData()));
-      BoardRenderer renderer = new BoardRenderer(false);
-      setField(BoardRenderer.class, renderer, "isShowingBranch", true);
-      setField(BoardRenderer.class, renderer, "branchOpt", Optional.of(new Object()));
-
-      invokeDrawBranch(renderer);
-
-      assertFalse(
-          renderer.isShowingBranch(),
-          "a hover candidate without a drawable variation should not keep stale branch state.");
-      assertFalse(
-          ((Optional<?>) getField(BoardRenderer.class, renderer, "branchOpt")).isPresent(),
-          "stale branch data should stay cleared when drawBranch exits before rendering.");
-    } finally {
-      env.close();
-    }
-  }
 
   @Test
   void boardRendererKeepsBranchNavigationAtFirstCandidateMove() throws Exception {
@@ -429,7 +354,7 @@ class MoveOnlyUiGateTest {
       LizzieFrame.boardRenderer = renderer;
 
       invokeDrawBranch(renderer);
-      assertTrue(renderer.ownsBranchNavigation(), "hovered variation should own the wheel.");
+      assertTrue(renderer.hasSelectedVariation(), "hovered variation should own navigation.");
 
       for (int i = 0; i < 4; i++) {
         LizzieFrame.undoNoRefresh(1);
@@ -439,7 +364,7 @@ class MoveOnlyUiGateTest {
             Lizzie.board.getHistory().getCurrentHistoryNode(),
             "stepping back inside a candidate variation must never undo the real game.");
         assertTrue(
-            renderer.ownsBranchNavigation(),
+            renderer.hasSelectedVariation(),
             "the variation should keep owning navigation at its first move.");
       }
       assertEquals(1, renderer.getDisplayedBranchLength());
@@ -450,19 +375,19 @@ class MoveOnlyUiGateTest {
           renderer.getDisplayedBranchLength(),
           "stepping forward from the first variation move should show the second move.");
       invokeDrawBranch(renderer);
-      assertTrue(renderer.ownsBranchNavigation());
+      assertTrue(renderer.hasSelectedVariation());
       assertSame(currentNode, Lizzie.board.getHistory().getCurrentHistoryNode());
 
       frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
       invokeDrawBranch(renderer);
       assertFalse(
-          renderer.ownsBranchNavigation(),
+          renderer.hasSelectedVariation(),
           "leaving the candidate should hand navigation back to the game record.");
 
       frame.mouseOverCoordinate = new int[] {0, 1};
       invokeDrawBranch(renderer);
       renderer.clearBranch();
-      assertFalse(renderer.ownsBranchNavigation(), "clearing the branch drops ownership.");
+      assertFalse(renderer.hasSelectedVariation(), "clearing the branch drops ownership.");
     } finally {
       env.close();
     }
@@ -489,7 +414,7 @@ class MoveOnlyUiGateTest {
       fixture.frame.clearSuggestionTablePreview();
       fixture.frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
       fixture.draw();
-      assertFalse(fixture.renderer.ownsBranchNavigation());
+      assertFalse(fixture.renderer.hasSelectedVariation());
       fixture.wheel(1);
       assertSame(fixture.next, Lizzie.board.getHistory().getCurrentHistoryNode());
       fixture.wheel(-1);
@@ -521,7 +446,7 @@ class MoveOnlyUiGateTest {
       assertEquals(1, fixture.renderer.getDisplayedBranchLength());
       fixture.key(KeyEvent.VK_PAGE_DOWN);
       fixture.draw();
-      assertTrue(fixture.renderer.getDisplayedBranchLength() > 1);
+      assertEquals(2, fixture.renderer.getDisplayedBranchLength());
       fixture.assertPreviewRecordUnchanged();
     } finally {
       env.close();
@@ -541,24 +466,24 @@ class MoveOnlyUiGateTest {
       InputIndependentMainBoard input = new InputIndependentMainBoard();
       invokeDrawBranch(fixture.renderer);
       invokeDrawBranch(independent.boardRenderer);
-      assertFalse(fixture.renderer.ownsBranchNavigation());
-      assertTrue(independent.isSuggestionHoverPreviewReady(0, 1));
+      assertFalse(fixture.renderer.hasSelectedVariation());
       assertTrue(fixture.frame.isMouseOverIndependMainBoard(0, 1));
 
       for (int i = 0; i < 4; i++) {
         SwingUtilities.invokeAndWait(() -> input.keyPressed(keyEvent(KeyEvent.VK_UP)));
         invokeDrawBranch(independent.boardRenderer);
         fixture.assertPreviewRecordUnchanged();
-        assertTrue(independent.boardRenderer.ownsBranchNavigation());
+        assertTrue(independent.boardRenderer.hasSelectedVariation());
       }
       assertEquals(1, independent.boardRenderer.getDisplayedBranchLength());
       SwingUtilities.invokeAndWait(() -> input.keyPressed(keyEvent(KeyEvent.VK_PAGE_DOWN)));
       invokeDrawBranch(independent.boardRenderer);
       fixture.assertPreviewRecordUnchanged();
 
-      assertTrue(
-          independent.boardRenderer.getDisplayedBranchLength() > 1,
-          "independent Page Down must advance the owned preview from its first move.");
+      assertEquals(
+          4,
+          independent.boardRenderer.getDisplayedBranchLength(),
+          "independent Page Down must advance to the short PV's existing end sentinel.");
     } finally {
       env.close();
     }
@@ -578,15 +503,15 @@ class MoveOnlyUiGateTest {
       LizzieFrame.boardRenderer2 = second;
       fixture.draw();
       invokeDrawBranch(second);
-      assertFalse(fixture.renderer.ownsBranchNavigation());
-      assertTrue(second.ownsBranchNavigation());
+      assertFalse(fixture.renderer.hasSelectedVariation());
+      assertTrue(second.hasSelectedVariation());
 
       for (int i = 0; i < 4; i++) {
         fixture.wheel(-1);
         fixture.draw();
         invokeDrawBranch(second);
         fixture.assertPreviewRecordUnchanged();
-        assertTrue(second.ownsBranchNavigation());
+        assertTrue(second.hasSelectedVariation());
       }
       assertEquals(1, second.getDisplayedBranchLength());
       fixture.key(KeyEvent.VK_PAGE_DOWN);
@@ -594,9 +519,172 @@ class MoveOnlyUiGateTest {
       invokeDrawBranch(second);
       fixture.assertPreviewRecordUnchanged();
 
-      assertTrue(
-          second.getDisplayedBranchLength() > 1,
-          "double-engine Page Down must advance the second owned preview from its first move.");
+      assertEquals(
+          4,
+          second.getDisplayedBranchLength(),
+          "double-engine Page Down must advance to the short PV's existing end sentinel.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void longVariationBackstepUsesCapturedPreviewBoundBeforeAndAfterPublication() throws Exception {
+    for (boolean published : new boolean[] {false, true}) {
+      try (TestEnvironment env = TestEnvironment.open()) {
+        BranchRecordFixture fixture = branchRecordFixture();
+        fixture.candidate.variation = new ArrayList<>(java.util.Collections.nCopies(250, "pass"));
+        fixture.candidate.variation.set(0, fixture.candidate.coordinate);
+        fixture.renderer.selectHoveredVariation();
+        if (published) fixture.draw();
+        assertEquals(199, fixture.renderer.getBranchLength());
+
+        fixture.wheel(-1);
+        assertEquals(198, fixture.renderer.getDisplayedBranchLength());
+        fixture.draw();
+        assertEquals(198, fixture.renderer.branchOpt.orElseThrow().length);
+        fixture.assertPreviewRecordUnchanged();
+      }
+    }
+  }
+
+  @Test
+  void queuedPreviewCannotPublishDuringScoreModeAndReselectsAfterExit() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BranchRecordFixture fixture = branchRecordFixture();
+      fixture.renderer.selectHoveredVariation();
+      VariationPreviewState preview =
+          (VariationPreviewState) getField(BoardRenderer.class, fixture.renderer, "preview");
+      VariationPreviewScheduler scheduler =
+          (VariationPreviewScheduler) getField(VariationPreviewState.class, preview, "scheduler");
+      ControlledPreview worker =
+          (ControlledPreview) getField(VariationPreviewScheduler.class, scheduler, "worker");
+      assertTrue(fixture.renderer.hasSelectedVariation());
+      assertFalse(fixture.renderer.isShowingBranch());
+
+      fixture.frame.isInScoreMode = true;
+      worker.finish();
+      assertFalse(fixture.renderer.hasSelectedVariation());
+      assertFalse(fixture.renderer.branchOpt.isPresent());
+      fixture.renderer.selectHoveredVariation();
+      assertFalse(fixture.renderer.hasSelectedVariation());
+
+      fixture.frame.isInScoreMode = false;
+      fixture.renderer.selectHoveredVariation();
+      fixture.draw();
+      assertTrue(fixture.renderer.isShowingBranch());
+      assertEquals(fixture.candidate.variation.size(), fixture.renderer.branchOpt.orElseThrow().length);
+      fixture.assertPreviewRecordUnchanged();
+    }
+  }
+
+  @Test
+  void doubleEngineArrowKeysNavigateSecondOwnedPreviewAndPreserveHistory() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      BranchRecordFixture fixture = branchRecordFixture();
+      Lizzie.config.extraMode = ExtraMode.Double_Engine;
+      fixture.node.getData().bestMoves2 = new ArrayList<>(List.of(fixture.candidate));
+      fixture.node.getData().bestMoves.clear();
+      BoardRenderer second = configuredBranchRenderer();
+      second.setOrder(1);
+      LizzieFrame.boardRenderer2 = second;
+      fixture.draw();
+      second.selectHoveredVariation();
+      assertFalse(fixture.renderer.hasSelectedVariation());
+      assertTrue(second.hasSelectedVariation());
+
+      // Secondary-only pending Down advances preview to move 2 without mutating real game history.
+      second.startNormalBoard();
+      second.selectHoveredVariation();
+      assertFalse(second.isShowingBranch());
+      assertFalse(fixture.renderer.hasSelectedVariation());
+      assertTrue(second.hasSelectedVariation());
+      fixture.key(KeyEvent.VK_DOWN);
+      invokeDrawBranch(second);
+      assertEquals(2, second.getDisplayedBranchLength());
+      assertTrue(second.hasSelectedVariation());
+      fixture.assertPreviewRecordUnchanged();
+
+      // Secondary-only pending Up shows full preview without mutating real game history.
+      second.clearBranch();
+      second.startNormalBoard();
+      second.selectHoveredVariation();
+      assertFalse(second.isShowingBranch());
+      assertTrue(second.hasSelectedVariation());
+      fixture.key(KeyEvent.VK_UP);
+      invokeDrawBranch(second);
+      assertEquals(fixture.candidate.variation.size(), second.getDisplayedBranchLength());
+      assertTrue(second.hasSelectedVariation());
+      fixture.assertPreviewRecordUnchanged();
+
+      // Visible variation stepping with Up and Down.
+      fixture.key(KeyEvent.VK_UP);
+      invokeDrawBranch(second);
+      assertEquals(2, second.getDisplayedBranchLength());
+      assertTrue(second.hasSelectedVariation());
+      fixture.assertPreviewRecordUnchanged();
+
+      fixture.key(KeyEvent.VK_DOWN);
+      invokeDrawBranch(second);
+      assertEquals(3, second.getDisplayedBranchLength());
+      assertTrue(second.hasSelectedVariation());
+      fixture.assertPreviewRecordUnchanged();
+
+      // Stepping back to length 1 (first move).
+      fixture.key(KeyEvent.VK_UP);
+      invokeDrawBranch(second);
+      assertEquals(2, second.getDisplayedBranchLength());
+      fixture.assertPreviewRecordUnchanged();
+
+      fixture.key(KeyEvent.VK_UP);
+      invokeDrawBranch(second);
+      assertEquals(1, second.getDisplayedBranchLength());
+      assertTrue(second.hasSelectedVariation());
+      fixture.assertPreviewRecordUnchanged();
+
+      // Repeated Up at length 1 retains length 1 and candidate ownership without history mutation.
+      fixture.key(KeyEvent.VK_UP);
+      invokeDrawBranch(second);
+      assertEquals(1, second.getDisplayedBranchLength());
+      assertTrue(second.hasSelectedVariation());
+      fixture.assertPreviewRecordUnchanged();
+
+      // Down from length 1 advances to length 2.
+      fixture.key(KeyEvent.VK_DOWN);
+      invokeDrawBranch(second);
+      assertEquals(2, second.getDisplayedBranchLength());
+      assertTrue(second.hasSelectedVariation());
+      fixture.assertPreviewRecordUnchanged();
+
+      // When the mouse leaves the candidate, ordinary keys navigate history.
+      fixture.frame.clearSuggestionTablePreview();
+      fixture.frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
+      fixture.draw();
+      invokeDrawBranch(second);
+      assertFalse(fixture.renderer.hasSelectedVariation());
+      assertFalse(second.hasSelectedVariation());
+
+      fixture.key(KeyEvent.VK_DOWN);
+      assertSame(
+          fixture.next,
+          Lizzie.board.getHistory().getCurrentHistoryNode(),
+          "leaving the candidate should hand forward navigation back to the game record.");
+      assertEquals(3, Lizzie.board.getData().moveNumber);
+
+      fixture.key(KeyEvent.VK_UP);
+      assertSame(
+          fixture.node,
+          Lizzie.board.getHistory().getCurrentHistoryNode(),
+          "leaving the candidate should hand backward navigation back to the game record.");
+      assertEquals(2, Lizzie.board.getData().moveNumber);
+
+      fixture.key(KeyEvent.VK_UP);
+      assertSame(
+          fixture.previous,
+          Lizzie.board.getHistory().getCurrentHistoryNode(),
+          "backward navigation should continue through the game record.");
+      assertEquals(1, Lizzie.board.getData().moveNumber);
     } finally {
       env.close();
     }
@@ -621,7 +709,7 @@ class MoveOnlyUiGateTest {
 
       assertIterableEquals(
           originalPv,
-          boardRendererVariationOpt(fixture.renderer).orElseThrow(),
+          fixture.renderer.selectedVariation().orElseThrow(),
           "no-refresh preview must retain PV A after stepping forward from its first move.");
     } finally {
       env.close();
@@ -636,7 +724,7 @@ class MoveOnlyUiGateTest {
       Lizzie.config.autoReplayBranch = true;
       fixture.draw();
       fixture.reachFirstMove();
-      assertTrue(fixture.renderer.ownsBranchNavigation());
+      assertTrue(fixture.renderer.hasSelectedVariation());
     } finally {
       env.close();
     }
@@ -654,7 +742,7 @@ class MoveOnlyUiGateTest {
       fixture.draw();
 
       assertArrayEquals(new int[] {0, 1}, fixture.frame.mouseOverCoordinate);
-      assertTrue(fixture.renderer.ownsBranchNavigation());
+      assertTrue(fixture.renderer.hasSelectedVariation());
       fixture.reachFirstMove();
     } finally {
       env.close();
@@ -674,7 +762,7 @@ class MoveOnlyUiGateTest {
 
       assertSame(fixture.next, Lizzie.board.getHistory().getCurrentHistoryNode());
       assertFalse(
-          fixture.renderer.ownsBranchNavigation(),
+          fixture.renderer.hasSelectedVariation(),
           "a new position must not inherit the previous node's first-move preview ownership.");
       fixture.assertRecordStructureUnchanged();
     } finally {
@@ -705,8 +793,33 @@ class MoveOnlyUiGateTest {
       assertSame(fixture.next, Lizzie.board.getHistory().getCurrentHistoryNode());
       assertIterableEquals(
           nextCandidate.variation,
-          boardRendererVariationOpt(fixture.renderer).orElseThrow(),
+          fixture.renderer.selectedVariation().orElseThrow(),
           "a new position must not reuse the previous node's frozen first-move PV.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void explicitStepRejectsOldReplayAdvancementAndRestoration() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      BranchRecordFixture fixture = branchRecordFixture();
+      fixture.draw();
+      int originalLength = fixture.renderer.getDisplayedBranchLength();
+      long replay = fixture.renderer.replayTarget();
+      assertTrue(fixture.renderer.setReplayLength(replay, 3));
+
+      fixture.renderer.setDisplayedBranchLength(2);
+
+      assertFalse(fixture.renderer.setReplayLength(replay, 4));
+      assertFalse(fixture.renderer.setReplayLength(replay, originalLength));
+      assertEquals(2, fixture.renderer.getDisplayedBranchLength());
+      long freshReplay = fixture.renderer.replayTarget();
+      assertTrue(fixture.renderer.setReplayLength(freshReplay, 3));
+      assertTrue(fixture.renderer.setReplayLength(freshReplay, 2));
+      assertEquals(2, fixture.renderer.getDisplayedBranchLength());
+      fixture.assertRecordStructureUnchanged();
     } finally {
       env.close();
     }
@@ -730,15 +843,13 @@ class MoveOnlyUiGateTest {
       fixture.frame.mouseOverCoordinate = new int[] {1, 0};
       fixture.draw();
 
-      assertEquals(
-          other.coordinate, getField(BoardRenderer.class, fixture.renderer, "mouseOverCoords"));
       assertIterableEquals(
-          other.variation, boardRendererVariationOpt(fixture.renderer).orElseThrow());
-      assertTrue(fixture.renderer.ownsBranchNavigation());
+          other.variation, fixture.renderer.selectedVariation().orElseThrow());
+      assertTrue(fixture.renderer.hasSelectedVariation());
       fixture.wheel(-1);
       fixture.draw();
       fixture.assertPreviewRecordUnchanged();
-      assertTrue(fixture.renderer.ownsBranchNavigation());
+      assertTrue(fixture.renderer.hasSelectedVariation());
     } finally {
       env.close();
     }
@@ -754,96 +865,13 @@ class MoveOnlyUiGateTest {
 
       fixture.frame.clearSuggestionTablePreview();
 
-      assertFalse(fixture.renderer.ownsBranchNavigation());
+      assertFalse(fixture.renderer.hasSelectedVariation());
       fixture.wheel(-1);
       assertSame(
           fixture.previous,
           Lizzie.board.getHistory().getCurrentHistoryNode(),
           "cancelling the first-move preview must return wheel-up to real history navigation.");
       fixture.assertRecordStructureUnchanged();
-    } finally {
-      env.close();
-    }
-  }
-
-  @Test
-  void lowAllocationUnownedCandidateRetainsWheelJumpToEntireVariation() throws Exception {
-    TestEnvironment env = TestEnvironment.open();
-    try {
-      BranchRecordFixture fixture = branchRecordFixture();
-      MoveData weak = bestMove(1, 0);
-      weak.edgeVisits = 0;
-      weak.variation = List.of(weak.coordinate, Board.convertCoordinatesToName(1, 2));
-      fixture.candidate.edgeVisits = 100;
-      fixture.node.getData().bestMoves.add(weak);
-      Lizzie.config.minPlayoutRatioForStats = 0.1;
-      fixture.frame.mouseOverCoordinate = new int[] {1, 0};
-      fixture.draw();
-
-      assertEquals(0, weak.allocationVisits());
-      assertFalse(fixture.renderer.ownsBranchNavigation());
-      assertEquals(1, fixture.renderer.getDisplayedBranchLength());
-      fixture.wheel(1);
-
-      assertEquals(
-          256,
-          fixture.renderer.getDisplayedBranchLength(),
-          "an un-owned low-allocation candidate must retain the full-variation wheel jump.");
-      fixture.assertPreviewRecordUnchanged();
-    } finally {
-      env.close();
-    }
-  }
-
-  @Test
-  void boardRendererDefersHeavyBranchUntilCandidateHoverSettles() throws Exception {
-    TestEnvironment env = TestEnvironment.open();
-    try {
-      Lizzie.config.showBranch = true;
-      Lizzie.config.showSuggestionVariations = true;
-      Lizzie.config.showBlackCandidates = true;
-      Lizzie.config.showWhiteCandidates = true;
-      Lizzie.config.noRefreshOnMouseMove = true;
-      Lizzie.config.usePureStone = true;
-      TrackingLizzieFrame frame = configuredFrame();
-      frame.priorityMoveCoords = new ArrayList<>();
-      Lizzie.frame = frame;
-      BoardData current = currentData();
-      MoveData suggested = current.bestMoves.get(0);
-      suggested.variation = List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1));
-      Lizzie.board = boardWith(historyForCurrentNode(current));
-      LizzieFrame.boardRenderer = new CoordinateBoardRenderer(new int[] {0, 1});
-      BoardRenderer renderer = configuredBranchRenderer();
-
-      frame.onMouseMoved(0, 0);
-      assertEquals(
-          0,
-          frame.fullRefreshes,
-          "candidate hover must not rebuild comments and the problem list on the EDT.");
-      invokeDrawBranch(renderer);
-
-      Object emptyImage = getField(BoardRenderer.class, null, "emptyImage");
-      assertTrue(frame.isMouseOver, "candidate marker should still react immediately.");
-      assertFalse(frame.isSuggestionHoverPreviewReady(0, 1));
-      assertSame(
-          emptyImage,
-          getField(BoardRenderer.class, renderer, "branchStonesImage"),
-          "the expensive variation image must not be built during a quick candidate click.");
-
-      SuggestionHoverIntent intent =
-          (SuggestionHoverIntent)
-              getField(LizzieFrame.class, frame, "suggestionHoverIntent");
-      intent.reveal();
-      assertEquals(
-          0,
-          frame.fullRefreshes,
-          "revealing a settled preview must remain a board-only repaint.");
-      invokeDrawBranch(renderer);
-
-      BufferedImage branchImage =
-          (BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage");
-      assertNotSame(emptyImage, branchImage, "settled hover should keep the full variation preview.");
-      assertTrue(hasVisiblePaint(branchImage));
     } finally {
       env.close();
     }
@@ -916,32 +944,6 @@ class MoveOnlyUiGateTest {
     }
   }
 
-  @Test
-  void incrementalBranchOverlayRequiresExistingStonesToRemainUnchanged() {
-    Stone[] source = {Stone.BLACK, Stone.EMPTY, Stone.WHITE};
-    Stone[] branch = {Stone.BLACK, Stone.WHITE, Stone.WHITE};
-    boolean[] newStones = {false, true, false};
-
-    assertTrue(BoardRenderer.branchPreservesExistingStones(source, branch, newStones));
-
-    branch[0] = Stone.BLACK_CAPTURED;
-    assertFalse(
-        BoardRenderer.branchPreservesExistingStones(source, branch, newStones),
-        "a captured existing stone requires a complete branch image redraw.");
-
-    newStones[0] = true;
-    assertFalse(
-        BoardRenderer.branchPreservesExistingStones(source, branch, newStones),
-        "an existing stone may not disappear even if a malformed branch marks it as new.");
-  }
-
-  @Test
-  void incrementalBranchOverlayRejectsMalformedBranchBuffers() {
-    assertFalse(
-        BoardRenderer.branchPreservesExistingStones(
-            new Stone[] {Stone.BLACK}, new Stone[] {Stone.BLACK, Stone.WHITE}, new boolean[] {false}));
-    assertFalse(BoardRenderer.branchPreservesExistingStones(null, null, null));
-  }
 
   @Test
   void boardRendererRedrawsBranchImagesAfterClearingSameHover() throws Exception {
@@ -964,28 +966,23 @@ class MoveOnlyUiGateTest {
       Lizzie.board = boardWith(historyForCurrentNode(current));
       BoardRenderer renderer = configuredBranchRenderer();
 
+      renderer.selectHoveredVariation();
       invokeDrawBranch(renderer);
-
-      Object emptyImage = getField(BoardRenderer.class, null, "emptyImage");
-      BufferedImage firstBranchImage =
-          (BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage");
-      assertNotSame(emptyImage, firstBranchImage, "first hover should render branch stones.");
-      assertTrue(
-          hasVisiblePaint(firstBranchImage), "first hover branch image should contain stones.");
+      assertIterableEquals(suggested.variation, renderer.selectedVariation().orElseThrow());
+      assertTrue(hasVisiblePaintNear(renderBranchOverlay(renderer), 1, 1));
 
       renderer.clearBranch();
-      assertSame(emptyImage, getField(BoardRenderer.class, renderer, "branchStonesImage"));
+      assertFalse(renderer.hasSelectedVariation());
+      assertFalse(hasVisiblePaintNear(renderBranchOverlay(renderer), 1, 1));
       frame.mouseOverCoordinate = new int[] {0, 1};
       frame.isMouseOver = true;
-
+      renderer.selectHoveredVariation();
       invokeDrawBranch(renderer);
 
-      BufferedImage secondBranchImage =
-          (BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage");
-      assertNotSame(
-          emptyImage, secondBranchImage, "second hover of the same candidate must redraw stones.");
+      assertIterableEquals(suggested.variation, renderer.selectedVariation().orElseThrow());
       assertTrue(
-          hasVisiblePaint(secondBranchImage), "second hover should not publish a blank branch.");
+          hasVisiblePaintNear(renderBranchOverlay(renderer), 1, 1),
+          "returning to the cleared candidate must show its second stone again.");
     } finally {
       env.close();
     }
@@ -1014,31 +1011,34 @@ class MoveOnlyUiGateTest {
       Lizzie.board = boardWith(historyForCurrentNode(current));
       BoardRenderer renderer = configuredBranchRenderer();
 
+      renderer.selectHoveredVariation();
       invokeDrawBranch(renderer);
 
-      Optional<List<String>> firstPreview = boardRendererVariationOpt(renderer);
-      Object firstBranch = getField(BoardRenderer.class, renderer, "branch");
-      assertTrue(firstPreview.isPresent());
-      assertIterableEquals(firstPv, firstPreview.get());
-      assertNotSame(
-          suggested.variation,
-          firstPreview.get(),
-          "no-refresh hover should keep an immutable preview snapshot, not the live engine list.");
+      List<String> firstPreview = renderer.selectedVariation().orElseThrow();
+      assertIterableEquals(firstPv, firstPreview);
+      assertTrue(hasVisiblePaintNear(renderBranchOverlay(renderer), 1, 1));
 
       firstPv.set(1, Board.convertCoordinatesToName(2, 2));
       firstPv.add(Board.convertCoordinatesToName(1, 2));
+      suggested.variation = new ArrayList<>(firstPv);
       invokeDrawBranch(renderer);
 
-      Optional<List<String>> secondPreview = boardRendererVariationOpt(renderer);
-      assertTrue(secondPreview.isPresent());
-      assertSame(
-          firstBranch,
-          getField(BoardRenderer.class, renderer, "branch"),
-          "engine repaints must reuse the frozen branch instead of replaying the PV on the EDT.");
       assertIterableEquals(
           List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1)),
-          secondPreview.get(),
+          renderer.selectedVariation().orElseThrow(),
           "same hovered move should not refresh when no-refresh-on-mouse-move is enabled.");
+      BufferedImage frozen = renderBranchOverlay(renderer);
+      assertTrue(hasVisiblePaintNear(frozen, 1, 1));
+      assertFalse(hasVisiblePaintNear(frozen, 2, 2));
+      assertFalse(hasVisiblePaintNear(frozen, 1, 2));
+
+      renderer.refreshVariation();
+      assertIterableEquals(firstPv, renderer.selectedVariation().orElseThrow());
+      invokeDrawBranch(renderer);
+      BufferedImage refreshed = renderBranchOverlay(renderer);
+      assertFalse(hasVisiblePaintNear(refreshed, 1, 1));
+      assertTrue(hasVisiblePaintNear(refreshed, 2, 2));
+      assertTrue(hasVisiblePaintNear(refreshed, 1, 2));
     } finally {
       env.close();
     }
@@ -1066,7 +1066,9 @@ class MoveOnlyUiGateTest {
       Lizzie.board = boardWith(historyForCurrentNode(current));
       BoardRenderer renderer = configuredBranchRenderer();
 
+      renderer.selectHoveredVariation();
       invokeDrawBranch(renderer);
+      assertTrue(hasVisiblePaintNear(renderBranchOverlay(renderer), 1, 1));
 
       suggested.variation =
           new ArrayList<>(
@@ -1076,15 +1078,312 @@ class MoveOnlyUiGateTest {
                   Board.convertCoordinatesToName(1, 2)));
       invokeDrawBranch(renderer);
 
-      Optional<List<String>> preview = boardRendererVariationOpt(renderer);
-      assertTrue(preview.isPresent());
       assertIterableEquals(
           suggested.variation,
-          preview.get(),
+          renderer.selectedVariation().orElseThrow(),
           "hover variation should keep refreshing when no-refresh-on-mouse-move is disabled.");
+      BufferedImage refreshed = renderBranchOverlay(renderer);
+      assertFalse(hasVisiblePaintNear(refreshed, 1, 1));
+      assertTrue(hasVisiblePaintNear(refreshed, 2, 2));
+      assertTrue(hasVisiblePaintNear(refreshed, 1, 2));
     } finally {
       env.close();
     }
+  }
+
+  @Test
+  void pendingHoverAndNumericSelectionShareLengthWithoutNavigatingHistory() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open();
+        PendingInputEnvironment pending = PendingInputEnvironment.open()) {
+      BoardRenderer renderer = LizzieFrame.boardRenderer;
+      TrackingLizzieFrame frame = (TrackingLizzieFrame) Lizzie.frame;
+      Input input = new Input();
+      BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
+      frame.mouseOverCoordinate = new int[] {2, 0};
+      frame.isMouseOver = true;
+      renderer.setDisplayedBranchLength(2);
+      renderer.selectHoveredVariation();
+      List<String> hovered = renderer.selectedVariation().orElseThrow();
+      assertIterableEquals(pending.selectedPv, hovered);
+      assertFalse(renderer.isShowingBranch(), "selection must precede image generation.");
+
+      input.keyPressed(key(KeyEvent.VK_UP));
+      assertPendingLength(renderer, node, 1);
+      input.keyPressed(key(KeyEvent.VK_DOWN));
+      assertPendingLength(renderer, node, 2);
+      input.mouseWheelMoved(wheel(1, 1));
+      assertPendingLength(renderer, node, 3);
+      input.mouseWheelMoved(wheel(-1, 2));
+      assertPendingLength(renderer, node, 2);
+
+      frame.cancelPendingSuggestionHoverPreview();
+      renderer.clearBranch();
+      input.keyPressed(key(KeyEvent.VK_2));
+      assertIterableEquals(hovered, renderer.selectedVariation().orElseThrow());
+      input.keyPressed(key(KeyEvent.VK_DOWN));
+      assertPendingLength(renderer, node, 3);
+    }
+  }
+
+  @Test
+  void commaAppliesPendingNonFirstVariationPrefixAfterEngineReplacement() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open();
+        PendingInputEnvironment pending = PendingInputEnvironment.open()) {
+      Input input = new Input();
+      BoardRenderer renderer = LizzieFrame.boardRenderer;
+      renderer.setDisplayedBranchLength(2);
+      input.keyPressed(key(KeyEvent.VK_2));
+      assertFalse(renderer.isShowingBranch());
+      pending.replaceEnginePv();
+
+      input.keyPressed(key(KeyEvent.VK_COMMA));
+
+      assertAppliedSelectedPrefix();
+    }
+  }
+
+  @Test
+  void middlePressReleaseConsumesSamePendingSnapshotAfterEngineReplacement() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open();
+        PendingInputEnvironment pending = PendingInputEnvironment.open()) {
+      Input input = new Input();
+      BoardRenderer renderer = LizzieFrame.boardRenderer;
+      renderer.setDisplayedBranchLength(2);
+      input.keyPressed(key(KeyEvent.VK_2));
+      BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
+
+      input.mousePressed(middle(MouseEvent.MOUSE_PRESSED));
+      assertPendingLength(renderer, node, 2);
+      assertIterableEquals(pending.selectedPv, renderer.selectedVariation().orElseThrow());
+      pending.replaceEnginePv();
+      input.mouseReleased(middle(MouseEvent.MOUSE_RELEASED));
+
+      assertAppliedSelectedPrefix();
+    }
+  }
+
+  @Test
+  void independentPendingKeysAndCommaUseOwnSelectionNotMainSelection() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open();
+        PendingInputEnvironment pending = PendingInputEnvironment.open()) {
+      TrackingLizzieFrame frame = (TrackingLizzieFrame) Lizzie.frame;
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.isMouseOver = true;
+      LizzieFrame.boardRenderer.selectHoveredVariation();
+      TrackingIndependentMainBoard independent = allocate(TrackingIndependentMainBoard.class);
+      independent.boardRenderer = configuredBranchRenderer(true);
+      independent.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
+      frame.independentMainBoard = independent;
+      independent.boardRenderer.setDisplayedBranchLength(2);
+      independent.setMouseOverCoords(1);
+      InputIndependentMainBoard input = new InputIndependentMainBoard();
+      BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
+
+      input.keyPressed(key(KeyEvent.VK_UP));
+      assertPendingLength(independent.boardRenderer, node, 1);
+      input.keyPressed(key(KeyEvent.VK_DOWN));
+      assertPendingLength(independent.boardRenderer, node, 2);
+      assertIterableEquals(pending.selectedPv, independent.boardRenderer.selectedVariation().orElseThrow());
+      assertIterableEquals(
+          Lizzie.board.getData().bestMoves.get(0).variation,
+          LizzieFrame.boardRenderer.selectedVariation().orElseThrow());
+      pending.replaceEnginePv();
+      input.keyPressed(key(KeyEvent.VK_COMMA));
+
+      assertAppliedSelectedPrefix();
+    }
+  }
+
+  @Test
+  void emptyHostKeysAndWheelNavigateHistoryInsteadOfOppositeSelection() throws Exception {
+    for (boolean independentHost : new boolean[] {false, true}) {
+      for (boolean useWheel : new boolean[] {false, true}) {
+        for (int direction : new int[] {-1, 1}) {
+          try (TestEnvironment env = TestEnvironment.open();
+              PendingInputEnvironment pending = PendingInputEnvironment.open()) {
+            TrackingIndependentMainBoard independent = configuredPendingIndependent();
+            BoardRenderer opposite = independentHost ? LizzieFrame.boardRenderer : independent.boardRenderer;
+            opposite.setDisplayedBranchLength(2);
+            if (independentHost) new Input().keyPressed(key(KeyEvent.VK_2));
+            else independent.setMouseOverCoords(1);
+            BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
+            BoardHistoryNode target = direction < 0 ? node.previous().orElseThrow() : node.next().orElseThrow();
+            Input mainInput = new Input();
+            Runnable navigate = () -> {
+              if (useWheel) {
+                if (independentHost) independent.processMouseWheelMoved(wheel(direction, 1));
+                else mainInput.mouseWheelMoved(wheel(direction, 1));
+              } else {
+                pendingKey(independentHost, direction < 0 ? KeyEvent.VK_UP : KeyEvent.VK_DOWN);
+              }
+            };
+
+            Lizzie.frame.isPlayingAgainstLeelaz = true;
+            SwingUtilities.invokeAndWait(navigate);
+            assertSame(node, Lizzie.board.getHistory().getCurrentHistoryNode());
+            assertEquals(2, opposite.getDisplayedBranchLength());
+            assertIterableEquals(pending.selectedPv, opposite.selectedVariation().orElseThrow());
+            Lizzie.frame.isPlayingAgainstLeelaz = false;
+            SwingUtilities.invokeAndWait(() -> {
+              if (useWheel && !independentHost) mainInput.mouseWheelMoved(wheel(direction, 2));
+              else navigate.run();
+            });
+
+            assertSame(target, Lizzie.board.getHistory().getCurrentHistoryNode());
+            assertEquals(direction < 0 ? 0 : 2, Lizzie.board.getData().moveNumber);
+            assertFalse(opposite.hasSelectedVariation(), "real history navigation retires the old source.");
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  void independentPageKeysRetainMainRendererRoute() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open();
+        PendingInputEnvironment pending = PendingInputEnvironment.open()) {
+      TrackingIndependentMainBoard independent = configuredPendingIndependent();
+      BoardRenderer main = LizzieFrame.boardRenderer;
+      main.setDisplayedBranchLength(2);
+      new Input().keyPressed(key(KeyEvent.VK_2));
+      independent.boardRenderer.setDisplayedBranchLength(2);
+      independent.setMouseOverCoords(0);
+      BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
+
+      pendingKey(true, KeyEvent.VK_PAGE_DOWN);
+      assertPendingLength(main, node, 3);
+      assertPendingLength(independent.boardRenderer, node, 2);
+      pendingKey(true, KeyEvent.VK_PAGE_UP);
+      assertPendingLength(main, node, 2);
+      assertPendingLength(independent.boardRenderer, node, 2);
+    }
+  }
+
+  @Test
+  void middleGestureKeepsPressedSelectionAfterNumericReplacement() throws Exception {
+    for (boolean independentHost : new boolean[] {false, true}) {
+      try (TestEnvironment env = TestEnvironment.open();
+          PendingInputEnvironment pending = PendingInputEnvironment.open()) {
+        BoardRenderer owner = pendingHostRenderer(independentHost);
+        owner.setDisplayedBranchLength(2);
+        pendingKey(independentHost, KeyEvent.VK_2);
+        pendingMiddle(independentHost, true);
+
+        pendingKey(independentHost, KeyEvent.VK_1);
+        assertIterableEquals(Lizzie.board.getData().bestMoves.get(0).variation,
+            owner.selectedVariation().orElseThrow());
+        pendingMiddle(independentHost, false);
+
+        assertAppliedSelectedPrefix();
+        pendingMiddle(independentHost, false);
+        assertAppliedSelectedPrefix();
+      }
+    }
+  }
+
+  @Test
+  void middleGestureKeepsPressedPrefixWhileCurrentSelectionSteps() throws Exception {
+    for (boolean independentHost : new boolean[] {false, true}) {
+      try (TestEnvironment env = TestEnvironment.open();
+          PendingInputEnvironment pending = PendingInputEnvironment.open()) {
+        BoardRenderer owner = pendingHostRenderer(independentHost);
+        owner.setDisplayedBranchLength(2);
+        pendingKey(independentHost, KeyEvent.VK_2);
+        pendingMiddle(independentHost, true);
+        BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
+
+        pendingKey(independentHost, KeyEvent.VK_DOWN);
+        assertPendingLength(owner, node, 3);
+        pendingMiddle(independentHost, false);
+
+        assertAppliedSelectedPrefix();
+      }
+    }
+  }
+
+  @Test
+  void ordinaryClearCancelsMiddleGestureEvenAfterAnotherSelection() throws Exception {
+    for (boolean independentHost : new boolean[] {false, true}) {
+      try (TestEnvironment env = TestEnvironment.open();
+          PendingInputEnvironment pending = PendingInputEnvironment.open()) {
+        BoardRenderer owner = pendingHostRenderer(independentHost);
+        owner.setDisplayedBranchLength(2);
+        pendingKey(independentHost, KeyEvent.VK_2);
+        pendingMiddle(independentHost, true);
+        BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
+
+        owner.clearBranch();
+        pendingKey(independentHost, KeyEvent.VK_1);
+        pendingMiddle(independentHost, false);
+
+        assertPendingLength(owner, node, 2);
+        assertEquals(Stone.EMPTY, Lizzie.board.getStones()[Board.getIndex(2, 0)]);
+        assertEquals(Stone.EMPTY, Lizzie.board.getStones()[Board.getIndex(0, 1)]);
+        pendingKey(independentHost, KeyEvent.VK_COMMA);
+        assertEquals(3, Lizzie.board.getData().moveNumber);
+        assertEquals(Stone.WHITE, Lizzie.board.getStones()[Board.getIndex(0, 1)]);
+        assertEquals(Stone.BLACK, Lizzie.board.getStones()[Board.getIndex(0, 2)]);
+        assertEquals(Stone.EMPTY, Lizzie.board.getStones()[Board.getIndex(2, 0)]);
+      }
+    }
+  }
+
+  private static TrackingIndependentMainBoard configuredPendingIndependent() throws Exception {
+    TrackingIndependentMainBoard independent = allocate(TrackingIndependentMainBoard.class);
+    independent.boardRenderer = configuredBranchRenderer(true);
+    independent.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
+    setField(IndependentMainBoard.class, independent, "curSuggestionMoveOrderByNumber", -1);
+    Lizzie.frame.independentMainBoard = independent;
+    return independent;
+  }
+
+  private static BoardRenderer pendingHostRenderer(boolean independentHost) throws Exception {
+    return independentHost ? configuredPendingIndependent().boardRenderer : LizzieFrame.boardRenderer;
+  }
+
+  private static void pendingKey(boolean independentHost, int code) {
+    if (independentHost) new InputIndependentMainBoard().keyPressed(key(code));
+    else new Input().keyPressed(key(code));
+  }
+
+  private static void pendingMiddle(boolean independentHost, boolean press) {
+    if (independentHost) {
+      BoardRenderer owner = Lizzie.frame.independentMainBoard.boardRenderer;
+      if (press) owner.beginMiddlePreview();
+      else Lizzie.frame.playMiddleVariation(owner);
+    } else if (press) new Input().mousePressed(middle(MouseEvent.MOUSE_PRESSED));
+    else new Input().mouseReleased(middle(MouseEvent.MOUSE_RELEASED));
+  }
+
+  private static KeyEvent key(int code) {
+    return new KeyEvent(Lizzie.frame.mainPanel, KeyEvent.KEY_PRESSED, 1, 0, code, KeyEvent.CHAR_UNDEFINED);
+  }
+
+  private static MouseWheelEvent wheel(int rotation, long when) {
+    return new MouseWheelEvent(
+        Lizzie.frame.mainPanel, MouseEvent.MOUSE_WHEEL, when, 0, 60, 60, 0, false,
+        MouseWheelEvent.WHEEL_UNIT_SCROLL, 1, rotation);
+  }
+
+  private static MouseEvent middle(int id) {
+    return new MouseEvent(Lizzie.frame.mainPanel, id, 1, 0, 60, 60, 1, false, MouseEvent.BUTTON2);
+  }
+
+  private static void assertPendingLength(BoardRenderer renderer, BoardHistoryNode node, int length) {
+    assertEquals(length, renderer.getDisplayedBranchLength());
+    assertSame(node, Lizzie.board.getHistory().getCurrentHistoryNode());
+    assertEquals(1, Lizzie.board.getData().moveNumber);
+    assertFalse(renderer.isShowingBranch(), "input must work before any preview has been painted.");
+  }
+
+  private static void assertAppliedSelectedPrefix() {
+    assertEquals(3, Lizzie.board.getData().moveNumber);
+    assertEquals(Stone.WHITE, Lizzie.board.getStones()[Board.getIndex(2, 0)]);
+    assertEquals(Stone.BLACK, Lizzie.board.getStones()[Board.getIndex(2, 1)]);
+    assertEquals(Stone.EMPTY, Lizzie.board.getStones()[Board.getIndex(1, 2)]);
+    assertEquals(Stone.EMPTY, Lizzie.board.getStones()[Board.getIndex(0, 1)]);
+    assertEquals(Stone.EMPTY, Lizzie.board.getStones()[Board.getIndex(1, 1)]);
+    assertEquals(Stone.BLACK, Lizzie.board.getStones()[Board.getIndex(0, 0)]);
   }
 
   @Test
@@ -1233,6 +1532,7 @@ class MoveOnlyUiGateTest {
     frame.clickOrder = -1;
     frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
     frame.suggestionclick = LizzieFrame.outOfBoundCoordinate;
+    frame.priorityMoveCoords = new ArrayList<>();
     return frame;
   }
 
@@ -1248,6 +1548,24 @@ class MoveOnlyUiGateTest {
     Method method = BoardRenderer.class.getDeclaredMethod("drawBranch");
     method.setAccessible(true);
     method.invoke(renderer);
+    VariationPreviewState state =
+        (VariationPreviewState) getField(BoardRenderer.class, renderer, "preview");
+    VariationPreviewScheduler scheduler =
+        (VariationPreviewScheduler) getField(VariationPreviewState.class, state, "scheduler");
+    ((ControlledPreview) getField(VariationPreviewScheduler.class, scheduler, "worker")).finish();
+  }
+
+  private static final class ControlledPreview implements Executor {
+    private final ArrayDeque<Runnable> tasks = new ArrayDeque<>();
+
+    @Override
+    public void execute(Runnable task) {
+      tasks.add(task);
+    }
+
+    void finish() {
+      while (!tasks.isEmpty()) tasks.remove().run();
+    }
   }
 
   private static FloatBoardRenderer configuredFloatRenderer() throws Exception {
@@ -1270,6 +1588,10 @@ class MoveOnlyUiGateTest {
 
   private static BoardRenderer configuredBranchRenderer(boolean independent) throws Exception {
     BoardRenderer renderer = new BoardRenderer(independent);
+    VariationPreviewState state =
+        (VariationPreviewState) getField(BoardRenderer.class, renderer, "preview");
+    setField(VariationPreviewState.class, state, "scheduler",
+        new VariationPreviewScheduler(new ControlledPreview(), Runnable::run));
     setIntField(renderer, "x", 0);
     setIntField(renderer, "y", 0);
     setIntField(renderer, "boardWidth", CANVAS_SIZE);
@@ -1376,10 +1698,17 @@ class MoveOnlyUiGateTest {
     return field.get(target);
   }
 
-  @SuppressWarnings("unchecked")
-  private static Optional<List<String>> boardRendererVariationOpt(BoardRenderer renderer)
-      throws Exception {
-    return (Optional<List<String>>) getField(BoardRenderer.class, renderer, "variationOpt");
+  private static BufferedImage renderBranchOverlay(BoardRenderer renderer) throws Exception {
+    BufferedImage image = new BufferedImage(CANVAS_SIZE, CANVAS_SIZE, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D graphics = image.createGraphics();
+    try {
+      Method method = BoardRenderer.class.getDeclaredMethod("renderImages", Graphics2D.class);
+      method.setAccessible(true);
+      method.invoke(renderer, graphics);
+      return image;
+    } finally {
+      graphics.dispose();
+    }
   }
 
   private static BoardHistoryList historyWithNext(BoardData current, BoardData next) {
@@ -1569,7 +1898,7 @@ class MoveOnlyUiGateTest {
         draw();
         assertPreviewRecordUnchanged();
         assertTrue(
-            renderer.ownsBranchNavigation(), "the candidate must retain navigation ownership.");
+            renderer.hasSelectedVariation(), "the candidate must retain navigation ownership.");
       }
       assertEquals(1, renderer.getDisplayedBranchLength());
     }
@@ -1654,7 +1983,107 @@ class MoveOnlyUiGateTest {
     }
 
     @Override
+    public void onMainEnginePonder() {}
+
+
+    @Override
     public void repaint() {}
+  }
+
+  private static final class TrackingIndependentMainBoard extends IndependentMainBoard {
+    @Override
+    public void refresh() {}
+
+    @Override
+    public void repaint() {}
+  }
+
+  private static final class PendingInputBoard extends Board {
+    @Override
+    public void clearAfterMove() {
+      // Keep real rules/history placement and preview retirement, without unrelated sidebar UI.
+      LizzieFrame.boardRenderer.clearBranch();
+      if (Lizzie.frame.independentMainBoard != null) {
+        Lizzie.frame.independentMainBoard.boardRenderer.clearBranch();
+      }
+    }
+  }
+
+  private static final class PendingInputEnvironment implements AutoCloseable {
+    private final Leelaz previousEngine = Lizzie.leelaz;
+    private final boolean previousEngineEmpty = EngineManager.isEmpty;
+    private final EngineFollowController previousFollow = Lizzie.engineFollowController;
+    private final boolean previousUrlSgf = LizzieFrame.urlSgf;
+    private final boolean previousTempDrag = Input.tempDrag;
+    private final boolean previousDragMode = Input.Draggedmode;
+    private final boolean previousSelectMode = Input.selectMode;
+    private MoveData selectedMove;
+    private final List<String> selectedPv = List.of(
+        Board.convertCoordinatesToName(2, 0),
+        Board.convertCoordinatesToName(2, 1),
+        Board.convertCoordinatesToName(1, 2));
+
+    private static PendingInputEnvironment open() throws Exception {
+      PendingInputEnvironment env = new PendingInputEnvironment();
+      Lizzie.setPrimaryEngine(null);
+      EngineManager.isEmpty = true;
+      Lizzie.engineFollowController = null;
+      LizzieFrame.urlSgf = false;
+      Input.tempDrag = false;
+      Input.Draggedmode = false;
+      Input.selectMode = false;
+      Lizzie.config.showBranch = true;
+      Lizzie.config.showSuggestionVariations = true;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.noRefreshOnMouseMove = true;
+      Lizzie.config.usePureStone = true;
+      Lizzie.config.extraMode = featurecat.lizzie.ExtraMode.Normal;
+      TrackingLizzieFrame frame = (TrackingLizzieFrame) Lizzie.frame;
+      frame.priorityMoveCoords = new ArrayList<>();
+      frame.commentEditPane.setVisible(false);
+      setField(LizzieFrame.class, frame, "curSuggestionMoveOrderByNumber", -1);
+      Consumer<String> place =
+          v -> Board.asCoordinates(v).ifPresent(c -> Lizzie.board.place(c[0], c[1]));
+      setField(LizzieFrame.class, frame, "placeVariation", place);
+      LizzieFrame.boardRenderer = configuredBranchRenderer();
+      MoveData first = bestMove(0, 1);
+      first.variation = List.of(first.coordinate, Board.convertCoordinatesToName(0, 2));
+      env.selectedMove = bestMove(2, 0);
+      env.selectedMove.order = 1;
+      env.selectedMove.variation = new ArrayList<>(env.selectedPv);
+      BoardData data = moveData(new int[] {0, 0}, 1);
+      data.bestMoves = new ArrayList<>(List.of(first, env.selectedMove));
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(data);
+      BoardHistoryNode selectedNode = history.getCurrentHistoryNode();
+      history.add(moveData(new int[] {1, 0}, 2));
+      history.setHead(selectedNode);
+      PendingInputBoard board = allocate(PendingInputBoard.class);
+      board.setHistory(history);
+      Lizzie.board = board;
+      return env;
+    }
+
+    private void replaceEnginePv() {
+      selectedMove.variation.set(1, Board.convertCoordinatesToName(1, 1));
+      MoveData replacement = bestMove(2, 0);
+      replacement.order = 1;
+      replacement.variation = List.of(replacement.coordinate, Board.convertCoordinatesToName(1, 1));
+      Lizzie.board.getData().bestMoves.set(1, replacement);
+    }
+
+    @Override
+    public void close() {
+      Lizzie.frame.cancelPendingSuggestionHoverPreview();
+      Lizzie.setPrimaryEngine(previousEngine);
+      EngineManager.isEmpty = previousEngineEmpty;
+      Lizzie.engineFollowController = previousFollow;
+      LizzieFrame.urlSgf = previousUrlSgf;
+      Input.tempDrag = previousTempDrag;
+      Input.Draggedmode = previousDragMode;
+      Input.selectMode = previousSelectMode;
+    }
   }
 
   private static final class HiddenRightClickMenu extends RightClickMenu {

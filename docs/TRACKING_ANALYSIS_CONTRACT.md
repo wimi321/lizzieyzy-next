@@ -52,6 +52,7 @@ controller 通知不得在引擎 ownership locks 内执行。
 - 相同集合、相同 ReadBoard 完整帧不重发。原队列内取消和 `QueuedCommand.beginOutputWrite`
   竞争同一物理写入边界，未写出的旧更新不能复活已移除点。
 - 未确认旧 stream 已结束或通信已失效时，后续普通写入不能穿过该边界。
+- focus 探针只消费属于自身 pending handler 的 GTP 响应头；即使正在隔离探针输出或等待终止空行，也不吞掉其他编号请求的响应。启动规则等普通请求继续由原 reader binding 下的对应 handler 结算。
 - 共享 foreground、GMA、retained mode 与 lifecycle owner 保留；focus 不再持有独占 tracking lease。
 
 ## Live、节点缓存与 SGF

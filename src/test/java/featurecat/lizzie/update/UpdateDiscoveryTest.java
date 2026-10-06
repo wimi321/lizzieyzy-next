@@ -17,6 +17,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class UpdateDiscoveryTest {
   private static final String INSTALLED = "next-2026-08-01.1";
@@ -52,7 +55,8 @@ class UpdateDiscoveryTest {
             });
 
     UpdateCheckResult result =
-        discovery.discover(UpdateCheckSelection.of(UpdateChannel.STABLE, UpdateSource.OFFICIAL_SITE, "next-dev"));
+        discovery.discover(
+            UpdateCheckSelection.of(UpdateChannel.STABLE, UpdateSource.OFFICIAL_SITE, "next-dev"));
 
     assertEquals(UpdateCheckResult.Reason.UNAVAILABLE_BUILD, result.reason);
     assertNull(result.failureKind);
@@ -75,7 +79,8 @@ class UpdateDiscoveryTest {
   void testChannelAdmitsNewerSignedTestManifest() {
     UpdateCheckResult result =
         windowsDiscovery(selection -> signed(official(NEWER, true)))
-            .discover(UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.OFFICIAL_SITE, INSTALLED));
+            .discover(
+                UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.OFFICIAL_SITE, INSTALLED));
 
     assertEquals(UpdateCheckResult.Reason.OFFER, result.reason);
     assertEquals(NEWER, result.windowsPlan.manifest.releaseTag);
@@ -83,14 +88,14 @@ class UpdateDiscoveryTest {
   }
 
   @Test
-  void testChannelRejectsOfficialManifestAsInvalidPointer() {
+  void testChannelAdmitsOfficialCandidateButRejectsOfficialPointer() {
     UpdateCheckResult result =
         windowsDiscovery(selection -> signed(official(NEWER, false)))
             .discover(UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.GITHUB, INSTALLED));
 
-    assertEquals(UpdateCheckResult.Reason.FAILURE, result.reason);
-    assertEquals(UpdateCheckResult.FailureKind.INVALID_TEST_POINTER, result.failureKind);
-    assertNull(result.windowsPlan);
+    assertEquals(UpdateCheckResult.Reason.OFFER, result.reason);
+    assertEquals(NEWER, result.windowsPlan.manifest.releaseTag);
+    assertTrue(!result.windowsPlan.manifest.prerelease);
   }
 
   @Test
@@ -98,12 +103,12 @@ class UpdateDiscoveryTest {
     UpdateManifest unsigned = UpdateManifest.parse(UpdateManifestTest.validManifest());
     UpdateCheckResult result =
         windowsDiscovery(
-                selection ->
-                    new UpdateManifestClient.FetchResult(unsigned, "test://legacy", false))
+                selection -> new UpdateManifestClient.FetchResult(unsigned, "test://legacy", false))
             .discover(UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.GITHUB, INSTALLED));
 
     assertEquals(UpdateCheckResult.Reason.FAILURE, result.reason);
-    assertEquals(UpdateCheckResult.FailureKind.INVALID_TEST_POINTER, result.failureKind);
+    assertEquals(UpdateCheckResult.FailureKind.INVALID_CANDIDATE, result.stableCandidateFailure);
+    assertEquals(UpdateCheckResult.FailureKind.INVALID_CANDIDATE, result.betaCandidateFailure);
   }
 
   @Test
@@ -115,8 +120,7 @@ class UpdateDiscoveryTest {
 
     UpdateCheckResult result =
         windowsDiscovery(
-                selection ->
-                    new UpdateManifestClient.FetchResult(unsigned, "test://legacy", false))
+                selection -> new UpdateManifestClient.FetchResult(unsigned, "test://legacy", false))
             .discover(officialSelection(INSTALLED));
 
     assertEquals(UpdateCheckResult.Reason.OFFER, result.reason);
@@ -233,8 +237,7 @@ class UpdateDiscoveryTest {
     assertEquals("macos", result.packagePlan.platform);
     assertEquals("arm64", result.packagePlan.arch);
     assertEquals("with-katago", result.packagePlan.flavor);
-    assertEquals(
-        "2026-08-03-mac-arm64.with-katago.dmg", result.packagePlan.packageAsset.assetName);
+    assertEquals("2026-08-03-mac-arm64.with-katago.dmg", result.packagePlan.packageAsset.assetName);
     assertNull(result.windowsPlan);
     assertNull(result.failureKind);
   }
@@ -298,13 +301,11 @@ class UpdateDiscoveryTest {
                   seen.add(selection);
                   return signed(official(NEWER, true));
                 })
-            .discover(UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.OFFICIAL_SITE, INSTALLED));
+            .discover(
+                UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.OFFICIAL_SITE, INSTALLED));
 
     assertEquals(UpdateCheckResult.Reason.OFFER, result.reason);
     assertEquals(UpdateSource.GITHUB, seen.get(0).effectiveSource);
-    assertEquals(
-        List.of(UpdateManifestClient.TEST_CHANNEL_POINTER_URL),
-        UpdateManifestClient.envelopeUrlsFor(seen.get(0).channel, seen.get(0).effectiveSource));
     assertEquals(UpdateSource.OFFICIAL_SITE, UpdateSource.current());
     assertEquals(UpdateChannel.STABLE, UpdateChannel.current());
   }
@@ -387,6 +388,7 @@ class UpdateDiscoveryTest {
     assertEquals(UpdateSource.GITHUB, selection.effectiveSource);
     assertEquals(UpdateSource.OFFICIAL_SITE, UpdateSource.current());
   }
+
   @Test
   void directTestChannelConstructorFixesGithubWithoutWritingConfig() {
     UpdateCheckSelection selection =
@@ -396,9 +398,157 @@ class UpdateDiscoveryTest {
     assertEquals(UpdateSource.GITHUB, selection.effectiveSource);
   }
 
+  @ParameterizedTest
+  @CsvSource({
+    "next-2026-09-26.2,next-2026-09-26.1,next-2026-09-26.2,false",
+    "next-2026-09-26.2,next-2026-09-30.1,next-2026-09-30.1,true",
+    "next-2026-09-26.2,next-2026-09-26.10,next-2026-09-26.10,true",
+    "next-2026-09-26.2,next-2026-09-26.2,next-2026-09-26.2,false"
+  })
+  void betaChoosesHighestVersionWithOfficialTiePriority(
+      String stable, String beta, String expected, boolean prerelease) {
+    UpdateCheckResult result =
+        windowsDiscovery(
+                selection ->
+                    signed(
+                        official(
+                            selection.channel == UpdateChannel.STABLE ? stable : beta,
+                            selection.channel == UpdateChannel.BETA)))
+            .discover(UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.GITHUB, INSTALLED));
+
+    assertEquals(UpdateCheckResult.Reason.OFFER, result.reason);
+    assertEquals(expected, result.windowsPlan.manifest.releaseTag);
+    assertEquals(prerelease, result.windowsPlan.manifest.prerelease);
+    assertNull(result.stableCandidateFailure);
+    assertNull(result.betaCandidateFailure);
+  }
+
+  @ParameterizedTest
+  @EnumSource(UpdateChannel.class)
+  void survivingCandidateDeterminesOfferNoUpdateAndNoPackage(UpdateChannel failed) {
+    UpdateDiscovery.ManifestFetcher fetcher =
+        selection -> {
+          if (selection.channel == failed) {
+            throw new IOException("unavailable candidate");
+          }
+          return signed(official(NEWER, selection.channel == UpdateChannel.BETA));
+        };
+    UpdateCheckSelection snapshot =
+        UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.GITHUB, INSTALLED);
+    UpdateCheckResult offered = windowsDiscovery(fetcher).discover(snapshot);
+    UpdateCheckResult equal =
+        windowsDiscovery(fetcher)
+            .discover(UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.GITHUB, NEWER));
+    UpdateCheckResult missing =
+        new UpdateDiscovery(
+                fetcher, List.of(new PackageUpdateAdapter(true, "linux", "x64", "opencl")))
+            .discover(snapshot);
+
+    assertEquals(UpdateCheckResult.Reason.OFFER, offered.reason);
+    assertEquals(NEWER, offered.windowsPlan.manifest.releaseTag);
+    assertEquals(UpdateCheckResult.Reason.NO_UPDATE, equal.reason);
+    assertEquals(UpdateCheckResult.Reason.NO_PACKAGE, missing.reason);
+    for (UpdateCheckResult result : List.of(offered, equal, missing)) {
+      assertEquals(
+          failed == UpdateChannel.STABLE ? UpdateCheckResult.FailureKind.FETCH : null,
+          result.stableCandidateFailure);
+      assertEquals(
+          failed == UpdateChannel.BETA ? UpdateCheckResult.FailureKind.FETCH : null,
+          result.betaCandidateFailure);
+    }
+  }
+
+  @ParameterizedTest
+  @EnumSource(UpdateChannel.class)
+  void rejectsWrongIdentityAndInvalidVersionWithoutDiscardingOtherCandidate(UpdateChannel invalid) {
+    for (boolean wrongIdentity : new boolean[] {true, false}) {
+      UpdateCheckResult result =
+          windowsDiscovery(
+                  selection -> {
+                    boolean beta = selection.channel == UpdateChannel.BETA;
+                    if (selection.channel == invalid) {
+                      return signed(
+                          official(
+                              wrongIdentity ? "next-2099-01-01.1" : "next-invalid",
+                              wrongIdentity ? !beta : beta));
+                    }
+                    return signed(official(NEWER, beta));
+                  })
+              .discover(
+                  UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.GITHUB, INSTALLED));
+
+      assertEquals(UpdateCheckResult.Reason.OFFER, result.reason);
+      assertEquals(NEWER, result.windowsPlan.manifest.releaseTag);
+      assertEquals(invalid == UpdateChannel.STABLE, result.windowsPlan.manifest.prerelease);
+      assertEquals(
+          UpdateCheckResult.FailureKind.INVALID_CANDIDATE,
+          invalid == UpdateChannel.STABLE
+              ? result.stableCandidateFailure
+              : result.betaCandidateFailure);
+    }
+  }
+
+  @Test
+  void bothInvalidCandidatesFailRatherThanClaimingNoUpdate() {
+    UpdateCheckResult result =
+        windowsDiscovery(
+                selection ->
+                    signed(official("next-invalid", selection.channel == UpdateChannel.BETA)))
+            .discover(UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.GITHUB, INSTALLED));
+
+    assertEquals(UpdateCheckResult.Reason.FAILURE, result.reason);
+    assertEquals(UpdateCheckResult.FailureKind.INVALID_CANDIDATE, result.stableCandidateFailure);
+    assertEquals(UpdateCheckResult.FailureKind.INVALID_CANDIDATE, result.betaCandidateFailure);
+  }
+
+  @ParameterizedTest
+  @EnumSource(UpdateChannel.class)
+  void highestVersionMissingPackageNeverFallsBackAcrossPlatforms(UpdateChannel highest) {
+    UpdateDiscovery.ManifestFetcher fetcher =
+        selection -> {
+          JSONObject payload = SignedUpdateEnvelopeTest.validPayload();
+          payload.put("releaseTag", selection.channel == highest ? NEWER : "next-2026-08-02.1");
+          payload.put("prerelease", selection.channel == UpdateChannel.BETA);
+          if (selection.channel == highest) {
+            payload.getJSONArray("components").getJSONObject(0).put("platform", "linux");
+            payload.getJSONArray("packages").getJSONObject(0).put("arch", "x64");
+          }
+          return signed(UpdateManifest.parse(payload));
+        };
+    UpdateCheckSelection snapshot =
+        UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.GITHUB, INSTALLED);
+
+    assertEquals(
+        UpdateCheckResult.Reason.NO_PACKAGE, windowsDiscovery(fetcher).discover(snapshot).reason);
+    assertEquals(
+        UpdateCheckResult.Reason.NO_PACKAGE, packageDiscovery(fetcher).discover(snapshot).reason);
+  }
+
+  @Test
+  void subsequentSuccessfulCheckDoesNotRetainCandidateFailure() {
+    AtomicInteger attempts = new AtomicInteger();
+    UpdateDiscovery discovery =
+        windowsDiscovery(
+            selection -> {
+              if (attempts.getAndIncrement() == 0) {
+                throw new IOException("first candidate temporarily unavailable");
+              }
+              return signed(official(NEWER, selection.channel == UpdateChannel.BETA));
+            });
+    UpdateCheckSelection snapshot =
+        UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.GITHUB, INSTALLED);
+
+    UpdateCheckResult first = discovery.discover(snapshot);
+    assertEquals(UpdateCheckResult.FailureKind.FETCH, first.stableCandidateFailure);
+    UpdateCheckResult second = discovery.discover(snapshot);
+    assertEquals(UpdateCheckResult.Reason.OFFER, second.reason);
+    assertNull(second.stableCandidateFailure);
+    assertNull(second.betaCandidateFailure);
+  }
 
   private static UpdateCheckSelection officialSelection(String installedVersion) {
-    return UpdateCheckSelection.of(UpdateChannel.STABLE, UpdateSource.OFFICIAL_SITE, installedVersion);
+    return UpdateCheckSelection.of(
+        UpdateChannel.STABLE, UpdateSource.OFFICIAL_SITE, installedVersion);
   }
 
   private static UpdateDiscovery windowsDiscovery(UpdateDiscovery.ManifestFetcher fetcher) {
@@ -406,9 +556,7 @@ class UpdateDiscoveryTest {
         fetcher,
         List.of(
             new WindowsUpdateAdapter(
-                true,
-                "opencl",
-                InstalledUpdateState.empty(INSTALLED, "windows", "opencl"))));
+                true, "opencl", InstalledUpdateState.empty(INSTALLED, "windows", "opencl"))));
   }
 
   private static UpdateDiscovery packageDiscovery(UpdateDiscovery.ManifestFetcher fetcher) {

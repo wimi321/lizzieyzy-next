@@ -38,7 +38,7 @@ public class InputSubboard implements KeyListener, MouseListener, MouseWheelList
     if (e.getWhen() - wheelWhen > 0) {
       wheelWhen = e.getWhen();
       if (e.getWheelRotation() > 0) {
-        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
+        if (LizzieFrame.boardRenderer.hasSelectedVariation()) {
           Lizzie.frame.doBranch(1);
           Lizzie.frame.refresh();
         } else {
@@ -47,7 +47,7 @@ public class InputSubboard implements KeyListener, MouseListener, MouseWheelList
           }
         }
       } else if (e.getWheelRotation() < 0) {
-        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
+        if (LizzieFrame.boardRenderer.hasSelectedVariation()) {
           Lizzie.frame.doBranch(-1);
           Lizzie.frame.refresh();
         }

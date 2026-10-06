@@ -22,6 +22,7 @@ import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 
 /** Download-and-open flow for signed macOS DMGs and Linux archives. */
 public final class PackageUpdateDialog extends JDialog {
@@ -41,17 +42,20 @@ public final class PackageUpdateDialog extends JDialog {
   private volatile boolean downloading;
 
   public PackageUpdateDialog(
-      Component parent, PlatformUpdateService service, PackageUpdatePlan plan) {
+      Component parent,
+      PlatformUpdateService service,
+      PackageUpdatePlan plan,
+      String checkWarning) {
     super(
         parent == null ? null : SwingUtilities.getWindowAncestor(parent),
         UpdateText.tr("WindowsUpdate.title", "发现新版本", "New version available"),
         ModalityType.MODELESS);
     this.service = service;
     this.plan = plan;
-    buildUi(parent);
+    buildUi(parent, checkWarning);
   }
 
-  private void buildUi(Component parent) {
+  private void buildUi(Component parent, String checkWarning) {
     setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
     addWindowListener(
         new WindowAdapter() {
@@ -60,7 +64,8 @@ public final class PackageUpdateDialog extends JDialog {
             closeRequested();
           }
         });
-    setMinimumSize(new Dimension(560, 330));
+    boolean hasWarning = checkWarning != null && !checkWarning.trim().isEmpty();
+    setMinimumSize(new Dimension(560, hasWarning ? 380 : 330));
     JPanel root = new JPanel(new BorderLayout(12, 12));
     root.setBorder(BorderFactory.createEmptyBorder(16, 18, 14, 18));
     root.setBackground(new Color(246, 247, 249));
@@ -76,7 +81,27 @@ public final class PackageUpdateDialog extends JDialog {
                 + plan.currentVersion
                 + "</html>");
     title.setFont(title.getFont().deriveFont(Font.PLAIN, 15f));
-    root.add(title, BorderLayout.NORTH);
+    if (hasWarning) {
+      JPanel header = new JPanel(new BorderLayout(0, 8));
+      header.setOpaque(false);
+      header.add(title, BorderLayout.NORTH);
+
+      JTextArea warningArea = new JTextArea(checkWarning.trim(), 3, 1);
+      warningArea.setEditable(false);
+      warningArea.setFocusable(false);
+      warningArea.setLineWrap(true);
+      warningArea.setWrapStyleWord(true);
+      warningArea.setOpaque(false);
+      warningArea.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+      Font labelFont = UIManager.getFont("Label.font");
+      if (labelFont != null) {
+        warningArea.setFont(labelFont);
+      }
+      header.add(warningArea, BorderLayout.CENTER);
+      root.add(header, BorderLayout.NORTH);
+    } else {
+      root.add(title, BorderLayout.NORTH);
+    }
 
     JTextArea summary = new JTextArea(summaryText());
     summary.setEditable(false);

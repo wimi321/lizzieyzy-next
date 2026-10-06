@@ -205,6 +205,15 @@ final class DesktopProbeProcess {
     diagnostic(
         List.of(tool("jcmd").toString(), Long.toString(child.pid()), "Thread.print", "-l"),
         evidence.resolve("thread-stacks.log"));
+    if (GraphicsEnvironment.isHeadless()) {
+      // Headless lifecycle tests must not launch a desktop JVM or capture the user's screen.
+      try {
+        Files.writeString(evidence.resolve("screenshot.log"), "Not captured: headless parent JVM\n");
+      } catch (IOException failure) {
+        System.err.println("Unable to record headless diagnostic: " + failure);
+      }
+      return;
+    }
     List<String> screenshot = javaCommand(DesktopProbeProcess.class);
     screenshot.add(evidence.resolve("timeout.png").toString());
     diagnostic(screenshot, evidence.resolve("screenshot.log"));

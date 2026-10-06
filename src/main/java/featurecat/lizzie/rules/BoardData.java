@@ -12,7 +12,8 @@ public class BoardData {
   public int moveMNNumber;
   public Optional<int[]> lastMove;
   public int[] moveNumberList;
-  public boolean blackToPlay;
+  // Some explicit turn overrides do not advance Board.contextRevision; captures recheck this value.
+  public volatile boolean blackToPlay;
   public boolean dummy;
   // added for change bestmoves when playouts is not increased
 
@@ -55,9 +56,11 @@ public class BoardData {
     boolean invalidated = secondary ? isChanged2 : isChanged;
     double cachedPda = secondary ? pda2 : pda;
     boolean sameSource = source != null && source == cachedSource;
-    boolean comparable = cachedRoot < 0 || exactRootVisits >= 0;
+    int incomingEdgeVisits = exactRootVisits < 0 ? knownRootEdgeVisits(moves) : -1;
+    boolean comparable = cachedRoot < 0 || exactRootVisits >= 0 || incomingEdgeVisits >= 0;
     int comparisonVisits = cachedRoot < 0 && exactRootVisits >= 0
-        ? MoveData.getPlayouts(moves) : totalVisits;
+        ? MoveData.getPlayouts(moves)
+        : cachedRoot >= 0 && exactRootVisits < 0 ? incomingEdgeVisits : totalVisits;
     boolean protectedCache = Lizzie.config.enableLizzieCache && !Lizzie.config.isAutoAna
         && (secondary || !Lizzie.engineGame.current().playing());
     boolean full = forceFull || !protectedCache || invalidated || cachedPda != engine.pda
@@ -92,6 +95,17 @@ public class BoardData {
       isChanged = false;
     }
     return AnalysisAdoption.FULL;
+  }
+
+  private static int knownRootEdgeVisits(List<MoveData> moves) {
+    // Some remote GTP streams omit rootInfo after a quick-curve handback. Root-edge counts
+    // are a conservative lower bound, unlike DAG child visits, which may share cached work.
+    long total = 0;
+    for (MoveData move : moves) {
+      if (move.edgeVisits < 0) return -1;
+      if (!move.isSymmetry) total += move.edgeVisits;
+    }
+    return (int) Math.min(Integer.MAX_VALUE, total);
   }
   public int blackCaptures;
   public int whiteCaptures;

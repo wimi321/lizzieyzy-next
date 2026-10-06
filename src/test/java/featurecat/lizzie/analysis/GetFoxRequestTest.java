@@ -10,9 +10,13 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
@@ -153,11 +157,149 @@ class GetFoxRequestTest {
         GetFoxRequest.mergeRecoveryMatchesLiveBoard(Board.boardWidth, Board.boardHeight + 1));
   }
 
+  @Test
+  void nicknameSearchResolvesEveryNicknameShapeBeforeFetchingThatAccountsGames() throws Exception {
+    String[] nicknames = {"00123456", "123456789012345678901234", "\u68CB\u624B", "abc", "ab12"};
+    for (String nickname : nicknames) {
+      ScriptedFoxRequest request =
+          new ScriptedFoxRequest()
+              .respond(
+                  "QueryUserInfoPanel",
+                  new JSONObject()
+                      .put("result", 0)
+                      .put("uid", "900001")
+                      .put("username", nickname)
+                      .toString())
+              .respond("YHWQFetchChessList", "{\"result\":0,\"chesslist\":[]}");
+
+      runCommand(request, "user_name " + nickname);
+
+      assertEquals(2, request.urls.size(), nickname);
+      assertEquals(nickname, queryParam(request.urls.get(0), "username"), nickname);
+      assertEquals("900001", queryParam(request.urls.get(1), "dstuid"), nickname);
+      JSONObject payload = new JSONObject(request.delivered.get(0));
+      assertEquals("900001", payload.getString("fox_uid"), nickname);
+      assertEquals(nickname, payload.getString("fox_nickname"), nickname);
+      assertEquals(nickname, payload.getString("fox_query"), nickname);
+    }
+  }
+
+  @Test
+  void unknownNicknameFailsAsUserNotFoundWithoutFetchingAnyGames() throws Exception {
+    ScriptedFoxRequest request =
+        new ScriptedFoxRequest()
+            .respond("QueryUserInfoPanel", "{\"result\":101201,\"uid\":\"0\",\"username\":\"\"}");
+
+    runCommand(request, "user_name 123456");
+
+    assertEquals(1, request.urls.size());
+    JSONObject payload = new JSONObject(request.delivered.get(0));
+    assertEquals(1, payload.getInt("result"));
+    assertEquals("user_name", payload.getString("fox_action"));
+    assertEquals(GetFoxRequest.USER_NOT_FOUND_ERROR, payload.getString("fox_error"));
+  }
+
+  @Test
+  void transportFailureIsNotReportedAsUnknownAccount() throws Exception {
+    ScriptedFoxRequest request = new ScriptedFoxRequest();
+    request.failure = new RuntimeException("connect timed out");
+
+    runCommand(request, "user_name 123456");
+
+    JSONObject payload = new JSONObject(request.delivered.get(0));
+    assertEquals(1, payload.getInt("result"));
+    assertEquals("user_name", payload.getString("fox_action"));
+    assertFalse(payload.has("fox_error"));
+  }
+
+  @Test
+  void explicitUidSearchFetchesThatUidAndCarriesItsIdentity() throws Exception {
+    ScriptedFoxRequest request =
+        new ScriptedFoxRequest()
+            .respond("YHWQFetchChessList", "{\"result\":0,\"chesslist\":[]}");
+
+    runCommand(request, "account_uid 123456 00123456");
+
+    assertEquals(1, request.urls.size());
+    assertEquals("123456", queryParam(request.urls.get(0), "dstuid"));
+    JSONObject payload = new JSONObject(request.delivered.get(0));
+    assertEquals("123456", payload.getString("fox_uid"));
+    assertEquals("00123456", payload.getString("fox_nickname"));
+    assertFalse(payload.has("fox_action"));
+  }
+
+  @Test
+  void explicitUidSearchRejectsNonNumericUidWithoutRequesting() throws Exception {
+    ScriptedFoxRequest request = new ScriptedFoxRequest();
+
+    runCommand(request, "account_uid 12a34");
+
+    assertTrue(request.urls.isEmpty());
+    JSONObject payload = new JSONObject(request.delivered.get(0));
+    assertEquals(1, payload.getInt("result"));
+    assertEquals("account_uid", payload.getString("fox_action"));
+  }
+
+  private static void runCommand(GetFoxRequest request, String command) throws Exception {
+    Method handleCommand = GetFoxRequest.class.getDeclaredMethod("handleCommand", String.class);
+    handleCommand.setAccessible(true);
+    try {
+      handleCommand.invoke(request, command);
+    } finally {
+      request.shutdown();
+    }
+  }
+
+  private static String queryParam(String url, String name) {
+    for (String pair : URI.create(url).getRawQuery().split("&")) {
+      int eq = pair.indexOf('=');
+      if (eq > 0 && pair.substring(0, eq).equals(name)) {
+        return URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+      }
+    }
+    return null;
+  }
+
   private static final class RecordingFoxRequest extends GetFoxRequest {
     final List<String> delivered = new ArrayList<String>();
 
     RecordingFoxRequest() {
       super(null);
+    }
+
+    @Override
+    void deliver(String payload) {
+      delivered.add(payload);
+    }
+  }
+
+  private static final class ScriptedFoxRequest extends GetFoxRequest {
+    final List<String> urls = new ArrayList<String>();
+    final List<String> delivered = new ArrayList<String>();
+    private final Map<String, String> responses = new LinkedHashMap<String, String>();
+    RuntimeException failure;
+
+    ScriptedFoxRequest() {
+      super(null);
+    }
+
+    ScriptedFoxRequest respond(String endpoint, String body) {
+      responses.put(endpoint, body);
+      return this;
+    }
+
+    @Override
+    String httpGet(String url) {
+      urls.add(url);
+      if (failure != null) {
+        throw failure;
+      }
+      for (Map.Entry<String, String> response : responses.entrySet()) {
+        if (url.contains("/" + response.getKey() + "?")) {
+          return response.getValue();
+        }
+      }
+      throw new AssertionError("unexpected Fox request: " + url);
     }
 
     @Override

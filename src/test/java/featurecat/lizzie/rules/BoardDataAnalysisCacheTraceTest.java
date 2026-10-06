@@ -103,6 +103,47 @@ class BoardDataAnalysisCacheTraceTest {
   }
 
   @Test
+  void remoteStreamWithoutRootInfoCanOutgrowQuickCurveUsingKnownEdges() throws Exception {
+    installBoardGlobals();
+    BoardData node = primaryNode(1000, 40, 1);
+    node.rootVisits = 1000;
+    Object source = new Object();
+    var shallow = featurecat.lizzie.analysis.KataGoAnalysisPayload.parse(
+        "info move D4 visits 50000 edgeVisits 900 winrate 0.6 pv D4 "
+            + "info move Q4 visits 50000 edgeVisits 900 isSymmetryOf D4 winrate 0.6 pv Q4");
+    assertEquals(BoardData.AnalysisAdoption.REJECTED,
+        node.adoptOrdinaryAnalysis(shallow.moves, "KataGo", Lizzie.leelaz,
+            shallow.totalVisits(), -1, null, source, false, false));
+    assertEquals(1000, node.rootVisits, "DAG visits and symmetry copies must not inflate depth");
+    var deeper = featurecat.lizzie.analysis.KataGoAnalysisPayload.parse(
+        "info move D4 visits 1100 edgeVisits 1101 winrate 0.6 pv D4");
+    assertEquals(BoardData.AnalysisAdoption.FULL,
+        node.adoptOrdinaryAnalysis(deeper.moves, "KataGo", Lizzie.leelaz,
+            deeper.totalVisits(), -1, null, source, false, false));
+    assertEquals(1100, node.getPlayouts());
+    assertEquals(-1, node.rootVisits, "A lower bound is not an exact root total");
+  }
+
+  @Test
+  void missingEdgesCannotReplaceExactRootCacheInEitherSlot() throws Exception {
+    installBoardGlobals();
+    BoardData node = primaryNode(1000, 40, 1);
+    node.rootVisits = 1000;
+    node.setPlayouts2(1000);
+    node.rootVisits2 = 1000;
+    var mixed = featurecat.lizzie.analysis.KataGoAnalysisPayload.parse(
+        "info move D4 visits 50000 edgeVisits 2000 winrate 0.6 pv D4 "
+            + "info move Q4 visits 50000 winrate 0.6 pv Q4");
+    for (boolean secondary : List.of(false, true)) {
+      assertEquals(BoardData.AnalysisAdoption.REJECTED,
+          node.adoptOrdinaryAnalysis(mixed.moves, "KataGo", Lizzie.leelaz,
+              mixed.totalVisits(), -1, null, new Object(), secondary, false));
+    }
+    assertEquals(1000, node.rootVisits);
+    assertEquals(1000, node.rootVisits2);
+  }
+
+  @Test
   void primaryHigherVisitsAcceptsAndEmitsStructuredDecisionWhenTraceIsOn() throws Exception {
     startFullTrace();
     installBoardGlobals();

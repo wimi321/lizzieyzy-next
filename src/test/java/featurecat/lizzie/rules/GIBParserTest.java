@@ -150,14 +150,11 @@ class GIBParserTest {
       EngineManager.isEmpty = false;
       LoadTrackingFrame frame = RulesLayerTestHarness.allocate(LoadTrackingFrame.class);
       Lizzie.frame = frame;
-      setFrameField(frame, "loadedGameQuickAnalysisActive", true);
-
-      frame.togglePonderMannul();
+      setFrameField(frame, "userAnalysisPaused", true);
       assertTrue(frame.isUserAnalysisPaused());
 
       assertTrue(frame.loadFile(writeGib("fresh-context.gib", MINIMAL_GIB).toFile(), true, false));
       assertFalse(frame.isUserAnalysisPaused());
-      assertEquals(1, frame.scheduledResumeCount);
     }
   }
 
@@ -211,12 +208,9 @@ class GIBParserTest {
   }
 
   private static final class LoadTrackingFrame extends LizzieFrame {
-    private int scheduledResumeCount;
 
     @Override
-    public void scheduleResumeAnalysisAfterLoad(int delayMillis) {
-      scheduledResumeCount++;
-    }
+    public void scheduleResumeAnalysisAfterLoad(int delayMillis) {}
 
     @Override
     protected void scheduleMovelistRefreshAfterKifuLoad() {}

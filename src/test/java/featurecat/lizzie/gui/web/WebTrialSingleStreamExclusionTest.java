@@ -15,9 +15,9 @@ import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
-import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
@@ -53,7 +53,10 @@ class WebTrialSingleStreamExclusionTest {
     previousBoard = Lizzie.board;
     engine = reusableLocalKatago();
     output = new ByteArrayOutputStream();
-    setLeelazField(engine, "outputStream", new BufferedOutputStream(output));
+    Method installOutput =
+        Leelaz.class.getDeclaredMethod("installCommandOutputForTest", OutputStream.class);
+    installOutput.setAccessible(true);
+    installOutput.invoke(engine, output);
     overrideMutations = new AtomicInteger();
     manager = new WebBoardManager();
     manager.setOverrideSinkForTest(node -> overrideMutations.incrementAndGet());
@@ -255,7 +258,7 @@ class WebTrialSingleStreamExclusionTest {
         engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {});
     assertEquals(Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, foreground.availability());
     assertNotNull(foreground.lease());
-    processCommandResponse(engine, "=800000000");
+    dispatchExclusiveLine(engine, "=800000000");
     assertTrue(dispatchExclusiveLine(engine, ""));
     return foreground;
   }
@@ -270,12 +273,6 @@ class WebTrialSingleStreamExclusionTest {
     Method method = Leelaz.class.getDeclaredMethod("dispatchExclusiveGtpLine", String.class);
     method.setAccessible(true);
     return (boolean) method.invoke(engine, line);
-  }
-
-  private static void processCommandResponse(Leelaz engine, String line) throws Exception {
-    Method method = Leelaz.class.getDeclaredMethod("processCommandResponseLine", String.class);
-    method.setAccessible(true);
-    method.invoke(engine, line);
   }
 
   private static boolean invokeCanArmReadBoardGma(Leelaz engine) throws Exception {

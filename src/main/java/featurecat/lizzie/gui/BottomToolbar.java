@@ -58,6 +58,7 @@ import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
+import javax.swing.ToolTipManager;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.Document;
@@ -762,7 +763,16 @@ public class BottomToolbar extends JPanel {
     kataEstimate =
         new JFontButton(
             Lizzie.resourceBundle.getString("BottomToolbar.kataEstimate")); // ("Kata形势");
-    analyse = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.analyse")); // ("分析");
+    analyse =
+        new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.analyse")) { // ("分析");
+          @Override
+          public String getToolTipText(MouseEvent event) {
+            String guidance =
+                Lizzie.frame == null ? null : Lizzie.frame.foregroundUnrestoredGuidance();
+            return guidance != null ? guidance : super.getToolTipText(event);
+          }
+        };
+    ToolTipManager.sharedInstance().registerComponent(analyse);
     AppleStyleSupport.markPrimary(analyse);
     heatMap = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.heatMap")); // ("纯网络");
     backMain =

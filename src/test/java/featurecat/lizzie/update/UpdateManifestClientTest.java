@@ -140,8 +140,7 @@ class UpdateManifestClientTest {
   void officialChannelOfficialSourceUsesOnlyR2Envelope() {
     assertEquals(
         List.of(UpdateManifestClient.R2_ENVELOPE_URL),
-        UpdateManifestClient.envelopeUrlsFor(
-            UpdateChannel.STABLE, UpdateSource.OFFICIAL_SITE));
+        UpdateManifestClient.envelopeUrlsFor(UpdateChannel.STABLE, UpdateSource.OFFICIAL_SITE));
   }
 
   @Test
@@ -159,8 +158,7 @@ class UpdateManifestClientTest {
 
     assertEquals(
         List.of(UpdateManifestClient.TEST_CHANNEL_POINTER_URL),
-        UpdateManifestClient.envelopeUrlsFor(
-            UpdateChannel.BETA, UpdateSource.OFFICIAL_SITE));
+        UpdateManifestClient.envelopeUrlsFor(UpdateChannel.BETA, UpdateSource.OFFICIAL_SITE));
     assertEquals(
         List.of(UpdateManifestClient.TEST_CHANNEL_POINTER_URL),
         UpdateManifestClient.envelopeUrlsFor(UpdateChannel.BETA, UpdateSource.GITHUB));
@@ -187,6 +185,38 @@ class UpdateManifestClientTest {
         UpdateManifestClient.envelopeUrlsFor(UpdateChannel.STABLE, UpdateSource.GITHUB));
   }
 
+  @Test
+  void signedOnlyCandidatesIgnoreLegacyRecoveryWhileStableRetainsIt() throws Exception {
+    KeyPair pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    JSONObject envelope = signedEnvelope(SignedUpdateEnvelopeTest.validPayload(), pair);
+    AtomicInteger legacyRequests = new AtomicInteger();
+    try (TestServer server = new TestServer()) {
+      server.context("/signed", exchange -> respond(exchange, envelope.toString()));
+      server.context(
+          "/legacy",
+          exchange -> {
+            legacyRequests.incrementAndGet();
+            respond(exchange, UpdateManifestTest.validManifest().toString());
+          });
+      System.setProperty(UpdateManifestClient.LEGACY_MANIFEST_URL_PROPERTY, server.url("/legacy"));
+      System.setProperty(UpdateManifestClient.ENVELOPE_URLS_PROPERTY, server.url("/legacy"));
+
+      for (UpdateChannel candidate : UpdateChannel.values()) {
+        UpdateManifestClient.FetchResult fetched =
+            new UpdateManifestClient(
+                    List.of(server.url("/signed")), Map.of("test-key", pair.getPublic()), candidate)
+                .fetchSigned();
+        assertTrue(fetched.signatureVerified);
+        assertEquals("next-2026-08-03.1", fetched.manifest.releaseTag);
+      }
+      assertEquals(0, legacyRequests.get());
+      UpdateManifestClient.FetchResult recovered =
+          new UpdateManifestClient(UpdateChannel.STABLE, UpdateSource.GITHUB).fetchLatest();
+      assertFalse(recovered.signatureVerified);
+      assertEquals("next-2026-06-12.1", recovered.manifest.releaseTag);
+      assertEquals(1, legacyRequests.get());
+    }
+  }
 
   private static JSONObject signedEnvelope(JSONObject payload, KeyPair pair) throws Exception {
     byte[] bytes = payload.toString().getBytes(StandardCharsets.UTF_8);
@@ -281,9 +311,7 @@ class UpdateManifestClientTest {
         while ((line = reader.readLine()) != null && !line.isEmpty()) {}
         OutputStream out = socket.getOutputStream();
         out.write(
-            ("HTTP/1.1 200 OK\r\nContent-Length: "
-                    + body.length
-                    + "\r\nConnection: close\r\n\r\n")
+            ("HTTP/1.1 200 OK\r\nContent-Length: " + body.length + "\r\nConnection: close\r\n\r\n")
                 .getBytes(StandardCharsets.US_ASCII));
         out.write(body);
       }

@@ -4,9 +4,9 @@
 公开目录和软件更新接口的技术后台；GitHub Release 始终保留完整资产、安装器、Linux 包、
 历史版本和自动备用下载，pre-release 安装包不上传 R2。
 
-测试通道不走 R2。签名测试清单只发布到 GitHub：版本化 pre-release 上的
+测试候选清单只发布到 GitHub：版本化 pre-release 上的
 `lizzieyzy-next-update-envelope.json`，以及固定 tag `channel-beta` 上的同名指针。
-客户端稳定地址是
+测试通道同时读取 GitHub `releases/latest` 正式清单和以下测试指针，选择最高有效版本：
 `https://github.com/wimi321/lizzieyzy-next/releases/download/channel-beta/lizzieyzy-next-update-envelope.json`。
 `channel-beta` 不是打包版本，只托管这份 envelope，保持 pre-release，不得 `make_latest`，
 也不得带安装包。正式晋升不得改写该指针，也不得把测试安装包或测试指针上传到 R2。
@@ -101,9 +101,15 @@ Ed25519 私钥只能存在于 GitHub Secret；应用内只包含公钥。更换�
 帮助菜单的「检查更新」只打开检查更新页，不联网。用户在页上选择更新通道和更新源后点「检查更新」
 才取清单。默认正式通道、官网源。正式通道只读取用户选择的那一个签名 v2 清单：官网
 `download.goagent.top` 或 GitHub `releases/latest`，失败不会改试另一源。选择写入
-`update-source=official|github`，缺省官网。测试通道只读固定指针
-`https://github.com/wimi321/lizzieyzy-next/releases/download/channel-beta/lizzieyzy-next-update-envelope.json`，
-页面显示 GitHub 为固定有效源，但不覆盖已记住的正式源；没有官网回退，也不扫 Releases API。
+`update-source=official|github`，缺省官网。测试通道独立读取 GitHub `releases/latest` 正式清单
+和固定 `channel-beta` 测试指针，均须通过签名、schema v2、可解析版本号及对应的
+`prerelease` 身份校验；不使用正式通道的 `lizzie.update.manifestUrl` 或
+`lizzie.update.envelopeUrls` 恢复覆盖。按日期和数字序号选择最高版本，同版本正式候选优先，
+仅比已安装版本更新时提供更新。先选版本再匹配平台包；最高版本缺包时显示无匹配包，不退选旧版。
+一个候选获取或校验失败不影响另一个：继续检查，并在检查页或更新对话框保留非阻断说明；
+两个均失败时显示检查失败，而不是“没有更新”。下一次检查重新计算说明，不保存失败状态。
+页面显示 GitHub 为固定有效源，但不覆盖已记住的正式源；没有官网清单回退，也不扫 Releases API。
+这只固定清单来源；选中正式候选后，安装包仍按该签名清单中的 R2/GitHub 地址下载。
 签名、通道、版本、大小或 SHA-256 不正确时拒绝安装。
 通道选择写入 `update-channel`，缺省为正式；切换通道不改已安装文件，也不自动降级。
 

@@ -11132,6 +11132,14 @@ public class EngineManager {
       preparedSwitch.lifecycleRestore.engineSwitchUiToken = token;
       preparedSwitch.lifecycleRestore.engineSwitchUiIndex = index;
       preparedSwitch.lifecycleRestore.engineSwitchUiMain = isMain;
+      if (isMain
+          && preparedSwitch.explicitRestart
+          && preparedSwitch.previousEngine == targetEngine
+          && !targetEngine.useRemoteCompute
+          && Lizzie.frame != null) {
+        Lizzie.frame.continueKifuSyncAfterLocalRestart(
+            targetEngine, Lizzie.capturePrimaryEngineGeneration(targetEngine), this, token);
+      }
     }
     return () -> {
       boolean callbackSucceeded = false;

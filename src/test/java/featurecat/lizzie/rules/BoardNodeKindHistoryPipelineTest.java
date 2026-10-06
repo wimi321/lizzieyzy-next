@@ -4718,30 +4718,6 @@ class BoardNodeKindHistoryPipelineTest {
     }
   }
 
-  @Test
-  void previewOnlyInputNavigationRepaintsWithoutHistoryMutation() throws Exception {
-    TestEnvironment env = TestEnvironment.open();
-    BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
-    TrackingFrame frame = (TrackingFrame) Lizzie.frame;
-    try {
-      BoardRenderer renderer = new BoardRenderer(false);
-      setField(BoardRenderer.class, renderer, "isShowingBranch", true);
-      setField(BoardRenderer.class, renderer, "branchNavigationOwned", true);
-      LizzieFrame.boardRenderer = renderer;
-      int refreshes = frame.refreshCallCount();
-
-      Input.redo();
-      assertEquals(2, renderer.getDisplayedBranchLength());
-      assertEquals(refreshes + 1, frame.refreshCallCount());
-
-      Input.undo();
-      assertEquals(1, renderer.getDisplayedBranchLength());
-      assertEquals(refreshes + 2, frame.refreshCallCount());
-    } finally {
-      LizzieFrame.boardRenderer = previousRenderer;
-      env.close();
-    }
-  }
 
 
 

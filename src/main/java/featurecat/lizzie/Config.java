@@ -1201,6 +1201,7 @@ public class Config {
   public boolean showPonderLimitedTips = true;
   public int foxAfterGet = 0; // 0=最小化,1=关闭,2=无动作
   public String lastFoxName = "";
+  public boolean lastFoxQueryByUid = false;
 
   public boolean continueWithBestMove = false;
   public boolean directlyWithBestMove = true;
@@ -2007,6 +2008,7 @@ public class Config {
         uiConfig.optBoolean("suppress-readboard-websocket-pondering-notice", false);
     foxAfterGet = uiConfig.optInt("fox-after-get", 0);
     lastFoxName = uiConfig.optString("last-fox-name", "");
+    lastFoxQueryByUid = uiConfig.optBoolean("last-fox-query-by-uid", false);
     continueWithBestMove = uiConfig.optBoolean("continue-with-best-move", false);
     directlyWithBestMove = uiConfig.optBoolean("directly-with-best-move", false);
     delayShowCandidates = uiConfig.optBoolean("delay-show-candidates", false);

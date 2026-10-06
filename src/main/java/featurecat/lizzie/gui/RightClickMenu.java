@@ -17,6 +17,7 @@ import javax.swing.ImageIcon;
 import javax.swing.JPopupMenu;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
+import javax.swing.SwingUtilities;
 
 public class RightClickMenu extends JPopupMenu {
   static String trackingUnavailableKey(Leelaz.MoveFocusCapability capability, boolean tooltip) {
@@ -56,7 +57,7 @@ public class RightClickMenu extends JPopupMenu {
   private JFontMenuItem cleanedittemp;
   Separator sep1 = new Separator();
   Separator sep = new Separator();
-  private int[] mouseOverCoordinateTemp;
+  private BoardRenderer previewOwner;
 
   public RightClickMenu() {
 
@@ -65,18 +66,21 @@ public class RightClickMenu extends JPopupMenu {
           public void popupMenuCanceled(PopupMenuEvent e) {}
 
           public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
-            if (Lizzie.frame.isMouseOver) {
-              Lizzie.frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
-              Lizzie.frame.isMouseOver = false;
-              Lizzie.frame.clearMoved();
-            }
-            if (Lizzie.frame.independentMainBoard != null
-                && Lizzie.frame.independentMainBoard.isMouseOver) {
-              Lizzie.frame.independentMainBoard.mouseOverCoordinate =
-                  LizzieFrame.outOfBoundCoordinate;
-              Lizzie.frame.independentMainBoard.isMouseOver = false;
-              Lizzie.frame.independentMainBoard.clearMoved();
-            }
+            SwingUtilities.invokeLater(
+                () -> {
+                  if (Lizzie.frame.isMouseOver) {
+                    Lizzie.frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
+                    Lizzie.frame.isMouseOver = false;
+                    Lizzie.frame.clearMoved();
+                  }
+                  if (Lizzie.frame.independentMainBoard != null
+                      && Lizzie.frame.independentMainBoard.isMouseOver) {
+                    Lizzie.frame.independentMainBoard.mouseOverCoordinate =
+                        LizzieFrame.outOfBoundCoordinate;
+                    Lizzie.frame.independentMainBoard.isMouseOver = false;
+                    Lizzie.frame.independentMainBoard.clearMoved();
+                  }
+                });
             Timer timer = new Timer();
             timer.schedule(
                 new TimerTask() {
@@ -89,25 +93,18 @@ public class RightClickMenu extends JPopupMenu {
           }
 
           public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
-            if (Lizzie.config.isFloatBoardMode())
-              mouseOverCoordinateTemp = Lizzie.frame.independentMainBoard.mouseOverCoordinate;
-            else mouseOverCoordinateTemp = Lizzie.frame.mouseOverCoordinate;
+            boolean independent =
+                Lizzie.frame.independentMainBoard != null
+                    && (SwingUtilities.getWindowAncestor(getInvoker())
+                            == Lizzie.frame.independentMainBoard
+                        || Lizzie.config.isFloatBoardMode());
+            previewOwner =
+                independent
+                    ? Lizzie.frame.independentMainBoard.boardRenderer
+                    : LizzieFrame.boardRenderer;
             Lizzie.frame.isShowingRightMenu = true;
-            if (Lizzie.frame.independentMainBoard != null) {
-              if ((Lizzie.frame.independentMainBoard.isMouseOver
-                      || Lizzie.frame.isMouseOver
-                      || Lizzie.frame.independentMainBoard.boardRenderer.isShowingBranch())
-                  && !Lizzie.frame.isAnaPlayingAgainstLeelaz) {
-                addSuggestionAsBranch.setVisible(true);
-              } else {
-                addSuggestionAsBranch.setVisible(false);
-              }
-            } else if ((Lizzie.frame.isMouseOver || LizzieFrame.boardRenderer.isShowingBranch())
-                && !Lizzie.frame.isAnaPlayingAgainstLeelaz) {
-              addSuggestionAsBranch.setVisible(true);
-            } else {
-              addSuggestionAsBranch.setVisible(false);
-            }
+            addSuggestionAsBranch.setVisible(
+                previewOwner.hasSelectedVariation() && !Lizzie.frame.isAnaPlayingAgainstLeelaz);
 
             if (Lizzie.board.boardstatbeforeedit == "") {
               cleanupedit.setVisible(false);
@@ -350,14 +347,7 @@ public class RightClickMenu extends JPopupMenu {
         new ActionListener() {
           @Override
           public void actionPerformed(ActionEvent e) {
-            if (Lizzie.config.isFloatBoardMode())
-              Lizzie.frame.independentMainBoard.mouseOverCoordinate = mouseOverCoordinateTemp;
-            else Lizzie.frame.mouseOverCoordinate = mouseOverCoordinateTemp;
-            Lizzie.frame.addSuggestionAsBranch();
-            if (Lizzie.config.isFloatBoardMode())
-              Lizzie.frame.independentMainBoard.mouseOverCoordinate =
-                  LizzieFrame.outOfBoundCoordinate;
-            else Lizzie.frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
+            if (previewOwner != null) Lizzie.frame.addSuggestionAsBranch(previewOwner);
           }
         });
 

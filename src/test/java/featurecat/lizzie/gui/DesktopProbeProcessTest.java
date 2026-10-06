@@ -64,6 +64,10 @@ class DesktopProbeProcessTest {
     assertTrue(Files.readString(hungDirectory.resolve("phases.log")).contains("timeout"));
     assertTrue(Files.isRegularFile(hungDirectory.resolve("thread-stacks.log")));
     assertTrue(Files.isRegularFile(hungDirectory.resolve("screenshot.log")));
+    if (java.awt.GraphicsEnvironment.isHeadless()) {
+      assertFalse(Files.exists(hungDirectory.resolve("timeout.png")));
+      assertTrue(Files.readString(hungDirectory.resolve("screenshot.log")).contains("headless"));
+    }
   }
   @Test
   void childEnvironmentIsExplicitAndIsolated() throws Exception {

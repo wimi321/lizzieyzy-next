@@ -3,8 +3,8 @@ package featurecat.lizzie.update;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 更新检查单飞 and check-page lifecycle. Discovery stays synchronous; this type owns callbacks, not
- * Swing widgets or preference writes.
+ * 更新检查单飞 and check-page lifecycle. Discovery stays synchronous; this type owns callbacks, not Swing
+ * widgets or preference writes.
  */
 final class UpdateCheckCoordinator {
   interface Page {
@@ -18,9 +18,9 @@ final class UpdateCheckCoordinator {
   }
 
   interface OfferHandoff {
-    void openWindows(UpdateCheckSelection selection, WindowsUpdatePlan plan);
+    void openWindows(UpdateCheckSelection selection, UpdateCheckResult result);
 
-    void openPackage(UpdateCheckSelection selection, PackageUpdatePlan plan);
+    void openPackage(UpdateCheckSelection selection, UpdateCheckResult result);
   }
 
   interface Discovery {
@@ -55,19 +55,16 @@ final class UpdateCheckCoordinator {
   }
 
   private void complete(
-      Page page,
-      UpdateCheckSelection snapshot,
-      UpdateCheckResult result,
-      OfferHandoff handoff) {
+      Page page, UpdateCheckSelection snapshot, UpdateCheckResult result, OfferHandoff handoff) {
     try {
       if (result != null
           && result.reason == UpdateCheckResult.Reason.OFFER
           && (result.windowsPlan != null || result.packagePlan != null)) {
         page.disposeForOffer();
         if (result.windowsPlan != null) {
-          handoff.openWindows(snapshot, result.windowsPlan);
+          handoff.openWindows(snapshot, result);
         } else {
-          handoff.openPackage(snapshot, result.packagePlan);
+          handoff.openPackage(snapshot, result);
         }
         return;
       }

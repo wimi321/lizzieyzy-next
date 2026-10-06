@@ -953,7 +953,7 @@ class WholeGameAnalysisSessionTest {
     }
 
     @Override
-    void requestShutdown() {
+    public void requestShutdown() {
       shutdownRequested = true;
     }
 

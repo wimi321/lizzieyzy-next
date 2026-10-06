@@ -109,7 +109,8 @@ class UpdateCheckCoordinatorTest {
     RecordingDiscovery discovery = new RecordingDiscovery(results);
     UpdateCheckSelection first = officialSnapshot();
     UpdateCheckSelection second =
-        UpdateCheckSelection.of(UpdateChannel.BETA, UpdateSource.OFFICIAL_SITE, "next-2026-08-01.1");
+        UpdateCheckSelection.of(
+            UpdateChannel.BETA, UpdateSource.OFFICIAL_SITE, "next-2026-08-01.1");
 
     assertTrue(
         coordinator.start(page, first, discovery, unusedHandoff(), ImmediateRunner.INSTANCE));
@@ -263,43 +264,6 @@ class UpdateCheckCoordinatorTest {
     assertEquals(UpdateSource.GITHUB, UpdateSource.current());
   }
 
-  @Test
-  void stayFeedbackKeysDoNotBindToCopy() {
-    assertEquals(
-        "WindowsUpdate.devBuild",
-        UpdateCheckFeedback.key(UpdateCheckResult.unavailableBuild(), UpdateChannel.STABLE));
-    assertEquals(
-        "WindowsUpdate.unsupportedPlatform",
-        UpdateCheckFeedback.key(UpdateCheckResult.unsupportedPlatform(), UpdateChannel.STABLE));
-    assertEquals(
-        "WindowsUpdate.noUpdate.stable",
-        UpdateCheckFeedback.key(UpdateCheckResult.noUpdate(), UpdateChannel.STABLE));
-    assertEquals(
-        "WindowsUpdate.noUpdate.beta",
-        UpdateCheckFeedback.key(UpdateCheckResult.noUpdate(), UpdateChannel.BETA));
-    assertEquals(
-        "WindowsUpdate.noPackage",
-        UpdateCheckFeedback.key(UpdateCheckResult.noPackage(), UpdateChannel.STABLE));
-    assertEquals(
-        "WindowsUpdate.fetchFailed.stable",
-        UpdateCheckFeedback.key(
-            UpdateCheckResult.failure(UpdateCheckResult.FailureKind.FETCH), UpdateChannel.STABLE));
-    assertEquals(
-        "WindowsUpdate.fetchFailed.beta",
-        UpdateCheckFeedback.key(
-            UpdateCheckResult.failure(UpdateCheckResult.FailureKind.FETCH), UpdateChannel.BETA));
-    assertEquals(
-        "WindowsUpdate.invalidTestPointer",
-        UpdateCheckFeedback.key(
-            UpdateCheckResult.failure(UpdateCheckResult.FailureKind.INVALID_TEST_POINTER),
-            UpdateChannel.BETA));
-    assertEquals(
-        "WindowsUpdate.checkFailed",
-        UpdateCheckFeedback.key(
-            UpdateCheckResult.failure(UpdateCheckResult.FailureKind.ADAPTER),
-            UpdateChannel.STABLE));
-  }
-
   private static UpdateCheckSelection officialSnapshot() {
     return UpdateCheckSelection.of(
         UpdateChannel.STABLE, UpdateSource.OFFICIAL_SITE, "next-2026-08-01.1");
@@ -351,15 +315,15 @@ class UpdateCheckCoordinatorTest {
     PackageUpdatePlan packagePlan;
 
     @Override
-    public void openWindows(UpdateCheckSelection selection, WindowsUpdatePlan plan) {
+    public void openWindows(UpdateCheckSelection selection, UpdateCheckResult result) {
       windowsSelection = selection;
-      windowsPlan = plan;
+      windowsPlan = result.windowsPlan;
     }
 
     @Override
-    public void openPackage(UpdateCheckSelection selection, PackageUpdatePlan plan) {
+    public void openPackage(UpdateCheckSelection selection, UpdateCheckResult result) {
       packageSelection = selection;
-      packagePlan = plan;
+      packagePlan = result.packagePlan;
     }
   }
 

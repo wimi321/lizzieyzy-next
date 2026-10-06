@@ -1,7 +1,7 @@
 package featurecat.lizzie.gui;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,9 +18,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.JOptionPane;
 import javax.swing.JRadioButton;
 import javax.swing.JTextField;
-import javax.swing.JOptionPane;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
@@ -96,7 +96,7 @@ class AnalysisSettingsSaveConfigTest {
       throws Exception {
     TrackingFlashAnalysisFrame frame = allocate(TrackingFlashAnalysisFrame.class);
 
-    frame.handleMissingFlashAnalysisCommandChoice(JOptionPane.OK_OPTION, true, false, true);
+    frame.handleMissingFlashAnalysisCommandChoice(JOptionPane.OK_OPTION, true, false);
 
     assertEquals(1, frame.settingsShown);
     assertEquals(0, frame.flashCalls);
@@ -106,7 +106,6 @@ class AnalysisSettingsSaveConfigTest {
     assertEquals(1, frame.flashCalls);
     assertSame(Boolean.TRUE, frame.lastAllGame);
     assertSame(Boolean.FALSE, frame.lastAllBranches);
-    assertSame(Boolean.TRUE, frame.lastSilentAnalyze);
   }
 
   @Test
@@ -114,7 +113,7 @@ class AnalysisSettingsSaveConfigTest {
       throws Exception {
     TrackingFlashAnalysisFrame frame = allocate(TrackingFlashAnalysisFrame.class);
 
-    frame.handleMissingFlashAnalysisCommandChoice(JOptionPane.OK_OPTION, false, true, false);
+    frame.handleMissingFlashAnalysisCommandChoice(JOptionPane.OK_OPTION, false, true);
     frame.cancelPendingFlashAnalysisAfterSettings();
     frame.resumeFlashAnalysisAfterSettings();
 
@@ -271,7 +270,6 @@ class AnalysisSettingsSaveConfigTest {
     private int flashCalls;
     private Boolean lastAllGame;
     private Boolean lastAllBranches;
-    private Boolean lastSilentAnalyze;
     private int reservationConflictCount;
 
     private TrackingFlashAnalysisFrame() {}
@@ -287,12 +285,10 @@ class AnalysisSettingsSaveConfigTest {
     }
 
     @Override
-    public void flashAnalyzeGame(
-        boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+    public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches) {
       flashCalls++;
       lastAllGame = isAllGame;
       lastAllBranches = isAllBranches;
-      lastSilentAnalyze = silentAnalyze;
     }
   }
 

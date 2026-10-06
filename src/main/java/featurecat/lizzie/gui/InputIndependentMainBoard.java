@@ -174,16 +174,16 @@ public class InputIndependentMainBoard implements KeyListener {
             Lizzie.board.SpinAndMirror(3);
           } else LizzieFrame.undoNoRefresh(10);
         } else {
-          if (Lizzie.frame.independentMainBoard.boardRenderer.ownsBranchNavigation()) {
+          if (Lizzie.frame.independentMainBoard.boardRenderer.hasSelectedVariation()) {
             Lizzie.frame.independentMainBoard.doBranch(-1);
           } else {
-            LizzieFrame.undoNoRefresh(1);
+            LizzieFrame.navigateHistoryNoRefresh(-1);
           }
         }
         break;
 
       case VK_PAGE_DOWN:
-        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
+        if (LizzieFrame.boardRenderer.hasSelectedVariation()) {
           Lizzie.frame.doBranch(1);
         } else {
           // Lizzie.frame.noautocounting();
@@ -204,10 +204,10 @@ public class InputIndependentMainBoard implements KeyListener {
             Lizzie.board.SpinAndMirror(4);
           } else LizzieFrame.redoNoRefresh(10);
         } else {
-          if (Lizzie.frame.independentMainBoard.boardRenderer.ownsBranchNavigation()) {
+          if (Lizzie.frame.independentMainBoard.boardRenderer.hasSelectedVariation()) {
             Lizzie.frame.independentMainBoard.doBranch(1);
           } else {
-            LizzieFrame.redoNoRefresh(1);
+            LizzieFrame.navigateHistoryNoRefresh(1);
           }
         }
         break;
@@ -236,11 +236,9 @@ public class InputIndependentMainBoard implements KeyListener {
       case VK_COMMA:
         if (e.isAltDown()) {
           Lizzie.frame.genmove();
-        } else if (!Lizzie.config.showSuggestionVariations) {
-          if (Lizzie.frame.isMouseOver) Lizzie.frame.playCurrentVariation();
-          else Lizzie.frame.playBestMove();
         } else {
-          if (!Lizzie.frame.playCurrentVariation()) Lizzie.frame.playBestMove();
+          if (!Lizzie.frame.playCurrentVariation(Lizzie.frame.independentMainBoard.boardRenderer))
+            Lizzie.frame.playBestMove();
         }
         break;
 
@@ -282,7 +280,7 @@ public class InputIndependentMainBoard implements KeyListener {
         break;
 
       case VK_PAGE_UP:
-        if (LizzieFrame.boardRenderer.ownsBranchNavigation()) {
+        if (LizzieFrame.boardRenderer.hasSelectedVariation()) {
           Lizzie.frame.doBranch(-1);
         } else {
           // Lizzie.frame.noautocounting();
@@ -602,7 +600,7 @@ public class InputIndependentMainBoard implements KeyListener {
           Lizzie.engineManager.switchEngine(e.getKeyCode() - VK_1, true);
         } else if (e.isAltDown()) {
           Lizzie.frame.switchToCustomMode(2);
-        } else Lizzie.frame.setMouseOverCoords(e.getKeyCode() - VK_1);
+        } else Lizzie.frame.setMouseOverCoordsIndependentMainBoard(e.getKeyCode() - VK_1);
         break;
       case VK_0:
         if (controlIsPressed(e)) {

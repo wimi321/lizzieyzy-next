@@ -65,6 +65,11 @@ public final class UpdateManifestClient {
         }
       }
     }
+    return fetchSigned();
+  }
+
+  /** Fetches only signed schema-v2 envelopes, ignoring legacy recovery configuration. */
+  public FetchResult fetchSigned() throws IOException {
 
     Map<String, PublicKey> keys = trustedKeys == null ? TrustedUpdateKeys.load() : trustedKeys;
     IOException failure = new IOException("No signed update source could be verified.");
@@ -86,10 +91,14 @@ public final class UpdateManifestClient {
     return configuredEnvelopeUrls(source);
   }
 
+  static List<String> signedCandidateUrlsFor(UpdateChannel candidate) {
+    return List.of(
+        candidate == UpdateChannel.BETA ? TEST_CHANNEL_POINTER_URL : GITHUB_ENVELOPE_URL);
+  }
+
   static List<String> configuredEnvelopeUrls(UpdateSource source) {
     UpdateSource selected = source == null ? UpdateSource.OFFICIAL_SITE : source;
-    String selectedUrl =
-        selected == UpdateSource.GITHUB ? GITHUB_ENVELOPE_URL : R2_ENVELOPE_URL;
+    String selectedUrl = selected == UpdateSource.GITHUB ? GITHUB_ENVELOPE_URL : R2_ENVELOPE_URL;
     String configured = System.getProperty(ENVELOPE_URLS_PROPERTY, "").trim();
     if (configured.isEmpty()) {
       return List.of(selectedUrl);

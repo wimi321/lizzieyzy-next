@@ -429,9 +429,9 @@ public final class WholeGameAnalysisSession {
     activeEngine.setKeepAliveAfterCurrentRequest(true);
     activeEngine.setProgressListener(
         (completed, total) -> onEngineProgress(dispatchGeneration, completed, total));
-    activeEngine.setFailureCallback(() -> onEngineFailure(dispatchGeneration));
+    activeEngine.setFailureCallback(restore -> onEngineFailure(dispatchGeneration));
     activeEngine.setCompletionCallback(
-        () -> onEngineCompletion(dispatchGeneration, successfulCompletion));
+        restore -> onEngineCompletion(dispatchGeneration, successfulCompletion));
 
     Thread dispatcher =
         new Thread(

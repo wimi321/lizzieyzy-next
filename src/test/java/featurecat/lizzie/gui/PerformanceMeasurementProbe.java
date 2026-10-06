@@ -351,8 +351,8 @@ public final class PerformanceMeasurementProbe {
         engine.setKeepAliveAfterCurrentRequest(true);
         AtomicBoolean complete = new AtomicBoolean();
         AtomicBoolean failed = new AtomicBoolean();
-        engine.setCompletionCallback(() -> complete.set(true));
-        engine.setFailureCallback(() -> failed.set(true));
+        engine.setCompletionCallback(restore -> complete.set(true));
+        engine.setFailureCallback(restore -> failed.set(true));
         engine.firstResultNanos = 0;
         startSampling();
         long start = System.nanoTime();

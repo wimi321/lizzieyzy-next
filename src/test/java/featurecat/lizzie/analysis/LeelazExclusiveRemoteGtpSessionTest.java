@@ -52,6 +52,37 @@ class LeelazExclusiveRemoteGtpSessionTest {
   }
 
   @Test
+  void initialStopCompletesThroughReaderWhileAnotherStrictRequestIsPending() throws Exception {
+    Leelaz engine = reusableKatagoEngine(false, false);
+    installInput(engine, "=800000001\n\n=800000000\n\n");
+    installOutput(engine);
+    engine.isNormalEnd = true;
+    AtomicInteger ready = new AtomicInteger();
+    AtomicReference<Boolean> rulesCompletedAtReady = new AtomicReference<>();
+    AtomicReference<Boolean> exclusiveCommandAccepted = new AtomicReference<>();
+    try (ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.installForReader(engine)) {
+      Leelaz.EngineRulesOperation rules = engine.queryEngineRulesOperation(30_000L);
+      assertTrue(rules.accepted());
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.beginExclusiveGtpSession(
+              line -> {},
+              () -> {
+                rulesCompletedAtReady.set(rules.isDone());
+                exclusiveCommandAccepted.set(engine.sendExclusiveGtpCommand("kata-raw-nn 0"));
+                ready.incrementAndGet();
+              },
+              () -> {}));
+
+      invokeRead(engine);
+
+      assertEquals(1, ready.get(), "the matching stop frame must activate its lease exactly once");
+      assertEquals(Boolean.FALSE, rulesCompletedAtReady.get(), "stop must not settle the rules query");
+      assertEquals(Boolean.TRUE, exclusiveCommandAccepted.get(), "the activated lease must be usable");
+    }
+  }
+
+  @Test
   void exclusiveRemoteSessionWaitsForStopThenRoutesOnlyQuickCurveTraffic() throws Exception {
     Leelaz engine = reusableKatagoEngine(false, false);
     ByteArrayOutputStream bytes = installOutput(engine);
@@ -73,8 +104,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
     assertFalse(dispatch(engine, "="));
     processCommandResponse(engine, "=");
     assertEquals(0, ready.get(), "the analyze terminator is not the numbered stop response.");
-    assertFalse(dispatch(engine, "=800000000"));
-    processCommandResponse(engine, "=800000000");
+    dispatch(engine, "=800000000");
 
     assertEquals(0, ready.get(), "the stop response is incomplete until its blank boundary.");
     assertTrue(dispatch(engine, ""), "the trailing stop boundary must be consumed once.");
@@ -150,6 +180,29 @@ class LeelazExclusiveRemoteGtpSessionTest {
   }
 
   @Test
+  void automaticLeaseInitialStopTimeoutIsNotAHandbackFailure() throws Exception {
+    RecordingRestoreLeelaz engine = recordingRestoreEngine();
+    engine.initialStopTimeoutMillis = 25L;
+    installOutput(engine);
+    AtomicInteger closed = new AtomicInteger();
+    try (ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.install(engine)) {
+      Leelaz.ForegroundAnalysisLeaseAcquisition acquisition =
+          engine.acquireForegroundAnalysisLease(
+              line -> {}, lease -> {}, lease -> closed.incrementAndGet(), false);
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, acquisition.availability());
+      waitUntil(() -> closed.get() == 1);
+      drainEdt();
+
+      assertFalse(engine.isLoaded(), "the acquisition failure stays fail-closed.");
+      assertEquals(
+          java.util.Optional.empty(),
+          engine.unrestoredForegroundLeaseFailure(),
+          "a lease that never became active did not fail to hand the engine back");
+    }
+  }
+
+  @Test
   void foregroundLeaseRestoreFailureNotificationPolicyDefaultsToInteractive() throws Exception {
     Leelaz engine = reusableKatagoEngine(false, false);
     installOutput(engine);
@@ -187,8 +240,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
         Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
         engine.beginExclusiveGtpSession(
             line -> {}, ready::incrementAndGet, closed::incrementAndGet));
-    assertFalse(dispatch(engine, "=800000000"));
-    processCommandResponse(engine, "=800000000");
+    dispatch(engine, "=800000000");
     waitUntil(() -> closed.get() == 1);
 
     assertEquals(0, ready.get());
@@ -368,8 +420,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
     assertEquals(0, ready.get());
     assertTrue(engine.hasExclusiveGtpLease());
 
-    assertFalse(dispatch(engine, "=800000000"));
-    processCommandResponse(engine, "=800000000");
+    dispatch(engine, "=800000000");
     assertEquals(0, ready.get());
     assertTrue(dispatch(engine, ""));
     assertEquals(1, ready.get());
@@ -658,7 +709,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
       Leelaz.ForegroundAnalysisLeaseAcquisition acquisition =
           engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {});
       Leelaz.ForegroundAnalysisLease lease = acquisition.lease();
-      processCommandResponse(engine, "=800000000");
+      dispatch(engine, "=800000000");
       assertTrue(dispatch(engine, ""));
 
       engine.sendCommand("name");
@@ -934,7 +985,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
           engine.beginForegroundAnalysisLease(owner, line -> {}, () -> {}, () -> {}));
-      processCommandResponse(engine, "=800000000");
+      dispatch(engine, "=800000000");
       assertTrue(dispatch(engine, ""));
 
       Thread outputHolder =
@@ -987,7 +1038,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
           engine.beginForegroundAnalysisLease(owner, line -> {}, () -> {}, () -> {}));
-      processCommandResponse(engine, "=800000000");
+      dispatch(engine, "=800000000");
       assertTrue(dispatch(engine, ""));
 
       Thread outputHolder =
@@ -1036,7 +1087,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
           engine.beginForegroundAnalysisLease(owner, line -> {}, () -> {}, () -> {}));
-      processCommandResponse(engine, "=800000000");
+      dispatch(engine, "=800000000");
       assertTrue(dispatch(engine, ""));
 
       engine.endForegroundAnalysisLease(new Object());
@@ -1080,7 +1131,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
           engine.beginForegroundAnalysisLease(owner, line -> {}, () -> {}, () -> {}));
-      processCommandResponse(engine, "=800000000");
+      dispatch(engine, "=800000000");
       assertTrue(dispatch(engine, ""));
 
       board.currentMarker = 2;
@@ -1601,6 +1652,145 @@ class LeelazExclusiveRemoteGtpSessionTest {
   }
 
   @Test
+  void automaticLeaseFinalStopTimeoutKeepsCurrentReaderVisiblyUnrestored() throws Exception {
+    RestoreHarness harness = RestoreHarness.open(false, false, true);
+    AtomicInteger failures = new AtomicInteger();
+    try {
+      harness.engine.releaseStopTimeoutMillis = 25L;
+      harness.output.reset();
+
+      assertTrue(
+          harness.engine.endForegroundAnalysisLease(
+              harness.owner, harness.completions::incrementAndGet, failures::incrementAndGet));
+      waitUntil(() -> failures.get() == 1);
+      drainEdt();
+
+      assertEquals(
+          java.util.Optional.of(Leelaz.ForegroundAnalysisLeaseFailure.FINAL_STOP_TIMEOUT),
+          harness.engine.unrestoredForegroundLeaseFailure());
+      assertFalse(harness.engine.isLoaded());
+      assertFalse(harness.output.toString(StandardCharsets.UTF_8).contains("analyze"));
+
+      installInput(harness.engine, "");
+      assertEquals(
+          java.util.Optional.empty(),
+          harness.engine.unrestoredForegroundLeaseFailure(),
+          "a new reader of the same engine object must not inherit the old failure");
+    } finally {
+      harness.close();
+    }
+  }
+
+  @Test
+  void unrestoredReaderIsNotInheritedByANewPrimarySelection() throws Exception {
+    RestoreHarness harness = RestoreHarness.open(false, false, true);
+    AtomicInteger failures = new AtomicInteger();
+    try {
+      harness.engine.releaseStopTimeoutMillis = 25L;
+      assertTrue(
+          harness.engine.endForegroundAnalysisLease(
+              harness.owner, harness.completions::incrementAndGet, failures::incrementAndGet));
+      waitUntil(() -> failures.get() == 1);
+      drainEdt();
+      assertTrue(harness.engine.unrestoredForegroundLeaseFailure().isPresent());
+
+      Lizzie.setPrimaryEngine(harness.engine);
+
+      assertEquals(
+          java.util.Optional.empty(), harness.engine.unrestoredForegroundLeaseFailure());
+    } finally {
+      harness.close();
+    }
+  }
+
+  @Test
+  void lateFailureOfReplacedPrimaryIsNeverPublished() throws Exception {
+    RestoreHarness harness = RestoreHarness.open(false, false, true);
+    AtomicInteger failures = new AtomicInteger();
+    CountDownLatch edtBlocked = new CountDownLatch(1);
+    CountDownLatch releaseEdt = new CountDownLatch(1);
+    try {
+      RecordingRestoreLeelaz successor = recordingRestoreEngine();
+      harness.engine.releaseStopTimeoutMillis = 25L;
+      javax.swing.SwingUtilities.invokeLater(
+          () -> {
+            edtBlocked.countDown();
+            await(releaseEdt);
+          });
+      await(edtBlocked);
+      assertTrue(
+          harness.engine.endForegroundAnalysisLease(
+              harness.owner, harness.completions::incrementAndGet, failures::incrementAndGet));
+      waitUntil(() -> failures.get() == 1);
+      Lizzie.leelaz = successor;
+      releaseEdt.countDown();
+      drainEdt();
+
+      assertEquals(java.util.Optional.empty(), successor.unrestoredForegroundLeaseFailure());
+      Lizzie.leelaz = harness.engine;
+      assertEquals(
+          java.util.Optional.empty(),
+          harness.engine.unrestoredForegroundLeaseFailure(),
+          "a failure settled after replacement must not be presented on a later selection");
+    } finally {
+      releaseEdt.countDown();
+      harness.close();
+    }
+  }
+
+  @Test
+  void onlyFailedAutomaticLeaseReleasesRecordAnUnrestoredReader() throws Exception {
+    RestoreHarness manual = RestoreHarness.open(false, false);
+    AtomicInteger failures = new AtomicInteger();
+    try {
+      manual.engine.releaseStopTimeoutMillis = 25L;
+      assertTrue(
+          manual.engine.endForegroundAnalysisLease(
+              manual.owner, manual.completions::incrementAndGet, failures::incrementAndGet));
+      waitUntil(() -> failures.get() == 1);
+      drainEdt();
+      assertFalse(manual.engine.isLoaded());
+      assertEquals(java.util.Optional.empty(), manual.engine.unrestoredForegroundLeaseFailure());
+    } finally {
+      manual.close();
+    }
+
+    RestoreHarness automatic = RestoreHarness.open(false, false, true);
+    try {
+      automatic.finishRestore();
+      drainEdt();
+      assertTrue(automatic.engine.isLoaded());
+      assertEquals(
+          java.util.Optional.empty(), automatic.engine.unrestoredForegroundLeaseFailure());
+    } finally {
+      automatic.close();
+    }
+  }
+
+  @Test
+  void automaticLeaseRestoreCommandRejectionKeepsCurrentReaderVisiblyUnrestored()
+      throws Exception {
+    try (ProductionForegroundRestoreHarness harness =
+        ProductionForegroundRestoreHarness.open(true, "loadsgf ")) {
+      assertTrue(
+          harness.lease.release(
+              harness.completions::incrementAndGet, harness.failures::incrementAndGet));
+      assertTrue(dispatch(harness.engine, "=800000001"));
+      assertTrue(dispatch(harness.engine, ""));
+      waitUntil(() -> harness.failures.get() == 1);
+      drainEdt();
+
+      assertTrue(harness.output.rejected, "the restore must reach the rejected command");
+      assertEquals(
+          java.util.Optional.of(Leelaz.ForegroundAnalysisLeaseFailure.RESTORE_FAILED),
+          harness.engine.unrestoredForegroundLeaseFailure());
+      assertFalse(harness.engine.isLoaded());
+      assertEquals(0, harness.engine.ponderCount);
+      assertEquals(0, harness.completions.get());
+    }
+  }
+
+  @Test
   void foregroundLeaseReleaseStopErrorLeavesEngineUnavailable() throws Exception {
     RestoreHarness harness = RestoreHarness.open(false, false);
     AtomicInteger failures = new AtomicInteger();
@@ -1772,7 +1962,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
               },
               () -> {},
               () -> {}));
-      processCommandResponse(engine, "=800000000");
+      dispatch(engine, "=800000000");
       assertTrue(dispatch(engine, ""));
       Lizzie.leelaz = null;
       engine.isNormalEnd = true;
@@ -1806,10 +1996,6 @@ class LeelazExclusiveRemoteGtpSessionTest {
   void analysisControlPauseKeepsSharedLeaseRestoreFromResumingPonder() throws Exception {
     RestoreHarness harness = RestoreHarness.open(true, false);
     try {
-      Field active = LizzieFrame.class.getDeclaredField("loadedGameQuickAnalysisActive");
-      active.setAccessible(true);
-      active.setBoolean(Lizzie.frame, true);
-
       Method pause = LizzieFrame.class.getDeclaredMethod("pauseFromAnalysisControl");
       pause.setAccessible(true);
       pause.invoke(Lizzie.frame);
@@ -2119,6 +2305,10 @@ class LeelazExclusiveRemoteGtpSessionTest {
     method.invoke(engine, session);
   }
 
+  private static void drainEdt() throws Exception {
+    javax.swing.SwingUtilities.invokeAndWait(() -> {});
+  }
+
   private static void waitUntil(Check condition) throws Exception {
     long deadline = System.currentTimeMillis() + 3000L;
     while (!condition.get() && System.currentTimeMillis() < deadline) {
@@ -2270,9 +2460,12 @@ class LeelazExclusiveRemoteGtpSessionTest {
     private final StringBuilder currentCommand = new StringBuilder();
     private final CountDownLatch nameCommandWritten = new CountDownLatch(1);
     private volatile String loadedSgf = "";
+    private final String rejectedCommand;
+    private volatile boolean rejected;
 
-    private AutoRespondingRestoreOutput(Leelaz engine) {
+    private AutoRespondingRestoreOutput(Leelaz engine, String rejectedCommand) {
       this.engine = engine;
+      this.rejectedCommand = rejectedCommand;
     }
 
     @Override
@@ -2303,6 +2496,10 @@ class LeelazExclusiveRemoteGtpSessionTest {
         if (firstSpace > 0 && command.substring(0, firstSpace).chars().allMatch(Character::isDigit)) {
           response = "=" + command.substring(0, firstSpace);
         }
+      }
+      if (rejectedCommand != null && command.contains(rejectedCommand)) {
+        rejected = true;
+        response = "?" + response.substring(1) + " injected restore rejection";
       }
       try {
         invokeResponseHandlerForLine(engine, response);
@@ -2479,6 +2676,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
     private final int previousBoardWidth;
     private final int previousBoardHeight;
     private final AtomicInteger completions = new AtomicInteger();
+    private final AtomicInteger failures = new AtomicInteger();
 
     private ProductionForegroundRestoreHarness(
         ForegroundLeaseGlobalState globalState,
@@ -2496,6 +2694,11 @@ class LeelazExclusiveRemoteGtpSessionTest {
     }
 
     private static ProductionForegroundRestoreHarness open() throws Exception {
+      return open(false, null);
+    }
+
+    private static ProductionForegroundRestoreHarness open(
+        boolean automatic, String rejectedCommand) throws Exception {
       ProductionBoundaryRestoreLeelaz engine = new ProductionBoundaryRestoreLeelaz();
       ForegroundLeaseGlobalState globalState = ForegroundLeaseGlobalState.install(engine);
       int previousBoardWidth = Board.boardWidth;
@@ -2522,14 +2725,16 @@ class LeelazExclusiveRemoteGtpSessionTest {
         engine.komi = 7.5f;
         engine.width = 19;
         engine.height = 19;
-        AutoRespondingRestoreOutput output = new AutoRespondingRestoreOutput(engine);
+        AutoRespondingRestoreOutput output =
+            new AutoRespondingRestoreOutput(engine, rejectedCommand);
         installOutput(engine, Leelaz.createCommandOutputStream(output));
         engine.Pondering();
         Leelaz.ForegroundAnalysisLeaseAcquisition acquisition =
-            engine.acquireForegroundAnalysisLease(line -> {}, owner -> {}, owner -> {});
+            engine.acquireForegroundAnalysisLease(
+                line -> {}, owner -> {}, owner -> {}, !automatic);
         assertEquals(
             Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, acquisition.availability());
-        processCommandResponse(engine, "=800000000");
+        dispatch(engine, "=800000000");
         assertTrue(dispatch(engine, ""));
         return new ProductionForegroundRestoreHarness(
             globalState,
@@ -2605,6 +2810,11 @@ class LeelazExclusiveRemoteGtpSessionTest {
 
     private static RestoreHarness open(boolean wasPondering, boolean enterPlayMode)
         throws Exception {
+      return open(wasPondering, enterPlayMode, false);
+    }
+
+    private static RestoreHarness open(
+        boolean wasPondering, boolean enterPlayMode, boolean automatic) throws Exception {
       Leelaz previousEngine = Lizzie.leelaz;
       Board previousBoard = Lizzie.board;
       LizzieFrame previousFrame = Lizzie.frame;
@@ -2626,11 +2836,11 @@ class LeelazExclusiveRemoteGtpSessionTest {
         engine.Pondering();
       }
       Leelaz.ForegroundAnalysisLeaseAcquisition acquisition =
-          engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {});
+          engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {}, !automatic);
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, acquisition.availability());
       Leelaz.ForegroundAnalysisLease owner = acquisition.lease();
-      processCommandResponse(engine, "=800000000");
+      dispatch(engine, "=800000000");
       assertTrue(dispatch(engine, ""));
       if (enterPlayMode) {
         Lizzie.frame.isPlayingAgainstLeelaz = true;

@@ -103,7 +103,7 @@ class LeelazInactiveCommandBaselineTest {
 
       assertEquals("800000000 stop\n", output.toString(StandardCharsets.UTF_8));
 
-      processCommandResponse(engine, "=800000000");
+      dispatchExclusiveLine(engine, "=800000000");
       assertTrue(dispatchExclusiveLine(engine, ""));
       assertEquals("800000000 stop\n", output.toString(StandardCharsets.UTF_8));
 

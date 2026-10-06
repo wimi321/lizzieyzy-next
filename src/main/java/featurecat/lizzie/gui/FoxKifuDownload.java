@@ -57,6 +57,7 @@ public class FoxKifuDownload extends JFrame {
   private JTable table;
   private JScrollPane scrollPane;
   private JTextField txtUserName;
+  private JComboBox<String> cbxQueryMode;
   private JLabel lblCurrentUser;
   private JPanel recentSearchesPanel;
   public GetFoxRequest foxReq;
@@ -106,6 +107,18 @@ public class FoxKifuDownload extends JFrame {
         new JFontLabel(Lizzie.resourceBundle.getString("FoxKifuDownload.lblUserName"));
     searchPanel.add(lblUserName);
 
+    cbxQueryMode = new JFontComboBox<String>();
+    cbxQueryMode.addItem(Lizzie.resourceBundle.getString("FoxKifuDownload.queryMode.nickname"));
+    cbxQueryMode.addItem(Lizzie.resourceBundle.getString("FoxKifuDownload.queryMode.uid"));
+    cbxQueryMode.setSelectedIndex(Lizzie.config.lastFoxQueryByUid ? 1 : 0);
+    // This window uses ordinary Tab traversal, not the main board's dynamic focus zones.
+    cbxQueryMode.setFocusable(true);
+    searchPanel.add(cbxQueryMode);
+    AccessibilitySupport.named(
+        cbxQueryMode,
+        Lizzie.resourceBundle.getString("FoxKifuDownload.queryMode"),
+        Lizzie.resourceBundle.getString("FoxKifuDownload.queryMode"));
+
     txtUserName = new JFontTextField();
     txtUserName.setColumns(10);
     txtUserName.setText(Lizzie.config.lastFoxName);
@@ -131,11 +144,6 @@ public class FoxKifuDownload extends JFrame {
         });
     searchPanel.add(btnSearch);
 
-    JLabel lblUidHint =
-        new JFontLabel(Lizzie.resourceBundle.getString("FoxKifuDownload.uidOnlyHint"));
-    lblUidHint.setForeground(Color.GRAY);
-    searchPanel.add(lblUidHint);
-
     JLabel lblAfterGet = new JFontLabel();
     lblAfterGet.setText(Lizzie.resourceBundle.getString("FoxKifuDownload.lblAfterGet"));
     searchPanel.add(lblAfterGet);
@@ -154,6 +162,7 @@ public class FoxKifuDownload extends JFrame {
           }
         });
     cbxAfterGet.setSelectedIndex(Lizzie.config.foxAfterGet);
+    cbxAfterGet.setFocusable(true);
     searchPanel.add(cbxAfterGet);
     AccessibilitySupport.labelFor(
         lblAfterGet, cbxAfterGet, Lizzie.resourceBundle.getString("FoxKifuDownload.lblAfterGet"));
@@ -184,7 +193,11 @@ public class FoxKifuDownload extends JFrame {
         });
     recentWrapper.add(btnClearRecent, BorderLayout.EAST);
 
-    updateCurrentUserLabel(txtUserName.getText().trim(), null);
+    if (Lizzie.config.lastFoxQueryByUid) {
+      updateCurrentUserLabel(null, txtUserName.getText().trim());
+    } else {
+      updateCurrentUserLabel(txtUserName.getText().trim(), null);
+    }
     updateRecentSearchesPanel();
 
     JPanel buttonPane = new JPanel();
@@ -328,15 +341,25 @@ public class FoxKifuDownload extends JFrame {
   }
 
   private void getFoxKifus() {
-    triggerFoxSearch(txtUserName.getText().trim());
+    triggerFoxSearch(txtUserName.getText().trim(), cbxQueryMode.getSelectedIndex() == 1, "");
   }
 
-  private void triggerFoxSearch(String foxUserText) {
+  /**
+   * Starts a first-page search. {@code byUid} is the user's explicit choice (or a recent search's
+   * saved UID); the text shape never decides it, because an all-digit string is also a valid
+   * nickname. {@code nicknameHint} only labels a UID search until the games reveal the name.
+   */
+  private void triggerFoxSearch(String foxUserText, boolean byUid, String nicknameHint) {
     if (foxUserText == null || foxUserText.trim().isEmpty()) {
-      Utils.showMsg(Lizzie.resourceBundle.getString("FoxKifuDownload.noUser"), this);
+      String key = byUid ? "FoxKifuDownload.noUid" : "FoxKifuDownload.noUser";
+      Utils.showMsg(Lizzie.resourceBundle.getString(key), this);
       return;
     }
     String normalizedUser = foxUserText.trim();
+    if (byUid && !normalizedUser.matches("\\d+")) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("FoxKifuDownload.invalidUidInput"), this);
+      return;
+    }
     if (isSearching) {
       Utils.showMsg(Lizzie.resourceBundle.getString("FoxKifuDownload.waitLastSearch"), this);
       return;
@@ -347,8 +370,9 @@ public class FoxKifuDownload extends JFrame {
           this);
       return;
     }
+    String safeNicknameHint = nicknameHint == null ? "" : nicknameHint.trim();
     myUid = "";
-    currentFoxNickname = normalizedUser;
+    currentFoxNickname = byUid ? safeNicknameHint : normalizedUser;
     isSearching = true;
     isComplete = false;
     isSecondTimeReqEmpty = false;
@@ -362,16 +386,30 @@ public class FoxKifuDownload extends JFrame {
     tabNumber = 1;
     curTabNumber = 1;
     paginationCursor.reset();
+    cbxQueryMode.setSelectedIndex(byUid ? 1 : 0);
     txtUserName.setText(normalizedUser);
-    updateCurrentUserLabel(normalizedUser, null);
+    if (byUid) {
+      updateCurrentUserLabel(safeNicknameHint, normalizedUser);
+    } else {
+      updateCurrentUserLabel(normalizedUser, null);
+    }
     Lizzie.config.lastFoxName = normalizedUser;
+    Lizzie.config.lastFoxQueryByUid = byUid;
     Lizzie.config.uiConfig.put("last-fox-name", Lizzie.config.lastFoxName);
+    Lizzie.config.uiConfig.put("last-fox-query-by-uid", byUid);
     saveConfigQuietly();
     showProgressNotice(
         MessageFormat.format(
             Lizzie.frame.kifuLoadText("KifuLoad.foxSearching"),
             normalizedUser));
-    foxReq.sendCommand("user_name " + normalizedUser);
+    if (byUid) {
+      foxReq.sendCommand(
+          "account_uid "
+              + normalizedUser
+              + (safeNicknameHint.isEmpty() ? "" : " " + safeNicknameHint));
+    } else {
+      foxReq.sendCommand("user_name " + normalizedUser);
+    }
   }
 
   public void loadFoxKifu(String chessid) {
@@ -552,6 +590,12 @@ public class FoxKifuDownload extends JFrame {
     return payload != null && "uid".equals(payload.optString("fox_action", ""));
   }
 
+  /** A nickname that resolves to no account is a user error, not a failed download. */
+  static boolean isUserNotFoundFailure(JSONObject payload) {
+    return payload != null
+        && GetFoxRequest.USER_NOT_FOUND_ERROR.equals(payload.optString("fox_error", ""));
+  }
+
   private void failCurrentFoxRequest(JSONObject payload, String detail) {
     if (isPageRequestFailure(payload)) {
       paginationCursor.revertPendingRequest();
@@ -563,6 +607,10 @@ public class FoxKifuDownload extends JFrame {
       setTableBusy(false);
     }
     hideProgressNotice();
+    if (isUserNotFoundFailure(payload)) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("FoxKifuDownload.invalidUid"), this);
+      return;
+    }
     Utils.showMsg(Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed") + detail, this);
   }
 
@@ -842,11 +890,13 @@ public class FoxKifuDownload extends JFrame {
   }
 
   private String formatFoxUser(String nickname, String uid) {
-    String safeName =
-        nickname == null || nickname.trim().isEmpty()
-            ? Lizzie.resourceBundle.getString("FoxKifuDownload.unknownNick")
-            : nickname.trim();
     String safeUid = uid == null ? "" : uid.trim();
+    String safeName = nickname == null ? "" : nickname.trim();
+    if (safeName.isEmpty()) {
+      return safeUid.isEmpty()
+          ? Lizzie.resourceBundle.getString("FoxKifuDownload.unknownNick")
+          : safeUid;
+    }
     if (safeUid.isEmpty()) return safeName;
     if (safeName.equals(safeUid)) return safeName;
     return safeName + " (" + safeUid + ")";
@@ -862,9 +912,8 @@ public class FoxKifuDownload extends JFrame {
       RecentFoxSearch search = new RecentFoxSearch();
       search.uid = item.optString("uid", "").trim();
       search.nickname = item.optString("nickname", "").trim();
-      if (search.nickname.isEmpty() && !search.uid.isEmpty()) {
-        search.nickname = search.uid;
-      }
+      // Keep the fields apart: a UID-only record stays a UID (its click searches by UID), and the
+      // UID is never copied into the nickname, where it would be re-resolved as a nickname.
       if (search.nickname.isEmpty() && search.uid.isEmpty()) continue;
       recentSearches.add(search);
     }
@@ -890,7 +939,7 @@ public class FoxKifuDownload extends JFrame {
     for (int i = recentSearches.size() - 1; i >= 0; i--) {
       RecentFoxSearch existing = recentSearches.get(i);
       if ((!normalizedUid.isEmpty() && normalizedUid.equals(existing.uid))
-          || normalizedNickname.equals(existing.nickname)) {
+          || (!normalizedNickname.isEmpty() && normalizedNickname.equals(existing.nickname))) {
         recentSearches.remove(i);
       }
     }
@@ -934,12 +983,15 @@ public class FoxKifuDownload extends JFrame {
         button.addActionListener(
             new ActionListener() {
               public void actionPerformed(ActionEvent e) {
-                String keyword = search.nickname == null ? "" : search.nickname.trim();
-                if (keyword.isEmpty()) {
-                  keyword = search.uid == null ? "" : search.uid.trim();
+                // A saved UID pins the account; re-resolving a (possibly all-digit) nickname
+                // could land on a different account. Only UID-less records resolve the name.
+                String uid = search.uid == null ? "" : search.uid.trim();
+                String nickname = search.nickname == null ? "" : search.nickname.trim();
+                if (!uid.isEmpty()) {
+                  triggerFoxSearch(uid, true, nickname);
+                } else {
+                  triggerFoxSearch(nickname, false, "");
                 }
-                txtUserName.setText(keyword);
-                triggerFoxSearch(keyword);
               }
             });
         recentSearchesPanel.add(button);

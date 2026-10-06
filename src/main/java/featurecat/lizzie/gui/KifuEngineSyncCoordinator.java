@@ -1,5 +1,7 @@
 package featurecat.lizzie.gui;
 
+import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.Leelaz;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -28,6 +30,9 @@ final class KifuEngineSyncCoordinator {
     default void onFailed() {}
 
     default void onContextChanged() {}
+
+    default void onLocalPrimaryRestart(
+        Leelaz primary, long previousGeneration, EngineManager manager, long switchToken) {}
   }
 
   private static final long INITIAL_RETRY_DELAY_MILLIS = 250L;
@@ -35,6 +40,7 @@ final class KifuEngineSyncCoordinator {
 
   private final ScheduledExecutorService executor;
   private final AtomicLong generation = new AtomicLong();
+  private volatile Request currentRequest;
 
   KifuEngineSyncCoordinator() {
     this(
@@ -50,14 +56,29 @@ final class KifuEngineSyncCoordinator {
     this.executor = Objects.requireNonNull(executor, "executor");
   }
 
-  void submit(Request request) {
+  synchronized void submit(Request request) {
     Objects.requireNonNull(request, "request");
     long requestGeneration = generation.incrementAndGet();
+    currentRequest = request;
     executor.execute(() -> run(requestGeneration, request, 0));
   }
 
-  void cancel() {
+  synchronized void onLocalPrimaryRestart(
+      Leelaz primary, long previousGeneration, EngineManager manager, long switchToken) {
+    long requestGeneration = generation.get();
+    Request request = currentRequest;
+    if (request == null) return;
+    SwingUtilities.invokeLater(
+        () -> {
+          if (requestGeneration == generation.get() && request == currentRequest) {
+            request.onLocalPrimaryRestart(primary, previousGeneration, manager, switchToken);
+          }
+        });
+  }
+
+  synchronized void cancel() {
     generation.incrementAndGet();
+    currentRequest = null;
   }
 
   void close() {

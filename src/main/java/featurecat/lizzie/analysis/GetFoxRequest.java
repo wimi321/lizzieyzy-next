@@ -38,6 +38,8 @@ public class GetFoxRequest {
       "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
           + "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
   private static final String CGI_USER_AGENT = "okhttp/3.12.12";
+  /** Marks a failure payload whose nickname lookup found no Fox account (vs. transport errors). */
+  public static final String USER_NOT_FOUND_ERROR = "user_not_found";
 
   private ExecutorService executor;
   private final FoxKifuDownload foxKifuDownload;
@@ -79,6 +81,10 @@ public class GetFoxRequest {
         handleUserName(arguments);
         return;
       }
+      if ("account_uid".equals(action)) {
+        handleAccountUid(arguments);
+        return;
+      }
       if ("uid".equals(action)) {
         String[] uidArgs = arguments.split("\\s+", 2);
         String uid = uidArgs[0];
@@ -94,20 +100,25 @@ public class GetFoxRequest {
     }
   }
 
+  /**
+   * The nickname entry always resolves through the nickname API, even for all-digit text: a numeric
+   * nickname and a UID are different identities, and guessing from the text shape could silently
+   * list another account's games.
+   */
   private void handleUserName(String userInput) {
     String text = userInput == null ? "" : userInput.trim();
     if (text.isEmpty()) {
       emitError("user_name", "empty fox user");
       return;
     }
-    if (text.matches("\\d+")) {
-      emitOrFail(
-          "user_name", wrapChessListWithUserInfo(fetchChessList(text, "0"), text, text, text));
-      return;
-    }
 
     JSONObject userInfo = queryUserByName(text);
-    String uid = userInfo.opt("uid").toString().trim();
+    if (userInfo == null) {
+      emitError(
+          "user_name", "Can't find a Fox account for nickname: " + text, USER_NOT_FOUND_ERROR);
+      return;
+    }
+    String uid = foxUid(userInfo);
     String nickname =
         firstNonEmpty(
             userInfo.optString("username", ""),
@@ -116,6 +127,23 @@ public class GetFoxRequest {
             text);
     emitOrFail(
         "user_name", wrapChessListWithUserInfo(fetchChessList(uid, "0"), uid, nickname, text));
+  }
+
+  /**
+   * First page for an explicitly chosen UID. Unlike the bare {@code uid} paging command, the result
+   * carries the account identity so the dialog can establish its current UID from it; the optional
+   * nickname only labels the account until the game list reveals its name.
+   */
+  private void handleAccountUid(String arguments) {
+    String[] parts = arguments.split("\\s+", 2);
+    String uid = parts[0];
+    if (!uid.matches("\\d+")) {
+      emitError("account_uid", "invalid fox uid: " + uid);
+      return;
+    }
+    String nickname = parts.length >= 2 ? parts[1].trim() : "";
+    emitOrFail(
+        "account_uid", wrapChessListWithUserInfo(fetchChessList(uid, "0"), uid, nickname, uid));
   }
 
   private String fetchChessList(String uid, String lastCode) {
@@ -158,22 +186,36 @@ public class GetFoxRequest {
     return "";
   }
 
+  /**
+   * Returns the account, or null when Fox reports no account for the nickname. Fox signals a
+   * missing account with a non-zero result whose payload carries no UID; the codes vary with the
+   * input, so the empty UID is the stable marker. Transport and JSON failures propagate as
+   * exceptions.
+   */
   private JSONObject queryUserByName(String nickname) {
     JSONObject json =
         new JSONObject(httpGet(QUERY_USER_URL + "?srcuid=0&username=" + url(nickname)));
     int result = json.has("result") ? json.optInt("result", -1) : json.optInt("errcode", -1);
+    String uid = foxUid(json);
     if (result != 0) {
+      if (uid.isEmpty()) {
+        return null;
+      }
       throw new RuntimeException(
           firstNonEmpty(
               json.optString("resultstr", ""),
               json.optString("errmsg", ""),
-              "Can't find a Fox account for nickname: " + nickname));
+              "Fox nickname lookup failed with result " + result));
     }
-    String uid = json.opt("uid") == null ? "" : json.opt("uid").toString().trim();
     if (uid.isEmpty()) {
       throw new RuntimeException("Fox account was found, but the numeric UID was empty.");
     }
     return json;
+  }
+
+  private static String foxUid(JSONObject json) {
+    String uid = json.opt("uid") == null ? "" : json.opt("uid").toString().trim();
+    return "0".equals(uid) ? "" : uid;
   }
 
   private String wrapChessListWithUserInfo(
@@ -193,7 +235,7 @@ public class GetFoxRequest {
     return json.toString();
   }
 
-  private String httpGet(String url) {
+  String httpGet(String url) {
     return httpRequest("GET", url, null, null, MOBILE_USER_AGENT);
   }
 
@@ -329,10 +371,17 @@ public class GetFoxRequest {
   }
 
   private void emitError(String action, String msg) {
+    emitError(action, msg, null);
+  }
+
+  private void emitError(String action, String msg, String errorKind) {
     JSONObject error = new JSONObject();
     error.put("result", 1);
     error.put("resultstr", msg == null ? "request failed" : msg);
     error.put("fox_action", action == null ? "" : action);
+    if (errorKind != null) {
+      error.put("fox_error", errorKind);
+    }
     emit(error.toString());
   }
 

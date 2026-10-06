@@ -24,6 +24,7 @@ import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 
 public final class WindowsUpdateDialog extends JDialog {
   private final WindowsUpdateService service;
@@ -58,17 +59,17 @@ public final class WindowsUpdateDialog extends JDialog {
   }
 
   public WindowsUpdateDialog(
-      Component parent, WindowsUpdateService service, WindowsUpdatePlan plan) {
+      Component parent, WindowsUpdateService service, WindowsUpdatePlan plan, String checkWarning) {
     super(
         parent == null ? null : SwingUtilities.getWindowAncestor(parent),
         tr("WindowsUpdate.title", "发现新版本", "New version available"),
         ModalityType.MODELESS);
     this.service = service;
     this.plan = plan;
-    buildUi(parent);
+    buildUi(parent, checkWarning);
   }
 
-  private void buildUi(Component parent) {
+  private void buildUi(Component parent, String checkWarning) {
     setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
     addWindowListener(
         new WindowAdapter() {
@@ -94,7 +95,28 @@ public final class WindowsUpdateDialog extends JDialog {
                 + plan.currentVersion
                 + "</html>");
     title.setFont(title.getFont().deriveFont(Font.PLAIN, 15f));
-    root.add(title, BorderLayout.NORTH);
+    boolean hasWarning = checkWarning != null && !checkWarning.trim().isEmpty();
+    if (hasWarning) {
+      JPanel header = new JPanel(new BorderLayout(0, 8));
+      header.setOpaque(false);
+      header.add(title, BorderLayout.NORTH);
+
+      JTextArea warningArea = new JTextArea(checkWarning.trim(), 3, 1);
+      warningArea.setEditable(false);
+      warningArea.setFocusable(false);
+      warningArea.setLineWrap(true);
+      warningArea.setWrapStyleWord(true);
+      warningArea.setOpaque(false);
+      warningArea.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+      Font labelFont = UIManager.getFont("Label.font");
+      if (labelFont != null) {
+        warningArea.setFont(labelFont);
+      }
+      header.add(warningArea, BorderLayout.CENTER);
+      root.add(header, BorderLayout.NORTH);
+    } else {
+      root.add(title, BorderLayout.NORTH);
+    }
 
     JTextArea detail = new JTextArea(updateSummary());
     detail.setEditable(false);

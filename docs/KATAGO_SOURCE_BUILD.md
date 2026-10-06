@@ -385,6 +385,11 @@ asset ID/name/archive digest, executable digest, backend, source commit and zlib
 to the final executable. Runtime readiness omits the dynamic zlib DLL group only when
 that manifest and the executable still match the catalog exactly; official, external,
 unknown or modified engines remain subject to their dynamic dependency contract.
+The TensorRT HumanSL companion has no manifest of its own. It omits the zlib group only
+when the TensorRT engine beside it passes that check, the same strict manifest lists
+the companion, the companion matches the pinned CUDA executable digest, and the CUDA
+catalog asset is a static-zlib project build. Its other CUDA 12.8/cuDNN 9 requirements
+still apply, and TensorRT component status and repair use the companion's result.
 The checked-in production catalog is **not switched by staging**. Final archive upload,
 application package integration, signing and publication remain separate gates.
 
