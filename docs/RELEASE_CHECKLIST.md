@@ -1,5 +1,17 @@
 # 发布检查清单
 
+## macOS 打包工具准备
+
+macOS 发布工作流消费目录锁定的 `project-source-build` 引擎归档及其自包含依赖，
+不在组装应用时重新安装或升级 Homebrew 的 Maven、JDK、CMake、protobuf 等。
+`verify_macos_release_tools.py` 检查托管 runner 的 Maven、setup-java 选择的 JDK 21
+以及原生打包/签名工具；缺失或被其他 JDK 遮蔽时立即失败，不忽略错误。
+真正的引擎源码编译仍由 `katago-source-macos.yml` 管理自己的工具链。
+
+这避免了 Intel runner 意外源码构建 Homebrew OpenJDK 27、OpenSSL 链接冲突及
+与应用无关的 ad-hoc 签名错误。两种架构的工具准备由 macOS Release Toolchain
+PR 检查实跑；最终 DMG 仍须通过原来的签名、公证、依赖闭包与发布资产审计。
+
 ## Windows 成品上传恢复
 
 Windows 构建、依赖审计、启动与升级测试通过后，将同一批成品和构建摘要保留为

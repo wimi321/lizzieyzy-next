@@ -66,10 +66,8 @@ jobs:
           --github-ref "$RELEASE_GITHUB_REF"
           --require-draft
 
-      - name: Install build tools
-        run: |
-          brew update
-          brew install maven cmake ninja protobuf abseil libzip
+      - name: Verify preinstalled release tools
+        run: python3 scripts/verify_macos_release_tools.py
 
       - name: Generate app icons
         run: |

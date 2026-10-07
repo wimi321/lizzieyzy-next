@@ -1,0 +1,38 @@
+name: macOS Release Toolchain
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/macos-release-toolchain.yml
+      - .github/workflows/build-macos-amd64-release.yml
+      - .github/workflows/build-macos-arm64-release.yml
+      - scripts/verify_macos_release_tools.py
+      - scripts/test_macos_katago_bundle.py
+      - scripts/macos_katago_bundle.py
+      - src/main/resources/katago-assets.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Verify actual runner tools without Homebrew upgrades
+        run: python3 scripts/verify_macos_release_tools.py
+      - name: Test toolchain and native dependency closure
+        run: python3 scripts/test_macos_katago_bundle.py

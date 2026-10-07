@@ -24,6 +24,100 @@ MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
+TOOLS_SPEC = importlib.util.spec_from_file_location(
+    "verify_macos_release_tools", SCRIPT_DIR / "verify_macos_release_tools.py"
+)
+if TOOLS_SPEC is None or TOOLS_SPEC.loader is None:
+    raise RuntimeError("Unable to load macOS release tool verifier")
+RELEASE_TOOLS = importlib.util.module_from_spec(TOOLS_SPEC)
+TOOLS_SPEC.loader.exec_module(RELEASE_TOOLS)
+
+
+class MacosReleaseToolchainTest(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.home = Path(temporary.name) / "JDK 21" / "Contents" / "Home"
+        (self.home / "bin").mkdir(parents=True)
+        for name in RELEASE_TOOLS.JAVA_TOOLS:
+            (self.home / "bin" / name).touch()
+        self.catalog = {"origin": "project-source-build"}
+        patcher = mock.patch.object(RELEASE_TOOLS.platform, "system", return_value="Darwin")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(RELEASE_TOOLS.shutil, "which", side_effect=self.which)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(
+            RELEASE_TOOLS.subprocess, "run",
+            return_value=subprocess.CompletedProcess([], 0, "Apache Maven 3.9.16\nJava version: 21.0.12, vendor: Eclipse Adoptium\n"),
+        )
+        self.process_run = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def which(self, name: str) -> str:
+        if name in RELEASE_TOOLS.JAVA_TOOLS:
+            return str(self.home / "bin" / name)
+        return str(self.home.parent / "tools" / name)
+
+    def test_existing_tools_are_checked_without_installing_or_upgrading(self) -> None:
+        result = RELEASE_TOOLS.verify_tools(self.catalog, str(self.home))
+        self.assertEqual(str(self.home.resolve()), result["javaHome"])
+        self.process_run.assert_called_once()
+        self.assertEqual([self.which("mvn"), "-version"], self.process_run.call_args.args[0])
+        self.assertEqual(30, self.process_run.call_args.kwargs["timeout"])
+
+    def test_missing_packaging_tool_fails_before_maven(self) -> None:
+        for missing in ("mvn", "codesign", "otool"):
+            with self.subTest(tool=missing), mock.patch.object(
+                RELEASE_TOOLS.shutil, "which",
+                side_effect=lambda name: None if name == missing else self.which(name),
+            ), self.assertRaisesRegex(RuntimeError, "Required release tool is missing"):
+                RELEASE_TOOLS.verify_tools(self.catalog, str(self.home))
+        self.process_run.assert_not_called()
+
+    def test_missing_or_shadowed_jdk_tool_is_rejected(self) -> None:
+        (self.home / "bin" / "jpackage").unlink()
+        with self.assertRaisesRegex(RuntimeError, "jpackage must resolve"):
+            RELEASE_TOOLS.verify_tools(self.catalog, str(self.home))
+        (self.home / "bin" / "jpackage").touch()
+        with mock.patch.object(RELEASE_TOOLS.shutil, "which", return_value="/other/jdk/bin/java"):
+            with self.assertRaisesRegex(RuntimeError, "java must resolve"):
+                RELEASE_TOOLS.verify_tools(self.catalog, str(self.home))
+        self.process_run.assert_not_called()
+
+    def test_maven_using_a_different_java_version_is_rejected(self) -> None:
+        for version in ("17.0.15", "27", "210.0.1"):
+            self.process_run.return_value = subprocess.CompletedProcess([], 0, f"Java version: {version}\n")
+            with self.subTest(version=version), self.assertRaisesRegex(RuntimeError, "Maven must use JDK 21"):
+                RELEASE_TOOLS.verify_tools(self.catalog, str(self.home))
+
+    def test_maven_start_failure_is_not_ignored(self) -> None:
+        self.process_run.side_effect = subprocess.CalledProcessError(1, "mvn")
+        with self.assertRaises(subprocess.CalledProcessError):
+            RELEASE_TOOLS.verify_tools(self.catalog, str(self.home))
+
+    def test_wrong_host_unpinned_catalog_and_missing_java_home_are_rejected(self) -> None:
+        with mock.patch.object(RELEASE_TOOLS.platform, "system", return_value="Windows"):
+            with self.assertRaisesRegex(RuntimeError, "native macOS host"):
+                RELEASE_TOOLS.verify_tools(self.catalog, str(self.home))
+        with self.assertRaisesRegex(RuntimeError, "pinned project-source-build"):
+            RELEASE_TOOLS.verify_tools({"origin": "official-release"}, str(self.home))
+        with self.assertRaisesRegex(RuntimeError, "JAVA_HOME"):
+            RELEASE_TOOLS.verify_tools(self.catalog, "")
+        self.process_run.assert_not_called()
+
+    def test_both_release_workflows_verify_instead_of_upgrading_homebrew(self) -> None:
+        for arch in ("amd64", "arm64"):
+            workflow = (SCRIPT_DIR.parent / f".github/workflows/build-macos-{arch}-release.yml").read_text("utf-8")
+            with self.subTest(arch=arch):
+                self.assertIn("python3 scripts/verify_macos_release_tools.py", workflow)
+                self.assertNotIn("brew update", workflow)
+                self.assertNotIn("brew install", workflow)
+                self.assertLess(workflow.index("verify_macos_release_tools.py"), workflow.index("mvn -DskipTests package"))
+                self.assertIn("sign_macos_release_with_retry.sh", workflow)
+                self.assertIn("validate_release_assets.sh", workflow)
+
 
 class MacosKataGoBuildScriptTest(unittest.TestCase):
     def test_homebrew_libzip_paths_are_passed_explicitly_to_cmake(self) -> None:

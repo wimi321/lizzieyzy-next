@@ -137,6 +137,7 @@ PY_COMPILE_FILES = (
     "scripts/generate_release_notes.py",
     "scripts/macos_bundle_version.py",
     "scripts/macos_katago_bundle.py",
+    "scripts/verify_macos_release_tools.py",
     "scripts/package_runtime_tools.py",
     "scripts/prepare_bundled_jcef.py",
     "scripts/prepare_bundled_nvidia_runtime.py",
