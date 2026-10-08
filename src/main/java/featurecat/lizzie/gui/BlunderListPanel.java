@@ -1,230 +1,378 @@
 package featurecat.lizzie.gui;
 
+import featurecat.lizzie.AppLocale;
+import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import java.awt.*;
 import java.awt.event.*;
-import java.awt.geom.*;
+import java.text.MessageFormat;
+import java.text.NumberFormat;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.ResourceBundle;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import javax.swing.*;
 
-public class BlunderListPanel extends JPanel implements Scrollable {
-  private ProblemListSnapshot currentSnapshot;
-
+/** A single sorted view is shared by painting, navigation and accessibility. */
+public class BlunderListPanel extends JPanel {
+  private final EntryModel model = new EntryModel();
+  private final ReviewList list = new ReviewList();
+  private final JComboBox<ProblemListSort> sortBox = new SortControl();
+  private final JLabel count = new JLabel();
+  private final JPanel toolbar = new JPanel(null);
+  private final JScrollPane scrollPane = new JScrollPane(list);
+  private final JTextArea emptyText = wrappingText();
+  private final JScrollPane emptyScroll = new JScrollPane(emptyText);
+  private final JPanel body = new JPanel(new CardLayout());
+  private final Consumer<ProblemMoveEntry> navigate;
+  private final Supplier<ProblemListSideFilter> sideFilter;
+  private ProblemListSnapshot snapshot;
+  private Object gameIdentity;
+  private EntryKey pressedEntry;
+  private Object pressedGame;
   private int hoveredIndex = -1;
-
-  private static final int HEADER_HEIGHT = 20;
-  private static final int CARD_HEIGHT = 64;
-  private static final int PADDING = 10;
-  private static final int DEFAULT_CARD_CORNER_RADIUS = 10;
-  static final int EMPTY_STATE_MAX_BOX_WIDTH = 220;
-  static final int EMPTY_STATE_MIN_BOX_HEIGHT = 86;
-  static final int EMPTY_STATE_MARGIN = 12;
-  static final int EMPTY_STATE_TEXT_INSET = 16;
-  static final int EMPTY_STATE_TITLE_SUBTITLE_GAP = 8;
-  static final String EMPTY_STATE_TITLE = "当前无问题手";
-  static final String EMPTY_STATE_ANALYZING_TITLE = "⏳ 正在整理问题手...";
-  static final String EMPTY_STATE_SUBTITLE = "全盘分析后，这里会列出掉胜率较多的问题手";
-
-  private static final Color COLOR_DANGER = new Color(0xEF, 0x44, 0x44); // 🔴
-  private static final Color COLOR_WARNING = new Color(0xF9, 0x73, 0x16); // 🟧
-  private static final Color COLOR_INFO = new Color(0xEA, 0xB3, 0x08); // 🟨
-
-  private static final Color TEXT_PRIMARY = new Color(255, 255, 255, 255);
-  private static final Color TEXT_SECONDARY = new Color(255, 255, 255, 150);
-  private static final Color TEXT_DANGER = new Color(0xFF, 0x8A, 0x8A);
-  private static final Color TEXT_WARNING = new Color(0xFF, 0xB0, 0x6B);
-  private static final Color TEXT_INFO = new Color(0xFF, 0xDA, 0x6B);
+  private boolean styled;
+  private boolean appleStyle;
 
   public BlunderListPanel() {
+    this(
+        entry -> {
+          if (Lizzie.frame != null) Lizzie.frame.jumpToProblemMove(entry);
+        },
+        () ->
+            Lizzie.frame == null
+                ? ProblemListSideFilter.BLACK
+                : Lizzie.frame.getProblemListSideFilter());
+  }
+
+  BlunderListPanel(
+      Consumer<ProblemMoveEntry> navigate, Supplier<ProblemListSideFilter> sideFilter) {
+    this.navigate = navigate;
+    this.sideFilter = sideFilter;
     setOpaque(false);
-
-    MouseAdapter ma =
-        new MouseAdapter() {
-          @Override
-          public void mouseMoved(MouseEvent e) {
-            updateHover(e.getX(), e.getY());
+    setLayout(new BorderLayout(0, 4));
+    toolbar.setOpaque(false);
+    toolbar.add(count);
+    toolbar.add(sortBox);
+    add(toolbar, BorderLayout.NORTH);
+    String saved =
+        Lizzie.config == null
+            ? null
+            : Lizzie.config.uiConfig.optString("problem-list-sort", "loss-desc");
+    sortBox.setSelectedItem(ProblemListSort.fromConfigValue(saved));
+    sortBox.setToolTipText(text("BlunderListPanel.sort"));
+    sortBox.getAccessibleContext().setAccessibleName(text("BlunderListPanel.sort"));
+    sortBox.addActionListener(
+        event -> {
+          if (Lizzie.config != null) {
+            Lizzie.config.uiConfig.put("problem-list-sort", sortOrder().configValue);
           }
-
-          @Override
-          public void mouseExited(MouseEvent e) {
-            hoveredIndex = -1;
-            repaint();
+          rebuildRows(false);
+          if (list.getSelectedIndex() < 0) {
+            scrollPane.getViewport().setViewPosition(new Point());
+          } else {
+            list.ensureIndexIsVisible(list.getSelectedIndex());
           }
+        });
+    list.setModel(model);
+    list.setCellRenderer(new ProblemRow());
+    list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+    list.setOpaque(false);
+    list.setVisibleRowCount(-1);
+    list.setToolTipText("");
+    list.getAccessibleContext().setAccessibleName(text("SidebarHeader.problems"));
+    for (JScrollPane pane : new JScrollPane[] {scrollPane, emptyScroll}) {
+      pane.setBorder(BorderFactory.createEmptyBorder());
+      pane.setOpaque(false);
+      pane.getViewport().setOpaque(false);
+      pane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+      pane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+      pane.getVerticalScrollBar().setUI(new DemoScrollBarUI());
+    }
+    emptyText.setBorder(BorderFactory.createEmptyBorder(16, 8, 16, 8));
+    body.setOpaque(false);
+    body.add(scrollPane, "rows");
+    body.add(emptyScroll, "empty");
+    add(body, BorderLayout.CENTER);
+    installNavigation();
+    scrollPane
+        .getViewport()
+        .addComponentListener(
+            new ComponentAdapter() {
+              @Override
+              public void componentResized(ComponentEvent event) {
+                list.setFixedCellWidth(Math.max(1, scrollPane.getViewport().getWidth()));
+              }
+            });
+    refreshStyle();
+    rebuildRows(false);
+  }
 
+  private void installNavigation() {
+    list.addFocusListener(
+        new FocusAdapter() {
           @Override
-          public void mouseClicked(MouseEvent e) {
-            ProblemMoveEntry clicked = getEntryAt(e.getX(), e.getY());
-            if (clicked != null) {
-              Lizzie.frame.jumpToProblemMove(clicked);
+          public void focusGained(FocusEvent event) {
+            if (list.getSelectedIndex() < 0 && model.getSize() > 0) {
+              list.setSelectedIndex(Math.max(0, list.getFirstVisibleIndex()));
             }
           }
-        };
+        });
+    list.addMouseListener(
+        new MouseAdapter() {
+          @Override
+          public void mousePressed(MouseEvent event) {
+            pressedEntry = key(entryAt(event.getPoint()));
+            pressedGame = gameIdentity;
+          }
 
-    addMouseListener(ma);
-    addMouseMotionListener(ma);
+          @Override
+          public void mouseReleased(MouseEvent event) {
+            ProblemMoveEntry entry = entryAt(event.getPoint());
+            if (SwingUtilities.isLeftMouseButton(event)
+                && event.getClickCount() == 1
+                && pressedEntry != null
+                && pressedGame == gameIdentity
+                && pressedEntry.equals(key(entry))) {
+              navigate.accept(entry);
+            }
+            pressedEntry = null;
+          }
+
+          @Override
+          public void mouseExited(MouseEvent event) {
+            hoveredIndex = -1;
+            list.repaint();
+          }
+        });
+    list.addMouseMotionListener(
+        new MouseAdapter() {
+          @Override
+          public void mouseMoved(MouseEvent event) {
+            int next = indexAt(event.getPoint());
+            if (hoveredIndex != next) {
+              hoveredIndex = next;
+              list.repaint();
+            }
+          }
+        });
+    list.getInputMap().put(KeyStroke.getKeyStroke("ENTER"), "open-problem");
+    list.getInputMap().put(KeyStroke.getKeyStroke("SPACE"), "open-problem");
+    list.getActionMap()
+        .put(
+            "open-problem",
+            new AbstractAction() {
+              @Override
+              public void actionPerformed(ActionEvent event) {
+                ProblemMoveEntry selected = list.getSelectedValue();
+                if (selected != null) navigate.accept(selected);
+              }
+            });
   }
 
   public void updateSnapshot(ProblemListSnapshot snapshot) {
-    this.currentSnapshot = snapshot;
+    updateSnapshot(snapshot, Lizzie.board == null ? null : Lizzie.board.getHistory().getStart());
+  }
+
+  void updateSnapshot(ProblemListSnapshot snapshot, Object currentGame) {
+    boolean changedGame = gameIdentity != currentGame;
+    gameIdentity = currentGame;
+    this.snapshot = snapshot;
+    refreshStyle();
+    rebuildRows(changedGame);
+  }
+
+  private void rebuildRows(boolean changedGame) {
+    EntryKey selected = changedGame ? null : key(list.getSelectedValue());
+    int first = list.getFirstVisibleIndex();
+    EntryKey anchor = changedGame || first < 0 ? null : key(model.getElementAt(first));
+    Rectangle bounds = first < 0 ? null : list.getCellBounds(first, first);
+    int offset = bounds == null ? 0 : scrollPane.getViewport().getViewPosition().y - bounds.y;
+    List<ProblemMoveEntry> entries = new ArrayList<>();
+    if (snapshot != null) {
+      ProblemListSideFilter side = sideFilter.get();
+      if (side == null || side == ProblemListSideFilter.ALL) side = ProblemListSideFilter.BLACK;
+      entries.addAll(
+          side == ProblemListSideFilter.BLACK ? snapshot.blackEntries : snapshot.whiteEntries);
+    }
+    entries.sort(sortOrder().comparator());
+    if (!model.sameEntries(entries)) {
+      hoveredIndex = -1;
+      model.replace(entries);
+      list.setSelectedIndex(indexOf(selected));
+      if (changedGame) {
+        pressedEntry = null;
+        scrollPane.getViewport().setViewPosition(new Point());
+      } else {
+        int anchorIndex = indexOf(anchor);
+        Rectangle next = anchorIndex < 0 ? null : list.getCellBounds(anchorIndex, anchorIndex);
+        if (next != null) {
+          int maxY =
+              Math.max(0, list.getPreferredSize().height - scrollPane.getViewport().getHeight());
+          scrollPane
+              .getViewport()
+              .setViewPosition(new Point(0, Math.min(maxY, Math.max(0, next.y + offset))));
+        }
+      }
+    } else if (changedGame) {
+      list.clearSelection();
+      pressedEntry = null;
+      scrollPane.getViewport().setViewPosition(new Point());
+    }
+    count.setText(format("BlunderListPanel.count", entries.size()));
+    count.getAccessibleContext().setAccessibleName(count.getText());
+    String empty = emptyStateText(snapshot, bundle());
+    if (!empty.equals(emptyText.getText())) {
+      emptyText.setText(empty);
+      emptyText.setCaretPosition(0);
+      emptyText.getAccessibleContext().setAccessibleName(empty);
+    }
+    ((CardLayout) body.getLayout()).show(body, entries.isEmpty() ? "empty" : "rows");
     revalidate();
     repaint();
   }
 
-  private void updateHover(int x, int y) {
-    if (currentSnapshot == null) return;
-
-    int oldHovered = hoveredIndex;
-
-    if (y < HEADER_HEIGHT) {
-      hoveredIndex = -1;
-    } else {
-      int row = (y - HEADER_HEIGHT) / CARD_HEIGHT;
-      List<ProblemMoveEntry> all = getMergedEntries();
-      if (row >= 0 && row < all.size()) {
-        hoveredIndex = row;
-      } else {
-        hoveredIndex = -1;
-      }
+  private int indexOf(EntryKey target) {
+    if (target == null) return -1;
+    for (int i = 0; i < model.getSize(); i++) {
+      if (target.equals(key(model.getElementAt(i)))) return i;
     }
-
-    if (oldHovered != hoveredIndex) {
-      repaint();
-    }
+    return -1;
   }
 
-  private ProblemMoveEntry getEntryAt(int x, int y) {
-    if (currentSnapshot == null || y < HEADER_HEIGHT) return null;
-
-    int row = (y - HEADER_HEIGHT) / CARD_HEIGHT;
-    List<ProblemMoveEntry> all = getMergedEntries();
-    if (row >= 0 && row < all.size()) return all.get(row);
-    return null;
+  int indexAt(Point point) {
+    int index = list.locationToIndex(point);
+    Rectangle bounds = index < 0 ? null : list.getCellBounds(index, index);
+    return bounds != null && bounds.contains(point) && point.y < bounds.y + bounds.height - 1
+        ? index
+        : -1;
   }
 
-  private List<ProblemMoveEntry> getMergedEntries() {
-    List<ProblemMoveEntry> all = new ArrayList<>();
-    if (currentSnapshot != null) {
-      all.addAll(getVisibleBlackEntries());
-      all.addAll(getVisibleWhiteEntries());
-      all.sort(
-          Comparator.comparingDouble((ProblemMoveEntry entry) -> entry.winrateLossAbs)
-              .reversed()
-              .thenComparingInt(entry -> entry.moveNumber));
-    }
-    return all;
+  private ProblemMoveEntry entryAt(Point point) {
+    int index = indexAt(point);
+    return index < 0 ? null : model.getElementAt(index);
   }
 
-  private List<ProblemMoveEntry> getVisibleBlackEntries() {
-    return filterEntries(
-        currentSnapshot != null ? currentSnapshot.blackEntries : Collections.emptyList(), true);
+  JList<ProblemMoveEntry> reviewList() {
+    return list;
   }
 
-  private List<ProblemMoveEntry> getVisibleWhiteEntries() {
-    return filterEntries(
-        currentSnapshot != null ? currentSnapshot.whiteEntries : Collections.emptyList(), false);
+  JComboBox<ProblemListSort> sortControl() {
+    return sortBox;
   }
 
-  private List<ProblemMoveEntry> filterEntries(List<ProblemMoveEntry> entries, boolean isBlack) {
-    if (!currentSideFilter().allows(isBlack)) {
-      return Collections.emptyList();
-    }
-    return entries;
+  ProblemListSort sortOrder() {
+    return (ProblemListSort) sortBox.getSelectedItem();
   }
 
-  private ProblemListSideFilter currentSideFilter() {
-    if (Lizzie.frame == null) {
-      return ProblemListSideFilter.BLACK;
-    }
-    ProblemListSideFilter filter = Lizzie.frame.getProblemListSideFilter();
-    return filter == ProblemListSideFilter.ALL ? ProblemListSideFilter.BLACK : filter;
-  }
-
-  private boolean hasVisibleEntries() {
-    return !getVisibleBlackEntries().isEmpty() || !getVisibleWhiteEntries().isEmpty();
-  }
-
-  private boolean showingEmptyState() {
-    return currentSnapshot == null || !hasVisibleEntries();
-  }
-
-  private String emptyStateFontName() {
-    return Lizzie.config != null && Lizzie.config.uiFontName != null
-        ? Lizzie.config.uiFontName
-        : Font.SANS_SERIF;
+  private void refreshStyle() {
+    Font font = AppleStyleSupport.workspaceFont(Font.PLAIN, Config.frameFontSize);
+    boolean apple = Lizzie.config != null && Lizzie.config.isAppleStyle;
+    if (styled
+        && appleStyle == apple
+        && font.equals(list.getFont())
+        && SidebarPanel.secondaryTextColor().equals(count.getForeground())) return;
+    styled = true;
+    appleStyle = apple;
+    setFont(font);
+    list.setFont(font);
+    count.setFont(font);
+    count.setForeground(SidebarPanel.secondaryTextColor());
+    AppleStyleSupport.installComboBoxStyle(sortBox);
+    sortBox.setRenderer(new SortRenderer());
+    emptyText.setFont(font);
+    emptyText.setForeground(SidebarPanel.secondaryTextColor());
   }
 
   @Override
-  public Dimension getPreferredSize() {
-    int width = preferredViewportWidth();
-    if (showingEmptyState()) {
-      return new Dimension(width, 1);
-    }
-    int rows = getMergedEntries().size();
-    return new Dimension(width, Math.max(1, HEADER_HEIGHT + rows * CARD_HEIGHT + PADDING));
-  }
-
-  @Override
-  public Dimension getPreferredScrollableViewportSize() {
-    return getPreferredSize();
-  }
-
-  @Override
-  public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
-    return orientation == SwingConstants.VERTICAL ? Math.max(16, CARD_HEIGHT / 2) : 16;
-  }
-
-  @Override
-  public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
-    if (orientation == SwingConstants.VERTICAL) {
-      return Math.max(CARD_HEIGHT, visibleRect.height - CARD_HEIGHT);
-    }
-    return Math.max(16, visibleRect.width - PADDING * 2);
-  }
-
-  @Override
-  public boolean getScrollableTracksViewportWidth() {
-    return true;
-  }
-
-  @Override
-  public boolean getScrollableTracksViewportHeight() {
-    if (showingEmptyState()) {
-      return true;
-    }
-    Container parent = getParent();
-    return parent instanceof JViewport
-        && ((JViewport) parent).getHeight() > getPreferredSize().height;
-  }
-
-  private int preferredViewportWidth() {
-    Container parent = getParent();
-    if (parent instanceof JViewport) {
-      int viewportWidth = ((JViewport) parent).getWidth();
-      if (viewportWidth > 0) {
-        return viewportWidth;
-      }
-    }
-    return Math.max(1, getWidth());
-  }
-
-  @Override
-  protected void paintComponent(Graphics g) {
-    super.paintComponent(g);
-    if (showingEmptyState()) {
-      drawEmptyState(g);
-      return;
-    }
-
-    Graphics2D g2 = (Graphics2D) g.create();
-    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
+  public void doLayout() {
     int width = Math.max(1, getWidth());
-    drawColumn(g2, getMergedEntries(), 0, HEADER_HEIGHT, width);
-    g2.dispose();
+    FontMetrics metrics = sortBox.getFontMetrics(sortBox.getFont());
+    int naturalWidth = 0;
+    for (ProblemListSort order : ProblemListSort.values()) {
+      naturalWidth = Math.max(naturalWidth, metrics.stringWidth(order.toString()) + 72);
+    }
+    int sortWidth = Math.min(width, naturalWidth);
+    JTextArea measure = wrappingText();
+    measure.setFont(sortBox.getFont());
+    int sortHeight = 0;
+    for (ProblemListSort order : ProblemListSort.values()) {
+      measure.setText(order.toString());
+      measure.setSize(Math.max(1, sortWidth - 64), Short.MAX_VALUE);
+      sortHeight = Math.max(sortHeight, measure.getPreferredSize().height + 12);
+    }
+    Dimension number = count.getPreferredSize();
+    int height = Math.max(sortHeight, number.height);
+    boolean wrap = number.width + sortWidth + 16 > width;
+    toolbar.setPreferredSize(new Dimension(1, wrap ? number.height + height + 4 : height));
+    super.doLayout();
+    count.setBounds(0, 0, Math.min(width, number.width), wrap ? number.height : height);
+    sortBox.setBounds(
+        wrap ? 0 : width - sortWidth, wrap ? number.height + 4 : 0, sortWidth, height);
+    body.doLayout();
+  }
+
+  private static final class SortControl extends JComboBox<ProblemListSort> {
+    SortControl() {
+      super(ProblemListSort.values());
+    }
+
+    @Override
+    public void doLayout() {
+      super.doLayout();
+      // BasicComboBoxUI otherwise makes the arrow as wide as a multi-line field is tall.
+      for (Component child : getComponents()) {
+        if (child instanceof JButton) {
+          Insets insets = getInsets();
+          int width = Math.min(24, Math.max(1, getWidth() - insets.left - insets.right));
+          child.setBounds(
+              getWidth() - insets.right - width,
+              insets.top,
+              width,
+              Math.max(1, getHeight() - insets.top - insets.bottom));
+        }
+      }
+    }
+  }
+
+  private final class SortRenderer extends JTextArea implements ListCellRenderer<ProblemListSort> {
+    SortRenderer() {
+      setEditable(false);
+      setFocusable(false);
+      setLineWrap(true);
+      setWrapStyleWord(true);
+      setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+    }
+
+    @Override
+    public Component getListCellRendererComponent(
+        JList<? extends ProblemListSort> owner,
+        ProblemListSort order,
+        int index,
+        boolean selected,
+        boolean focused) {
+      setFont(sortBox.getFont());
+      setText(order == null ? "" : order.toString());
+      setForeground(sortBox.getForeground());
+      setBackground(selected ? AppleStyleSupport.workspaceSelection() : sortBox.getBackground());
+      int width = Math.max(1, sortBox.getWidth() - 52);
+      setSize(width, Short.MAX_VALUE);
+      return this;
+    }
+  }
+
+  static ResourceBundle bundle() {
+    return Lizzie.resourceBundle != null ? Lizzie.resourceBundle : AppLocale.ENGLISH.loadBundle();
+  }
+
+  static String text(String key) {
+    return bundle().getString(key);
+  }
+
+  private static String format(String key, Object... args) {
+    return new MessageFormat(text(key), bundle().getLocale()).format(args);
   }
 
   static String emptyStatePrimary(boolean analysisRunning, ResourceBundle bundle) {
@@ -236,494 +384,279 @@ public class BlunderListPanel extends JPanel implements Scrollable {
     return bundle.getString("BlunderListPanel.emptyHint");
   }
 
-  private void drawEmptyState(Graphics g) {
-    Graphics2D g2 = (Graphics2D) g.create();
-    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-    EmptyStateLayout layout =
-        fitEmptyState(
-            Math.max(1, getWidth()),
-            Math.max(1, getHeight()),
-            emptyStateFontName(),
-            currentSnapshot != null && currentSnapshot.analysisRunning,
-            g2);
-    // Both styles use a dark sidebar surface, so the boxed empty state works for both.
-    g2.setColor(new Color(255, 255, 255, 14));
-    g2.fillRoundRect(layout.boxX, layout.boxY, layout.boxW, layout.boxH, 18, 18);
-    g2.setColor(new Color(255, 255, 255, 24));
-    g2.drawRoundRect(layout.boxX, layout.boxY, layout.boxW - 1, layout.boxH - 1, 18, 18);
-    g2.setFont(layout.titleFont);
-    g2.setColor(TEXT_PRIMARY);
-    for (EmptyStateLine line : layout.titleLines) {
-      g2.drawString(line.text, line.x, line.baselineY);
+  static String emptyStateText(ProblemListSnapshot snapshot, ResourceBundle bundle) {
+    if (snapshot != null && snapshot.analysisRunning) return emptyStatePrimary(true, bundle);
+    if (snapshot == null || snapshot.analyzedMoves == 0)
+      return bundle.getString("BlunderListPanel.unanalyzed");
+    return bundle.getString("BlunderListPanel.filteredEmpty");
+  }
+
+  private static String decimal(double value) {
+    NumberFormat format = NumberFormat.getNumberInstance(bundle().getLocale());
+    format.setMinimumFractionDigits(1);
+    format.setMaximumFractionDigits(1);
+    format.setGroupingUsed(false);
+    return format.format(value);
+  }
+
+  static String moveLabel(ProblemMoveEntry entry) {
+    return format(
+        "BlunderListPanel.move",
+        entry.moveNumber,
+        text(entry.isBlack ? "SidebarHeader.black" : "SidebarHeader.white"),
+        entry.coords);
+  }
+
+  static String detailLabel(ProblemMoveEntry entry) {
+    String searches = format("BlunderListPanel.searches", entry.playouts);
+    return entry.hasScoreLoss
+        ? format("BlunderListPanel.score", decimal(entry.scoreLossAbs)) + "  \u00b7  " + searches
+        : searches;
+  }
+
+  static String accessibleRow(ProblemMoveEntry entry, int index) {
+    return format(
+        "BlunderListPanel.row",
+        index + 1,
+        moveLabel(entry),
+        decimal(entry.winrateLossAbs),
+        detailLabel(entry));
+  }
+
+  private static JTextArea wrappingText() {
+    JTextArea text = new JTextArea();
+    text.setEditable(false);
+    text.setFocusable(false);
+    text.setOpaque(false);
+    text.setLineWrap(true);
+    text.setWrapStyleWord(true);
+    text.setBorder(null);
+    text.setMargin(new Insets(0, 0, 0, 0));
+    return text;
+  }
+
+  private static EntryKey key(ProblemMoveEntry entry) {
+    return entry == null ? null : new EntryKey(entry);
+  }
+
+  private static final class EntryKey {
+    private final int move;
+    private final boolean black;
+    private final String coords;
+
+    EntryKey(ProblemMoveEntry entry) {
+      move = entry.moveNumber;
+      black = entry.isBlack;
+      coords = entry.coords;
     }
-    g2.setFont(layout.subtitleFont);
-    g2.setColor(TEXT_SECONDARY);
-    for (EmptyStateLine line : layout.subtitleLines) {
-      g2.drawString(line.text, line.x, line.baselineY);
+
+    @Override
+    public boolean equals(Object other) {
+      if (!(other instanceof EntryKey)) return false;
+      EntryKey key = (EntryKey) other;
+      return move == key.move && black == key.black && Objects.equals(coords, key.coords);
     }
-    g2.dispose();
-  }
 
-  private Color getCardBgNormal(boolean isBlack) {
-    return isBlack ? new Color(14, 18, 24, 150) : new Color(255, 255, 255, 34);
-  }
-
-  private Color getCardBgHover(boolean isBlack) {
-    Color accent = glassAccentColor();
-    return isBlack
-        ? new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 88)
-        : new Color(255, 255, 255, 56);
-  }
-
-  private void drawColumn(
-      Graphics2D g2, List<ProblemMoveEntry> entries, int startX, int startY, int colWidth) {
-    Font moveFont = new Font(Lizzie.config.uiFontName, Font.BOLD, 14);
-    Font detailFont = new Font(Lizzie.config.uiFontName, Font.PLAIN, 12);
-    Font severeDetailFont = new Font(Lizzie.config.uiFontName, Font.BOLD, 12);
-    Font chevronFont = new Font(Lizzie.config.uiFontName, Font.BOLD, 18);
-    for (int i = 0; i < entries.size(); i++) {
-      ProblemMoveEntry entry = entries.get(i);
-      int y = startY + i * CARD_HEIGHT;
-      int x = startX + PADDING;
-      int w = colWidth - PADDING * 2;
-      int h = CARD_HEIGHT - 12;
-
-      boolean isHovered = (hoveredIndex == i);
-      boolean isSelected = entry.isCurrent;
-      boolean isSevere = entry.severityTier >= 5;
-
-      // Background
-      if (!Lizzie.config.isAppleStyle) {
-        // flat classic background
-        if (isSelected) {
-          g2.setColor(new Color(52, 56, 68));
-        } else if (isHovered) {
-          g2.setColor(new Color(44, 46, 52));
-        } else {
-          g2.setColor(new Color(34, 36, 40));
-        }
-        g2.fillRoundRect(x, y, w, h, 8, 8);
-        if (isSelected) {
-          g2.setColor(withAlpha(glassAccentColor(), 160));
-          g2.drawRoundRect(x, y, w - 1, h - 1, 8, 8);
-        } else if (isHovered) {
-          g2.setColor(new Color(255, 255, 255, 46));
-          g2.drawRoundRect(x, y, w - 1, h - 1, 8, 8);
-        }
-        if (isSevere && !isSelected && !isHovered) {
-          g2.setColor(new Color(239, 68, 68, 28));
-          g2.fillRoundRect(x, y, w, h, 8, 8);
-          g2.setColor(new Color(239, 68, 68, 80));
-          g2.drawRoundRect(x, y, w - 1, h - 1, 8, 8);
-        }
-      } else {
-        // Apple style background
-        int cardCornerRadius = cardCornerRadius();
-        g2.setColor(new Color(0, 0, 0, 38));
-        g2.fillRoundRect(x + 1, y + 4, w - 1, h - 1, cardCornerRadius, cardCornerRadius);
-
-        if (isSelected) {
-          g2.setColor(selectedCardColor());
-        } else if (isHovered) {
-          g2.setColor(getCardBgHover(entry.isBlack));
-        } else {
-          g2.setColor(getCardBgNormal(entry.isBlack));
-        }
-        g2.fillRoundRect(x, y, w, h, cardCornerRadius, cardCornerRadius);
-        g2.setColor(isSelected ? withAlpha(glassAccentColor(), 120) : new Color(255, 255, 255, 22));
-        g2.drawRoundRect(x, y, w - 1, h - 1, cardCornerRadius, cardCornerRadius);
-
-        // Severe blunder emphasis (faint red glow/bg)
-        if (isSevere && !isSelected && !isHovered) {
-          g2.setColor(new Color(239, 68, 68, 30));
-          g2.fillRoundRect(x, y, w, h, cardCornerRadius, cardCornerRadius);
-          g2.setColor(new Color(239, 68, 68, 86));
-          g2.drawRoundRect(x, y, w - 1, h - 1, cardCornerRadius, cardCornerRadius);
-        }
-
-        // Liquid Highlight for selected
-        if (isSelected) {
-          LinearGradientPaint highlight =
-              new LinearGradientPaint(
-                  x,
-                  y,
-                  x,
-                  y + h,
-                  new float[] {0.0f, 1.0f},
-                  new Color[] {cardHighlightColor(), new Color(255, 255, 255, 0)});
-          g2.setPaint(highlight);
-          g2.drawRoundRect(x, y, w - 1, h - 1, cardCornerRadius, cardCornerRadius);
-        }
-      }
-
-      // Left semantic edge line
-      if (Lizzie.config.isAppleStyle) {
-        int edgeW = 3;
-        int edgeInset = 5;
-        Color edgeBase = entry.isBlack ? new Color(0, 0, 0) : new Color(255, 255, 255);
-        LinearGradientPaint edgePaint =
-            new LinearGradientPaint(
-                x + 1,
-                y + edgeInset,
-                x + 1,
-                y + h - edgeInset,
-                new float[] {0.0f, 0.5f, 1.0f},
-                new Color[] {
-                  withAlpha(edgeBase, 0), withAlpha(edgeBase, 220), withAlpha(edgeBase, 0)
-                });
-        g2.setPaint(edgePaint);
-        g2.fillRoundRect(x + 1, y + edgeInset, edgeW, h - edgeInset * 2, 2, 2);
-      } else {
-        g2.setColor(entry.isBlack ? new Color(0, 0, 0, 200) : new Color(255, 255, 255, 200));
-        g2.fillRoundRect(x + 1, y + 4, 3, h - 8, 3, 3);
-      }
-
-      // Stone glyph + move number: the stone makes black/white ownership readable per
-      // card, independent of the side filter.
-      int stoneSize = 12;
-      int stoneX = x + 12;
-      int stoneY = y + 22 - stoneSize + 1;
-      if (entry.isBlack) {
-        g2.setColor(new Color(18, 20, 24));
-        g2.fillOval(stoneX, stoneY, stoneSize, stoneSize);
-        g2.setColor(new Color(255, 255, 255, 160));
-        g2.drawOval(stoneX, stoneY, stoneSize, stoneSize);
-      } else {
-        g2.setColor(new Color(246, 248, 250));
-        g2.fillOval(stoneX, stoneY, stoneSize, stoneSize);
-        g2.setColor(new Color(0, 0, 0, 130));
-        g2.drawOval(stoneX, stoneY, stoneSize, stoneSize);
-      }
-      g2.setFont(moveFont);
-      g2.setColor(TEXT_PRIMARY);
-      String moveText = "#" + entry.moveNumber + "  " + entry.coords;
-      g2.drawString(moveText, stoneX + stoneSize + 7, y + 22);
-
-      // Text: Loss
-      g2.setFont(isSevere ? severeDetailFont : detailFont);
-      Color severityColor = getSeverityColor(entry.severityTier);
-      g2.setColor(severityColor);
-      String lossText = "🔻 " + String.format("%.1f%%", entry.winrateLossAbs);
-      g2.drawString(lossText, x + 12, y + 40);
-
-      // Text: Playouts
-      g2.setFont(detailFont);
-      g2.setColor(TEXT_SECONDARY);
-      String playoutText =
-          "| "
-              + (entry.playouts > 1000
-                  ? String.format("%.1fk", entry.playouts / 1000.0)
-                  : entry.playouts);
-      int lossWidth =
-          g2.getFontMetrics(isSevere ? severeDetailFont : detailFont).stringWidth(lossText);
-      g2.drawString(playoutText, x + 12 + lossWidth + 5, y + 40);
-
-      // Navigation chevron: these cards jump to the position, so give them an
-      // explicit affordance like a list row.
-      g2.setFont(chevronFont);
-      g2.setColor(
-          isSelected || isHovered ? new Color(255, 255, 255, 230) : new Color(255, 255, 255, 96));
-      g2.drawString("›", x + w - 18, y + h / 2 + 6);
-
-      // Thermal dot
-      Color dotColor = null;
-      if (entry.severityTier >= 5) dotColor = COLOR_DANGER;
-      else if (entry.severityTier >= 4) dotColor = COLOR_WARNING;
-      else if (entry.severityTier >= 3) dotColor = COLOR_INFO;
-
-      if (dotColor != null) {
-        g2.setColor(dotColor);
-        int dotSize = isSevere ? 10 : 8;
-        g2.fillOval(x + w - 36, y + (h - dotSize) / 2, dotSize, dotSize);
-      }
+    @Override
+    public int hashCode() {
+      return Objects.hash(move, black, coords);
     }
   }
 
-  private Color getSeverityColor(int severityTier) {
-    if (severityTier >= 5) return TEXT_DANGER;
-    if (severityTier >= 4) return TEXT_WARNING;
-    if (severityTier >= 3) return TEXT_INFO;
-    return TEXT_PRIMARY;
-  }
+  private static final class EntryModel extends AbstractListModel<ProblemMoveEntry> {
+    private List<ProblemMoveEntry> entries = new ArrayList<>();
 
-  private Color selectedCardColor() {
-    Color accent = glassAccentColor();
-    return new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 148);
-  }
-
-  private Color cardHighlightColor() {
-    return Lizzie.config != null && Lizzie.config.theme != null
-        ? Lizzie.config.theme.glassPanelHighlightColor()
-        : new Color(255, 255, 255, 77);
-  }
-
-  private Color glassAccentColor() {
-    return Lizzie.config != null && Lizzie.config.theme != null
-        ? Lizzie.config.theme.glassAccentColor()
-        : new Color(96, 165, 250);
-  }
-
-  private int cardCornerRadius() {
-    int cornerRadius =
-        Lizzie.config != null && Lizzie.config.theme != null
-            ? Lizzie.config.theme.glassCornerRadius()
-            : 12;
-    return Math.max(6, Math.min(DEFAULT_CARD_CORNER_RADIUS + 4, cornerRadius));
-  }
-
-  private Color withAlpha(Color color, int alpha) {
-    return new Color(
-        color.getRed(), color.getGreen(), color.getBlue(), Math.max(0, Math.min(255, alpha)));
-  }
-
-  static int emptyStateBoxWidth(int panelWidth) {
-    return Math.max(1, Math.min(panelWidth - EMPTY_STATE_MARGIN * 2, EMPTY_STATE_MAX_BOX_WIDTH));
-  }
-
-  static int lineHeight(FontMetrics metrics) {
-    return Math.max(metrics.getHeight(), metrics.getAscent() + metrics.getDescent());
-  }
-
-  static List<String> wrapToWidth(FontMetrics metrics, String text, int maxWidth) {
-    List<String> lines = new ArrayList<>();
-    if (text == null || text.isEmpty()) {
-      return lines;
-    }
-    int limit = Math.max(1, maxWidth);
-    StringBuilder line = new StringBuilder();
-    int index = 0;
-    while (index < text.length()) {
-      int next = index + Character.charCount(text.codePointAt(index));
-      String ch = text.substring(index, next);
-      if (line.length() > 0 && metrics.stringWidth(line.toString() + ch) > limit) {
-        lines.add(line.toString());
-        line.setLength(0);
-      }
-      line.append(ch);
-      index = next;
-    }
-    if (line.length() > 0) {
-      lines.add(line.toString());
-    }
-    return lines;
-  }
-
-  static EmptyStateLayout fitEmptyState(
-      int panelWidth,
-      int panelHeight,
-      String fontName,
-      boolean analysisRunning,
-      Graphics2D graphics) {
-    String family = fontName != null ? fontName : Font.SANS_SERIF;
-    int[] titleSizes = {14, 13, 12, 11, 10, 9};
-    int[] subtitleSizes = {12, 11, 10, 9, 8, 7};
-    int[] insets = {16, 12, 8, 6, 4};
-    EmptyStateLayout fallback = null;
-    for (int inset : insets) {
-      for (int i = 0; i < titleSizes.length; i++) {
-        Font titleFont = new Font(family, Font.PLAIN, titleSizes[i]);
-        Font subtitleFont = new Font(family, Font.PLAIN, subtitleSizes[i]);
-        EmptyStateLayout layout =
-            layoutEmptyState(
-                panelWidth,
-                panelHeight,
-                graphics.getFontMetrics(titleFont),
-                graphics.getFontMetrics(subtitleFont),
-                analysisRunning,
-                inset,
-                titleFont,
-                subtitleFont);
-        if (layout.fitsInPanel(panelWidth, panelHeight)) {
-          return layout;
-        }
-        fallback = layout;
-      }
-    }
-    return fallback;
-  }
-
-  static EmptyStateLayout layoutEmptyState(
-      int panelWidth,
-      int panelHeight,
-      FontMetrics titleMetrics,
-      FontMetrics subtitleMetrics,
-      boolean analysisRunning) {
-    Font titleFont = new Font(Font.SANS_SERIF, Font.PLAIN, 14);
-    Font subtitleFont = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
-    return layoutEmptyState(
-        panelWidth,
-        panelHeight,
-        titleMetrics,
-        subtitleMetrics,
-        analysisRunning,
-        EMPTY_STATE_TEXT_INSET,
-        titleFont,
-        subtitleFont);
-  }
-
-  static EmptyStateLayout layoutEmptyState(
-      int panelWidth,
-      int panelHeight,
-      FontMetrics titleMetrics,
-      FontMetrics subtitleMetrics,
-      boolean analysisRunning,
-      int textInset,
-      Font titleFont,
-      Font subtitleFont) {
-    String title =
-        Lizzie.resourceBundle != null
-            ? emptyStatePrimary(analysisRunning, Lizzie.resourceBundle)
-            : (analysisRunning ? EMPTY_STATE_ANALYZING_TITLE : EMPTY_STATE_TITLE);
-    String subtitle =
-        Lizzie.resourceBundle != null
-            ? emptyStateHint(Lizzie.resourceBundle)
-            : EMPTY_STATE_SUBTITLE;
-    int inset = Math.max(4, textInset);
-    int boxW = emptyStateBoxWidth(panelWidth);
-    int boxX = Math.max(Math.min(EMPTY_STATE_MARGIN, panelWidth / 8), (panelWidth - boxW) / 2);
-    int innerWidth = Math.max(1, boxW - inset * 2);
-    List<String> wrappedTitle = wrapToWidth(titleMetrics, title, innerWidth);
-    List<String> wrappedSubtitle = wrapToWidth(subtitleMetrics, subtitle, innerWidth);
-    int titleLineHeight = lineHeight(titleMetrics);
-    int subtitleLineHeight = lineHeight(subtitleMetrics);
-    int titleBlockHeight = Math.max(titleLineHeight, wrappedTitle.size() * titleLineHeight);
-    int subtitleBlockHeight =
-        Math.max(subtitleLineHeight, wrappedSubtitle.size() * subtitleLineHeight);
-    int contentHeight = titleBlockHeight + EMPTY_STATE_TITLE_SUBTITLE_GAP + subtitleBlockHeight;
-    int maxBoxH = Math.max(1, panelHeight);
-    int desiredH = contentHeight + inset * 2;
-    int minH = Math.min(EMPTY_STATE_MIN_BOX_HEIGHT, maxBoxH);
-    int boxH = Math.min(maxBoxH, Math.max(minH, desiredH));
-    int boxY = Math.max(0, (panelHeight - boxH) / 2);
-    if (panelHeight >= boxH + EMPTY_STATE_MARGIN * 2) {
-      boxY = Math.max(EMPTY_STATE_MARGIN, (panelHeight - boxH) / 2 - EMPTY_STATE_MARGIN);
-    }
-    int contentTop = boxY + Math.max(inset, (boxH - contentHeight) / 2);
-
-    List<EmptyStateLine> titleLines = new ArrayList<>();
-    int titleBaseline = contentTop + titleMetrics.getAscent();
-    for (String line : wrappedTitle) {
-      int width = titleMetrics.stringWidth(line);
-      titleLines.add(
-          new EmptyStateLine(
-              line,
-              boxX + (boxW - width) / 2,
-              titleBaseline,
-              width,
-              titleMetrics.getAscent(),
-              titleMetrics.getDescent()));
-      titleBaseline += titleLineHeight;
+    @Override
+    public int getSize() {
+      return entries.size();
     }
 
-    List<EmptyStateLine> subtitleLines = new ArrayList<>();
-    int subtitleBaseline =
-        contentTop + titleBlockHeight + EMPTY_STATE_TITLE_SUBTITLE_GAP + subtitleMetrics.getAscent();
-    for (String line : wrappedSubtitle) {
-      int width = subtitleMetrics.stringWidth(line);
-      subtitleLines.add(
-          new EmptyStateLine(
-              line,
-              boxX + (boxW - width) / 2,
-              subtitleBaseline,
-              width,
-              subtitleMetrics.getAscent(),
-              subtitleMetrics.getDescent()));
-      subtitleBaseline += subtitleLineHeight;
+    @Override
+    public ProblemMoveEntry getElementAt(int index) {
+      return entries.get(index);
     }
 
-    int contentBottom =
-        subtitleLines.isEmpty()
-            ? contentTop + contentHeight
-            : subtitleLines.get(subtitleLines.size() - 1).baselineY
-                + subtitleLines.get(subtitleLines.size() - 1).descent;
-    boxH = Math.min(maxBoxH, Math.max(boxH, contentBottom + inset - boxY));
-    if (boxY + boxH > panelHeight) {
-      boxY = Math.max(0, panelHeight - boxH);
-    }
-
-    return new EmptyStateLayout(
-        boxX, boxY, boxW, boxH, inset, titleFont, subtitleFont, titleLines, subtitleLines);
-  }
-
-  static final class EmptyStateLine {
-    final String text;
-    final int x;
-    final int baselineY;
-    final int width;
-    final int ascent;
-    final int descent;
-
-    EmptyStateLine(String text, int x, int baselineY, int width, int ascent, int descent) {
-      this.text = text;
-      this.x = x;
-      this.baselineY = baselineY;
-      this.width = width;
-      this.ascent = ascent;
-      this.descent = descent;
-    }
-  }
-
-  static final class EmptyStateLayout {
-    final int boxX;
-    final int boxY;
-    final int boxW;
-    final int boxH;
-    final int textInset;
-    final Font titleFont;
-    final Font subtitleFont;
-    final List<EmptyStateLine> titleLines;
-    final List<EmptyStateLine> subtitleLines;
-
-    EmptyStateLayout(
-        int boxX,
-        int boxY,
-        int boxW,
-        int boxH,
-        int textInset,
-        Font titleFont,
-        Font subtitleFont,
-        List<EmptyStateLine> titleLines,
-        List<EmptyStateLine> subtitleLines) {
-      this.boxX = boxX;
-      this.boxY = boxY;
-      this.boxW = boxW;
-      this.boxH = boxH;
-      this.textInset = textInset;
-      this.titleFont = titleFont;
-      this.subtitleFont = subtitleFont;
-      this.titleLines = Collections.unmodifiableList(new ArrayList<>(titleLines));
-      this.subtitleLines = Collections.unmodifiableList(new ArrayList<>(subtitleLines));
-    }
-
-    boolean fitsInPanel(int panelWidth, int panelHeight) {
-      if (boxX < 0 || boxY < 0 || boxW < 1 || boxH < 1) {
-        return false;
-      }
-      if (boxX + boxW > panelWidth || boxY + boxH > panelHeight) {
-        return false;
-      }
-      int innerWidth = Math.max(1, boxW - textInset * 2);
-      for (EmptyStateLine line : titleLines) {
-        if (!lineFits(line, innerWidth)) {
-          return false;
-        }
-      }
-      for (EmptyStateLine line : subtitleLines) {
-        if (!lineFits(line, innerWidth)) {
-          return false;
-        }
+    boolean sameEntries(List<ProblemMoveEntry> next) {
+      if (entries.size() != next.size()) return false;
+      for (int i = 0; i < next.size(); i++) {
+        ProblemMoveEntry a = entries.get(i);
+        ProblemMoveEntry b = next.get(i);
+        if (!key(a).equals(key(b))
+            || a.winrateLossAbs != b.winrateLossAbs
+            || a.scoreLossAbs != b.scoreLossAbs
+            || a.hasScoreLoss != b.hasScoreLoss
+            || a.playouts != b.playouts
+            || a.isCurrent != b.isCurrent
+            || a.severityTier != b.severityTier) return false;
       }
       return true;
     }
 
-    private boolean lineFits(EmptyStateLine line, int innerWidth) {
-      if (line.x < boxX || line.x + line.width > boxX + boxW) {
-        return false;
+    void replace(List<ProblemMoveEntry> next) {
+      int old = entries.size();
+      entries = next;
+      int common = Math.min(old, next.size());
+      if (common > 0) fireContentsChanged(this, 0, common - 1);
+      if (next.size() > old) fireIntervalAdded(this, old, next.size() - 1);
+      if (old > next.size()) fireIntervalRemoved(this, next.size(), old - 1);
+    }
+  }
+
+  private final class ReviewList extends JList<ProblemMoveEntry> {
+    @Override
+    public boolean getScrollableTracksViewportWidth() {
+      return true;
+    }
+
+    @Override
+    public String getToolTipText(MouseEvent event) {
+      int index = indexAt(event.getPoint());
+      return index < 0 ? null : accessibleRow(model.getElementAt(index), index);
+    }
+
+    @Override
+    protected void processMouseEvent(MouseEvent event) {
+      // BasicListUI otherwise selects the nearest row when the empty tail is clicked.
+      if (event.getID() == MouseEvent.MOUSE_PRESSED && indexAt(event.getPoint()) < 0) {
+        pressedEntry = null;
+        return;
       }
-      if (line.baselineY - line.ascent < boxY || line.baselineY + line.descent > boxY + boxH) {
-        return false;
+      super.processMouseEvent(event);
+    }
+  }
+
+  private final class ProblemRow extends JPanel implements ListCellRenderer<ProblemMoveEntry> {
+    private final JLabel ordinal = new JLabel("", SwingConstants.RIGHT);
+    private final JTextArea title = wrappingText();
+    private final JTextArea detail = wrappingText();
+    private final JLabel loss = new JLabel("", SwingConstants.RIGHT);
+    private final JTextArea lossCaption = wrappingText();
+    private boolean selected;
+    private boolean current;
+    private boolean focused;
+    private boolean hovered;
+    private int rowWidth;
+
+    ProblemRow() {
+      super(null);
+      setOpaque(false);
+      add(ordinal);
+      add(title);
+      add(detail);
+      add(loss);
+      add(lossCaption);
+    }
+
+    @Override
+    public Component getListCellRendererComponent(
+        JList<? extends ProblemMoveEntry> owner,
+        ProblemMoveEntry entry,
+        int index,
+        boolean selected,
+        boolean focused) {
+      this.selected = selected;
+      this.current = entry.isCurrent;
+      this.focused = focused;
+      this.hovered = index == hoveredIndex;
+      rowWidth =
+          Math.max(1, owner.getFixedCellWidth() > 0 ? owner.getFixedCellWidth() : owner.getWidth());
+      Font primary = owner.getFont();
+      Font secondary = primary.deriveFont(Math.max(12f, primary.getSize2D() - 1f));
+      ordinal.setFont(secondary);
+      title.setFont(primary.deriveFont(Font.BOLD));
+      detail.setFont(secondary);
+      loss.setFont(primary.deriveFont(Font.BOLD));
+      lossCaption.setFont(secondary);
+      Color text = SidebarPanel.primaryTextColor();
+      Color muted = SidebarPanel.secondaryTextColor();
+      ordinal.setForeground(muted);
+      title.setForeground(text);
+      detail.setForeground(muted);
+      lossCaption.setForeground(muted);
+      loss.setForeground(entry.severityTier >= 5 ? SidebarPanel.lossTextColor() : text);
+      ordinal.setText(Integer.toString(index + 1));
+      title.setText(moveLabel(entry));
+      detail.setText(detailLabel(entry));
+      loss.setText(decimal(entry.winrateLossAbs) + "%");
+      String accessible = accessibleRow(entry, index);
+      getAccessibleContext().setAccessibleName(accessible);
+      getAccessibleContext().setAccessibleDescription(accessible);
+      // CellRendererPane can reuse equal-sized cells without calling doLayout again.
+      arrange();
+      return this;
+    }
+
+    private int wrappedHeight(JTextArea text, int width) {
+      text.setSize(Math.max(1, width), Short.MAX_VALUE);
+      return text.getPreferredSize().height;
+    }
+
+    private int arrange() {
+      lossCaption.setText(text("BlunderListPanel.loss"));
+      int width = Math.max(1, rowWidth);
+      int numberWidth =
+          Math.max(
+              18,
+              ordinal
+                  .getFontMetrics(ordinal.getFont())
+                  .stringWidth(Integer.toString(Math.max(1, model.getSize()))));
+      int start = numberWidth + 16;
+      int content = Math.max(1, width - start - 8);
+      int rightWidth =
+          Math.max(
+                  loss.getPreferredSize().width,
+                  lossCaption
+                      .getFontMetrics(lossCaption.getFont())
+                      .stringWidth(lossCaption.getText()))
+              + 8;
+      boolean stacked = content < rightWidth + getFontMetrics(title.getFont()).charWidth('M') * 12;
+      int mainWidth = stacked ? content : Math.max(1, content - rightWidth - 12);
+      int titleHeight = wrappedHeight(title, mainWidth);
+      int detailHeight = wrappedHeight(detail, mainWidth);
+      ordinal.setBounds(0, 8, numberWidth, ordinal.getPreferredSize().height);
+      title.setBounds(start, 8, mainWidth, titleHeight);
+      detail.setBounds(start, 8 + titleHeight + 4, mainWidth, detailHeight);
+      if (stacked) {
+        // Use a wrapping, fully labelled loss on narrow sidebars; never shrink the font.
+        lossCaption.setText(format("BlunderListPanel.lossValue", loss.getText()));
+        int height = wrappedHeight(lossCaption, content);
+        lossCaption.setBounds(start, 8 + titleHeight + detailHeight + 8, content, height);
+        loss.setBounds(0, 0, 0, 0);
+        return 8 + titleHeight + detailHeight + 8 + height + 9;
       }
-      return line.text.codePointCount(0, line.text.length()) <= 1 || line.width <= innerWidth;
+      int captionHeight = wrappedHeight(lossCaption, rightWidth);
+      loss.setBounds(width - rightWidth - 8, 8, rightWidth, titleHeight);
+      lossCaption.setBounds(width - rightWidth - 8, 8 + titleHeight + 4, rightWidth, captionHeight);
+      return 8 + titleHeight + 4 + Math.max(detailHeight, captionHeight) + 9;
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+      return new Dimension(rowWidth, arrange());
+    }
+
+    @Override
+    public void doLayout() {
+      arrange();
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      super.paintComponent(graphics);
+      if (selected || current || hovered) {
+        graphics.setColor(SidebarPanel.rowHighlightColor(selected || current));
+        graphics.fillRect(0, 0, getWidth(), getHeight() - 1);
+      }
+      if (current || selected) {
+        graphics.setColor(SidebarPanel.accentTextColor());
+        graphics.fillRect(0, 5, 2, Math.max(0, getHeight() - 11));
+      }
+      graphics.setColor(SidebarPanel.rowSeparatorColor());
+      graphics.drawLine(0, getHeight() - 1, getWidth(), getHeight() - 1);
+      if (focused) {
+        graphics.setColor(SidebarPanel.accentTextColor());
+        graphics.drawRect(1, 1, Math.max(0, getWidth() - 3), Math.max(0, getHeight() - 4));
+      }
     }
   }
 }
