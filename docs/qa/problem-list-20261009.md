@@ -43,22 +43,34 @@ Two additional problems were found during visible Windows acceptance:
 
 ## Automated validation
 
-Final validation is in progress. Current results are not a release sign-off:
+Final source: `53be64e39cc9b8363fe0ad48f434907e50709d7b` (PR #600).
+Current results are not a release sign-off:
 
 - Final focused run: 51 tests, 0 failures, 0 errors, 1 platform skip.
-- Earlier full candidate: 4,842 unit tests and 18 integration tests, 0 failures,
-  0 errors, 140 total conditional skips. This predates the two additional fixes.
-- The next full run ended early in `CommandLaunchHelperTest`: 4,457 tests
+- Final `mvn -B -Djava.awt.headless=true -Dfmt.skip=true verify`: **BUILD SUCCESS**,
+  8 min 11 s. 4,844 unit tests and 18 integration tests, 0 failures, 0 errors,
+  140 total conditional skips (125 unit, 15 integration); 4,722 executed passes.
+- Final `mvn -B -Djava.awt.headless=true -Dfmt.skip=true -DskipTests package`:
+  **BUILD SUCCESS**, 10.416 s.
+- Final `python scripts/test_windows_launcher_packaging.py`: passed.
+- An intermediate full run ended early in `CommandLaunchHelperTest`: 4,457 tests
   reported, no assertion failures, but the forked JVM exited without completing
   Surefire. It is a failed run, not a pass. The isolated 13-test helper class
-  subsequently passed (1 non-Windows skip); final full verify is rerunning.
+  subsequently passed (1 non-Windows skip), followed by the successful full run above.
 - Windows repository checks: 2/2 passed (line endings and diff whitespace).
 - Windows script checks: the first 7 steps passed. Product acceptance fixtures
-  ran 29 tests with 6 failures: Windows denied access when starting generated
-  temporary fixture EXEs. A security-product window appeared at the same time;
-  the blocking cause has not been confirmed. No protection settings were changed
-  and no isolated files were restored. Remaining script checks are not passed.
-- Final focus-indicator native retest and final packaging are pending.
+  ran 29 tests with 6 failures: 5 generated temporary fixture EXEs were denied
+  access; 1 reported invalid side-by-side configuration. Windows Application
+  event 59 confirmed invalid embedded manifest XML for that fixture. A security
+  product window appeared, but the cause has not been confirmed. No protection
+  settings were changed and no quarantined files were restored. This local gate
+  remains failed, even though the equivalent GitHub Windows script job passed.
+- Final JAR SHA-256:
+  `0462d191734fdae4a2f26fb2bf68478107c3aad5b4a3dc0651a5baef8a84633c`.
+- Final focus-indicator EXE retest passed: F6 -> Tab -> Tab visibly selected the
+  first visible row without moving the board. Enter opened move 19 at position
+  18; Down selected move 21 without moving position 18; Space opened position
+  20 and foreground CUDA analysis continued. Normal exit saved preferences.
 
 Focused tests cover numeric sort, equal-loss ties, preference round-trip, side
 filtering, full-row hit boundaries, blank-tail/separator clicks, press/release
@@ -85,6 +97,14 @@ Thai sorting popup, JVM 200% simulation:
 ![Thai high-scale list](assets/problem-list-20261009/thai-jvm200.png)
 
 Full local evidence: `C:\ailearn3\lizzieyzynext\.qa\problem-list-20261009`.
+Final keyboard evidence: `keyboard-focus-final.png`, `keyboard-jump-final.png`
+and `keyboard-space-final.png` in that directory. Logs: `verify-focus-final.log`,
+`package-focus-final.log` and `ci-scripts.log`.
+
+The desktop shortcut is explicitly a **local candidate preview**, not an
+official pre-release. The isolated NVIDIA runtime, model and user-data remain
+in the QA directory. PR #600 remains draft until the unresolved acceptance
+checks are resolved; no release was created.
 
 ## Limits
 
