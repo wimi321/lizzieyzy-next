@@ -44,8 +44,7 @@ class LeftoverChineseCopyTest {
     assertEquals("清除所有个人数据", chinese.getString("Menu.clearAllPersonalData"));
     assertEquals("清除所有个人数据", chinese.getString("Menu.clearAllPersonalData.confirmTitle"));
     assertEquals(
-        "将清除以下个人数据:\n  • 野狐账号搜索记录\n  • 最近打开的棋谱列表\n  • 批量分析记录\n  • 分享棋谱历史\n\n"
-            + "该操作不可撤销，是否继续?",
+        "将清除以下个人数据:\n  • 野狐账号搜索记录\n  • 最近打开的棋谱列表\n  • 批量分析记录\n  • 分享棋谱历史\n\n" + "该操作不可撤销，是否继续?",
         chinese.getString("Menu.clearAllPersonalData.confirmMessage"));
     assertEquals("完成", chinese.getString("Menu.clearAllPersonalData.doneTitle"));
     assertEquals("已清除。", chinese.getString("Menu.clearAllPersonalData.doneMessage"));
@@ -56,8 +55,7 @@ class LeftoverChineseCopyTest {
     ResourceBundle english = AppLocale.ENGLISH.loadBundle();
 
     assertEquals("No problem moves", BlunderListPanel.emptyStatePrimary(false, english));
-    assertEquals(
-        "⏳ Organizing problem moves...", BlunderListPanel.emptyStatePrimary(true, english));
+    assertEquals("Organizing problem moves...", BlunderListPanel.emptyStatePrimary(true, english));
     assertEquals(
         "After whole-game analysis, moves with larger winrate drops appear here.",
         BlunderListPanel.emptyStateHint(english));
@@ -71,9 +69,8 @@ class LeftoverChineseCopyTest {
     ResourceBundle chinese = AppLocale.SIMPLIFIED_CHINESE.loadBundle();
 
     assertEquals("当前无问题手", BlunderListPanel.emptyStatePrimary(false, chinese));
-    assertEquals("⏳ 正在整理问题手...", BlunderListPanel.emptyStatePrimary(true, chinese));
-    assertEquals(
-        "全盘分析后，这里会列出掉胜率较多的问题手", BlunderListPanel.emptyStateHint(chinese));
+    assertEquals("正在整理问题手...", BlunderListPanel.emptyStatePrimary(true, chinese));
+    assertEquals("全盘分析后，这里会列出掉胜率较多的问题手", BlunderListPanel.emptyStateHint(chinese));
   }
 
   private static void assertNoHan(String value) {

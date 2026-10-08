@@ -2852,6 +2852,7 @@ public class Config {
     ui.put("show-subboard", true);
     ui.put("large-subboard", false);
     ui.put("problem-list-metric", "winrate");
+    ui.put("problem-list-sort", "loss-desc");
     ui.put("problem-list-side-filter", "black");
     ui.put("problem-list-winrate-threshold", 10.0);
     ui.put("glass-panel-overlay-color", Theme.color2Array(new Color(24, 24, 26, 102)));
