@@ -93,6 +93,8 @@ You can rename bundled KataGo in engine settings. Restarts, Auto Setup, and path
 
 Legacy entries are migrated when their bundled ownership can be established. Already-renamed legacy entries pointing to another complete package are left alone, and historical duplicates are not merged by guesswork.
 
+After Auto Setup changes a managed profile's weight, restarts preserve that weight, its name, default-engine selection, and preload setting. A manually added default engine may use a different weight from a custom dedicated quick-analysis engine; this difference does not trigger automatic profile creation. Historical duplicates are retained. If all old profiles have lost their managed identity, a complete package may create one valid bundled entry, after which the count should remain stable.
+
 ## 6. What should I include in a bug report
 
 The most useful items are:

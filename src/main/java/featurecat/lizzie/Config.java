@@ -628,6 +628,34 @@ public class Config {
         appRoot.resolve(BUNDLED_WEIGHT_ROOT).resolve(BUNDLED_WEIGHT_NAME));
   }
 
+  private static String rebindManagedBundledCommand(String command, Path currentRoot) {
+    List<String> parts = Utils.splitCommand(command);
+    if (parts.size() < 2 || !"gtp".equals(parts.get(1))) return command;
+    Path executable = Path.of(parts.get(0));
+    Path platform = executable.getParent();
+    Path katago = platform == null ? null : platform.getParent();
+    Path engines = katago == null ? null : katago.getParent();
+    Path previousRoot = engines == null ? null : engines.getParent();
+    if (previousRoot == null
+        || previousRoot.equals(currentRoot)
+        || !"katago".equals(katago.getFileName().toString())
+        || !"engines".equals(engines.getFileName().toString())) return command;
+
+    // Auto Setup quotes these paths. Replace only whole path tokens, retaining all other options.
+    for (int i = 0; i < parts.size(); i++) {
+      if (i != 0
+          && !"-model".equals(parts.get(i - 1))
+          && !"-config".equals(parts.get(i - 1))) continue;
+      Path original = Path.of(parts.get(i));
+      if (!original.isAbsolute() || !original.startsWith(previousRoot)) continue;
+      Path relocated = currentRoot.resolve(previousRoot.relativize(original));
+      if (Files.isRegularFile(relocated)) {
+        command = command.replace('"' + parts.get(i) + '"', quotePath(relocated));
+      }
+    }
+    return command;
+  }
+
   private boolean applyBundledKataGoDefaults() {
     BundledKataGoConfig bundledConfig = detectBundledKataGoConfig();
     if (bundledConfig == null) {
@@ -692,7 +720,15 @@ public class Config {
     if (bundledEngine.optString("id", "").isBlank()) {
       bundledEngine.put("id", UUID.randomUUID().toString());
     }
-    bundledEngine.put("command", bundledConfig.engineCommand);
+    // Rebind package paths while retaining model/config choices made by Auto Setup.
+    String bundledCommand = bundledEngine.optString("command");
+    if (!BundledKataGoProfile.isManaged(bundledEngine)
+        || BundledKataGoProfile.isDefaultCommand(bundledCommand, bundledConfig.appRoot, true)) {
+      bundledCommand = bundledConfig.engineCommand;
+    } else {
+      bundledCommand = rebindManagedBundledCommand(bundledCommand, bundledConfig.appRoot);
+    }
+    bundledEngine.put("command", bundledCommand);
     BundledKataGoProfile.claim(bundledEngine);
       if (!newProfile) {
         boolean analysisCustomized =
