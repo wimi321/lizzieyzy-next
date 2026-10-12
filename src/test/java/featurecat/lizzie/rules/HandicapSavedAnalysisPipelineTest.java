@@ -66,6 +66,7 @@ class HandicapSavedAnalysisPipelineTest {
       Lizzie.config.enableLizzieCache = true;
       Lizzie.config.loadSgfLast = false;
       Lizzie.config.autoQuickAnalyzeOnLoad = false;
+      Lizzie.config.analyzeUpdateIntervalCentisec = 10;
       Lizzie.leelaz2 = null;
       Lizzie.engineManager = null;
       EngineManager.currentEngineNo = 0;
@@ -106,7 +107,6 @@ class HandicapSavedAnalysisPipelineTest {
                 + "move C3 visits 10 winrate 6000 scoreMean 2 pv C3]"
                 + ";W[bb];B[cc]LZ[b11 30 100 3 1 0 rootVisits=100\n"
                 + "move D4 visits 50 winrate 7000 scoreMean 3 pv D4 C4])";
-        CountDownLatch pausedAfterImport = new CountDownLatch(1);
         SwingUtilities.invokeAndWait(
             () -> {
               try {
@@ -114,25 +114,31 @@ class HandicapSavedAnalysisPipelineTest {
                   Path input = tempDirectory.resolve("同步让子分析.SGF");
                   Files.writeString(input, sgf);
                   assertTrue(SGFParser.load(input.toString(), false, true));
-                  // File finalization starts the real coordinator on the next EDT turn.
-                  // This pause is queued after it and before any completion callback.
-                  SwingUtilities.invokeLater(() -> pauseAutomaticResume(frame, pausedAfterImport));
                 } else {
                   assertTrue(SGFParser.loadFromString(sgf, true));
-                  pauseAutomaticResume(frame, pausedAfterImport);
                 }
               } catch (Exception failure) {
                 throw new AssertionError(failure);
               }
             });
-        assertTrue(pausedAfterImport.await(5, TimeUnit.SECONDS));
         await(
             () -> !frame.loadResumes.isEmpty()
                 && frame.loadResumes.stream().allMatch(resume -> resume.getCount() == 0),
             "the actual post-load resume continuation did not settle");
         awaitEngineIdle(engine, transport);
         assertTrue(LizzieFrame.canGoAfterload);
+        // The import may start another analysis context while its continuations settle.
+        // Pause only after the actual final continuation, through the production pause path.
+        assertTrue(engine.isPondering(), "the real post-load continuation should resume analysis");
+        int commandsBeforePause = transport.commands().size();
+        pauseThroughAnalysisControl(frame);
+        awaitEngineIdle(engine, transport);
         assertTrue(frame.isUserAnalysisPaused());
+        assertFalse(engine.isPondering(), "the pause must retire foreground analysis");
+        assertTrue(
+            transport.commands().subList(commandsBeforePause, transport.commands().size())
+                .contains("stop"),
+            "the pause must cross a real stop/ACK barrier before history navigation");
         assertEquals(0.5, engine.komi, 0.0001);
         assertEquals(7.5, engine.orikomi, 0.0001);
         assertEquals(0.5, env.board().getHistory().getGameInfo().getKomi(), 0.0001);
@@ -226,16 +232,17 @@ class HandicapSavedAnalysisPipelineTest {
     }
   }
 
-  private static void pauseAutomaticResume(TestFrame frame, CountDownLatch paused) {
-    try {
-      // Imports deliberately clear the previous game's pause intent. Set the pause after that
-      // transition, as when the user pauses while the new position is being synchronized.
-      setField(LizzieFrame.class, frame, "userAnalysisPaused", true);
-    } catch (Exception failure) {
-      throw new AssertionError(failure);
-    } finally {
-      paused.countDown();
-    }
+  private static void pauseThroughAnalysisControl(TestFrame frame) throws Exception {
+    Method pause = LizzieFrame.class.getDeclaredMethod("pauseFromAnalysisControl");
+    pause.setAccessible(true);
+    SwingUtilities.invokeAndWait(
+        () -> {
+          try {
+            pause.invoke(frame);
+          } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+          }
+        });
   }
 
   private static void assertSavedPayload(
