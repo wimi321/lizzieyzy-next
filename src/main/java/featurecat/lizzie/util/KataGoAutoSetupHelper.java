@@ -1089,6 +1089,7 @@ public final class KataGoAutoSetupHelper {
       }
     }
     if (!needsRewrite
+        && !Lizzie.config.analysisEngineCommandCustomized
         && hasRelativeBundledPath(
             Lizzie.config.uiConfig.optString("analysis-engine-command", ""))) {
       needsRewrite = true;
@@ -1137,11 +1138,12 @@ public final class KataGoAutoSetupHelper {
         }
       }
       boolean repairAnalysis =
-          shouldRepairAuxCommand(
-              Lizzie.config.uiConfig.optString("analysis-engine-command", ""),
-              snapshot.enginePath,
-              snapshot.analysisConfigPath,
-              snapshot.activeWeightPath);
+          !Lizzie.config.analysisEngineCommandCustomized
+              && shouldRepairAuxCommand(
+                  Lizzie.config.uiConfig.optString("analysis-engine-command", ""),
+                  snapshot.enginePath,
+                  snapshot.analysisConfigPath,
+                  snapshot.activeWeightPath);
       if (!(repairDefault || repairAnalysis)) {
         return false;
       }
@@ -2037,6 +2039,13 @@ public final class KataGoAutoSetupHelper {
       engines.add(engineData);
       engineIndex = engines.size() - 1;
     }
+    // Capture ownership before our rewrite; user-edited commands must not regain it by name.
+    boolean managedProfile =
+        BundledKataGoProfile.isManaged(engineData)
+            || BundledKataGoProfile.canMigrate(engineData, snapshot.appRoot)
+            || (createdEngine
+                && (AUTO_SETUP_ENGINE_NAME.equals(resolvedEngineName)
+                    || "KataGo Bundled".equals(resolvedEngineName)));
 
     for (int i = 0; i < engines.size(); i++) {
       EngineData existing = engines.get(i);
@@ -2051,7 +2060,8 @@ public final class KataGoAutoSetupHelper {
       engineData.name = resolvedEngineName;
     }
     engineData.commands = engineCommand;
-    if (BundledKataGoProfile.isDefaultCommand(engineCommand, snapshot.appRoot, false)) {
+    if (managedProfile
+        || BundledKataGoProfile.isDefaultCommand(engineCommand, snapshot.appRoot, false)) {
       BundledKataGoProfile.claim(engineData);
     }
     engineData.preload = createdEngine ? false : engineData.preload;

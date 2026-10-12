@@ -52,6 +52,7 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
@@ -228,7 +229,8 @@ public class Leelaz {
   private enum ExclusiveGtpWritePhase {
     INITIAL_STOP,
     ACTIVE_COMMAND,
-    RELEASE_STOP
+    RELEASE_STOP,
+    RESTORE_PARAMETERS
   }
 
   private enum ExclusiveGtpWriteResult {
@@ -16460,6 +16462,12 @@ public class Leelaz {
       ExclusiveGtpWritePhase phase,
       int expectedCommandId,
       String command) {
+    return writeExclusiveGtpCommandResult(expectedSession, phase, expectedCommandId, command, null);
+  }
+
+  private ExclusiveGtpWriteResult writeExclusiveGtpCommandResult(
+      ExclusiveGtpSession expectedSession, ExclusiveGtpWritePhase phase, int expectedCommandId,
+      String command, Runnable onPhysicalWrite) {
     if (!hasGtpCapability()) {
       return ExclusiveGtpWriteResult.NOT_CLAIMED;
     }
@@ -16473,7 +16481,14 @@ public class Leelaz {
           if (!canWriteExclusiveGtpCommand(expectedSession, phase, expectedCommandId)) {
             return ExclusiveGtpWriteResult.NOT_CLAIMED;
           }
+          if (phase == ExclusiveGtpWritePhase.ACTIVE_COMMAND
+              && command.contains(" kata-search_analyze_cancellable ")) {
+            expectedSession.finiteSearchId = Integer.parseInt(command.substring(0, command.indexOf(' ')));
+            expectedSession.finiteSearchPlayed = false;
+            expectedSession.finiteSearchError = false;
+          }
         }
+        if (onPhysicalWrite != null) onPhysicalWrite.run();
         currentOutputStream.write((command + "\n").getBytes());
         currentOutputStream.flush();
       }
@@ -16494,7 +16509,10 @@ public class Leelaz {
     if (exclusiveGtpSession != expectedSession
         || expectedSession == null
         || expectedSession.closing
-        || expectedSession.restoreCompleted) {
+        || expectedSession.restoreCompleted
+        || expectedSession.readerBinding != readerStreamBinding
+        || expectedSession.readerBinding == null
+        || expectedSession.readerBinding.terminated) {
       return false;
     }
     switch (phase) {
@@ -16509,6 +16527,9 @@ public class Leelaz {
             && expectedSession.releaseRequested
             && !expectedSession.releaseStopFailed
             && expectedSession.releaseStopCommandId == expectedCommandId;
+      case RESTORE_PARAMETERS:
+        return expectedSession.parametersRestoring && expectedSession.releaseRequested
+            && expectedSession.restoringSearchParameters.containsKey(expectedCommandId);
       default:
         return false;
     }
@@ -16529,6 +16550,19 @@ public class Leelaz {
       return false;
     }
     String trimmed = line == null ? "" : line.trim();
+    synchronized (engineArbitrationLock()) {
+      if (trimmed.startsWith("=") || trimmed.startsWith("?")) {
+        session.responseHeaderId = parseResponseCommandId(trimmed);
+        if (session.responseHeaderId == session.finiteSearchId && trimmed.startsWith("?")) {
+          session.finiteSearchError = true;
+        }
+      } else if (session.responseHeaderId == session.finiteSearchId && session.finiteSearchId != 0) {
+        if (trimmed.startsWith("play ")) session.finiteSearchPlayed = true;
+        if (trimmed.isEmpty() && (session.finiteSearchPlayed || session.finiteSearchError)) {
+          session.finiteSearchId = 0;
+        }
+      }
+    }
     if (!session.active) {
       if (trimmed.startsWith("info ")) {
         return true;
@@ -16573,15 +16607,39 @@ public class Leelaz {
         return true;
       }
       boolean restore = false;
+      boolean startParameters = false;
+      boolean parameterFailure = false;
       synchronized (engineArbitrationLock()) {
-        if (exclusiveGtpSession == session
-            && !session.closing
-            && session.releaseStopAcknowledged
-            && trimmed.isEmpty()) {
-          session.closing = true;
-          restore = true;
+        if (exclusiveGtpSession == session && !session.closing) {
+          if (session.parametersRestoring) {
+            if (session.restoringSearchParameters.containsKey(responseCommandId)
+                && trimmed.startsWith("?")) {
+              parameterFailure = true;
+            }
+            if (trimmed.isEmpty()) session.restoringSearchParameters.remove(session.responseHeaderId);
+          }
+          if (trimmed.isEmpty() && session.releaseStopAcknowledged
+              && session.responseHeaderId == session.releaseStopCommandId) {
+            session.releaseStopComplete = true;
+          }
+          if (!parameterFailure && session.releaseStopComplete && session.finiteSearchId == 0) {
+            if (!session.parametersRestoring && !session.originalSearchParameters.isEmpty()) {
+              session.parametersRestoring = true;
+              startParameters = true;
+            } else if (session.restoringSearchParameters.isEmpty()) {
+              session.closing = true;
+              restore = true;
+            }
+          }
         }
       }
+      if (parameterFailure) {
+        // Failure completion takes Board; navigation takes Board before arbitration.
+        failForegroundLeaseRelease(session, ForegroundAnalysisLeaseFailure.RESTORE_FAILED,
+            "search parameter restore failed");
+        return true;
+      }
+      if (startParameters) restoreForegroundSearchParameters(session);
       if (restore) {
         beforeForegroundReleaseRestoreAfterBoundary();
         restoreAfterClosedForegroundLease(session);
@@ -16590,6 +16648,25 @@ public class Leelaz {
     }
     session.lineConsumer.accept(line == null ? "" : line);
     return true;
+  }
+
+  private void restoreForegroundSearchParameters(ExclusiveGtpSession session) {
+    Map<Integer, String> commands = new java.util.LinkedHashMap<>();
+    synchronized (engineArbitrationLock()) {
+      for (Map.Entry<String, String> entry : session.originalSearchParameters.entrySet()) {
+        int id = exclusiveGtpResponseCommandIds.getAndIncrement();
+        session.restoringSearchParameters.put(id, entry.getKey());
+        commands.put(id, "kata-set-param " + entry.getKey() + " " + entry.getValue());
+      }
+    }
+    for (Map.Entry<Integer, String> entry : commands.entrySet()) {
+      if (!writeExclusiveGtpCommand(session, ExclusiveGtpWritePhase.RESTORE_PARAMETERS,
+          entry.getKey(), entry.getKey() + " " + entry.getValue())) {
+        failForegroundLeaseRelease(session, ForegroundAnalysisLeaseFailure.RESTORE_FAILED,
+            "search parameter restore write failed");
+        return;
+      }
+    }
   }
 
 
@@ -17108,6 +17185,14 @@ public class Leelaz {
     private boolean restoreStarted;
     private ForegroundRestoreCapture restoreCapture;
     private String originalRules;
+    private final Map<String, String> originalSearchParameters = new java.util.LinkedHashMap<>();
+    private final Map<Integer, String> restoringSearchParameters = new java.util.LinkedHashMap<>();
+    private boolean parametersRestoring;
+    private int responseHeaderId;
+    private int finiteSearchId;
+    private boolean finiteSearchPlayed;
+    private boolean finiteSearchError;
+    private boolean releaseStopComplete;
     private Runnable afterRestore;
     private Runnable afterRestoreFailure;
     private Thread restoreThread;
@@ -17184,8 +17269,45 @@ public class Leelaz {
       return engine.hasExclusiveGtpLeaseOwnedBy(this);
     }
 
+    public boolean isActiveBuiltInZhizi() {
+      synchronized (engine.engineArbitrationLock()) {
+        ExclusiveGtpSession session = engine.exclusiveGtpSession;
+        return session != null
+            && session.owner == this
+            && session.active
+            && !session.closing
+            && !session.releaseRequested
+            && session.readerBinding != null
+            && session.readerBinding == engine.readerStreamBinding
+            && !session.readerBinding.terminated
+            && session.readerBinding.remoteTransport instanceof ZhiziGtpTransport;
+      }
+    }
+
     public boolean setRestoreRules(String rules) {
       return engine.setForegroundAnalysisLeaseRestoreRules(this, rules);
+    }
+
+    boolean sendFiniteSearch(String command, Runnable onPhysicalWrite) {
+      ExclusiveGtpSession session;
+      synchronized (engine.engineArbitrationLock()) {
+        session = engine.exclusiveGtpSession;
+        if (!isActiveBuiltInZhizi() || session.owner != this) return false;
+      }
+      return engine.writeExclusiveGtpCommandResult(session, ExclusiveGtpWritePhase.ACTIVE_COMMAND,
+          0, command, onPhysicalWrite) == ExclusiveGtpWriteResult.SENT;
+    }
+
+    boolean installSearchParameter(int id, String parameter, String original, String value) {
+      ExclusiveGtpSession session;
+      synchronized (engine.engineArbitrationLock()) {
+        session = engine.exclusiveGtpSession;
+        if (!isActiveBuiltInZhizi() || session.owner != this) return false;
+        // Registration shares release admission; even an uncertain write must be restored.
+        session.originalSearchParameters.putIfAbsent(parameter, original);
+      }
+      return engine.writeExclusiveGtpCommand(session, ExclusiveGtpWritePhase.ACTIVE_COMMAND,
+          0, id + " kata-set-param " + parameter + " " + value);
     }
 
     public boolean release(Runnable afterRestore, Runnable afterRestoreFailure) {

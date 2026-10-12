@@ -109,7 +109,6 @@ public class SGFParser {
         adoptCurrentHistoryExternalRules();
       }
       applySgfKomiForSetupGameWhenReadKomiDisabled();
-      discardImportedAnalysisIfGameKomiDiffersFromEngineDefault();
 
       SwingUtilities.invokeLater(
           new Runnable() {
@@ -194,7 +193,6 @@ public class SGFParser {
         adoptCurrentHistoryExternalRules();
       }
       applySgfKomiForSetupGameWhenReadKomiDisabled();
-      discardImportedAnalysisIfGameKomiDiffersFromEngineDefault();
       if (Lizzie.config.loadSgfLast)
         while (Lizzie.board.nextMove(false))
           ;
@@ -244,21 +242,6 @@ public class SGFParser {
       return;
     }
     parsedRootKomi(history.getStart()).ifPresent(komi -> history.getGameInfo().setKomi(komi));
-  }
-
-  private static void discardImportedAnalysisIfGameKomiDiffersFromEngineDefault() {
-    BoardHistoryList history = currentHistory();
-    if (history == null) {
-      return;
-    }
-    double gameKomi = parsedRootKomi(history.getStart()).orElse(history.getGameInfo().getKomi());
-    if (!isSetupOrHandicapGame(history)) {
-      return;
-    }
-    if (Math.abs(gameKomi - GameInfo.DEFAULT_KOMI) < 0.0001) {
-      return;
-    }
-    clearImportedAnalysisPayloads(history.getStart());
   }
 
   private static BoardHistoryList currentHistory() {
@@ -384,27 +367,6 @@ public class SGFParser {
     }
     String value = rootProperties.get(propertyName);
     return value != null && value.toLowerCase(Locale.ROOT).contains(needle);
-  }
-
-  private static void clearImportedAnalysisPayloads(BoardHistoryNode start) {
-    if (start == null) {
-      return;
-    }
-    ArrayDeque<BoardHistoryNode> pending = new ArrayDeque<>();
-    pending.push(start);
-    while (!pending.isEmpty()) {
-      BoardHistoryNode node = pending.pop();
-      if (node.getData().hasAnyAnalysisPayload()) {
-        node.getData().clearAnalysisPayloadState();
-        node.nodeInfo = new NodeInfo();
-        node.nodeInfoMain = new NodeInfo();
-        node.nodeInfo2 = new NodeInfo();
-        node.nodeInfoMain2 = new NodeInfo();
-      }
-      for (int i = node.numberOfChildren() - 1; i >= 0; i--) {
-        pending.push(node.getVariations().get(i));
-      }
-    }
   }
 
   public static boolean loadFromStringforedit(String sgfString) {

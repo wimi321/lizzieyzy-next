@@ -293,7 +293,7 @@ final class AutomaticQuickAnalysisEngineAdapter implements AutomaticQuickAnalysi
               int count;
               synchronized (dispatchLock) {
                 if (!ownsWorker()) return;
-                count = engine.startRequestMissingMainline(false);
+                count = engine.startAutomaticQuickAnalysisRequest(this);
               }
               if (count == 0)
                 onEdt(() -> complete(false, ForegroundRestoreResult.NOT_REQUIRED, finished));
@@ -348,6 +348,7 @@ final class AutomaticQuickAnalysisEngineAdapter implements AutomaticQuickAnalysi
         return;
       }
       released = true;
+      engine.retireAutomaticQuickAnalysisRequest(this);
       if (transfer || (requestFinished && !requestFailed && !engine.isAutomaticBackgroundTask())) {
         background(
             "automatic-quick-analysis-return",
@@ -355,12 +356,14 @@ final class AutomaticQuickAnalysisEngineAdapter implements AutomaticQuickAnalysi
               synchronized (dispatchLock) {
                 engine.clearRequestCallbacks();
               }
-              onEdt(
-                  () -> {
-                    if (owner == this) owner = null;
-                    finished.accept(requestRestore);
-                    if (!transfer) ensureWorker();
-                  });
+              engine.returnAutomaticQuickAnalysisUse(
+                  restore -> onEdt(
+                      () -> {
+                        if (owner == this) owner = null;
+                        finished.accept(requestRestore == ForegroundRestoreResult.FAILED
+                            || restore == ForegroundRestoreResult.NOT_REQUIRED ? requestRestore : restore);
+                        if (!transfer) ensureWorker();
+                      }));
             });
         return;
       }

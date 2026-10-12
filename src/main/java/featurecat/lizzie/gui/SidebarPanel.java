@@ -2,8 +2,6 @@ package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Lizzie;
 import java.awt.*;
-import java.awt.event.*;
-import java.awt.geom.*;
 import java.util.function.Consumer;
 import javax.swing.*;
 
@@ -55,16 +53,7 @@ public class SidebarPanel extends JPanel {
 
     // Blunders Container
     blunderListPanel = new BlunderListPanel();
-    JScrollPane blunderScrollPane = new JScrollPane(blunderListPanel);
-    blunderScrollPane.setOpaque(false);
-    blunderScrollPane.getViewport().setOpaque(false);
-    blunderScrollPane.setBorder(BorderFactory.createEmptyBorder());
-    blunderScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-    blunderScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
-    blunderScrollPane.getVerticalScrollBar().setUnitIncrement(16);
-    blunderScrollPane.getVerticalScrollBar().setUI(new DemoScrollBarUI());
-
-    cardPanel.add(blunderScrollPane, "BLUNDERS");
+    cardPanel.add(blunderListPanel, "BLUNDERS");
 
     add(cardPanel, BorderLayout.CENTER);
 
@@ -123,113 +112,46 @@ public class SidebarPanel extends JPanel {
   @Override
   protected void paintComponent(Graphics g) {
     super.paintComponent(g);
-    Graphics2D g2 = (Graphics2D) g.create();
-    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-    int width = getWidth();
-    int height = getHeight();
-    int cornerRadius = Lizzie.config.isAppleStyle ? Math.max(14, glassCornerRadius() + 8) : 12;
-    int shadowInset = 5;
-    int panelX = 1;
-    int panelY = 1;
-    int panelW = Math.max(0, width - 2);
-    int panelH = Math.max(0, height - 2);
-
-    Color commentFill =
+    g.setColor(
         resolveCommentPanelFillColor(
-            Lizzie.config.commentBackgroundColor, Lizzie.config.isAppleStyle);
-    if (!Lizzie.config.isAppleStyle) {
-      g2.setColor(commentFill);
-      g2.fillRoundRect(panelX, panelY, panelW, panelH, cornerRadius, cornerRadius);
-      g2.setColor(new Color(255, 255, 255, 18));
-      g2.drawRoundRect(panelX, panelY, panelW - 1, panelH - 1, cornerRadius, cornerRadius);
-      g2.dispose();
-      return;
-    }
-
-    Color accent = glassAccentColor();
-    Color overlay = glassPanelOverlayColor();
-    Color shadowColor = glassPanelShadowColor();
-
-    g2.setPaint(withAlpha(shadowColor, Math.max(90, shadowColor.getAlpha() + 32)));
-    g2.fillRoundRect(
-        panelX + shadowInset,
-        panelY + shadowInset,
-        Math.max(0, panelW - shadowInset),
-        Math.max(0, panelH - shadowInset),
-        cornerRadius,
-        cornerRadius);
-
-    RadialGradientPaint accentGlow =
-        new RadialGradientPaint(
-            new Point2D.Float(panelW * 0.72f, panelH * 0.02f),
-            Math.max(panelW, panelH) * 0.9f,
-            new float[] {0.0f, 0.35f, 1.0f},
-            new Color[] {
-              withAlpha(accent, 44), new Color(255, 255, 255, 8), new Color(0, 0, 0, 0)
-            });
-    g2.setPaint(accentGlow);
-    g2.fillRoundRect(panelX, panelY, panelW, panelH, cornerRadius, cornerRadius);
-
-    LinearGradientPaint bodyFill =
-        new LinearGradientPaint(
-            0,
-            0,
-            0,
-            Math.max(1, panelH),
-            new float[] {0.0f, 0.45f, 1.0f},
-            new Color[] {
-              withAlpha(commentFill, clampAlpha(commentFill.getAlpha() + 30)),
-              withAlpha(blend(commentFill, overlay, 0.22), commentFill.getAlpha()),
-              withAlpha(blend(commentFill, new Color(18, 22, 28), 0.28), commentFill.getAlpha())
-            });
-    g2.setPaint(bodyFill);
-    g2.fillRoundRect(panelX, panelY, panelW, panelH, cornerRadius, cornerRadius);
-
-    g2.setPaint(withAlpha(glassPanelBorderColor(), 72));
-    g2.drawRoundRect(panelX, panelY, panelW - 1, panelH - 1, cornerRadius, cornerRadius);
-
-    g2.setPaint(new Color(255, 255, 255, 14));
-    g2.drawRoundRect(
-        panelX + 1, panelY + 1, panelW - 3, panelH - 3, cornerRadius - 2, cornerRadius - 2);
-
-    g2.dispose();
+            Lizzie.config.commentBackgroundColor, Lizzie.config.isAppleStyle));
+    g.fillRect(0, 0, getWidth(), getHeight());
+    g.setColor(rowSeparatorColor());
+    g.drawRect(0, 0, Math.max(0, getWidth() - 1), Math.max(0, getHeight() - 1));
   }
 
-  private Color glassPanelOverlayColor() {
-    return Lizzie.config != null && Lizzie.config.theme != null
-        ? Lizzie.config.theme.glassPanelOverlayColor()
-        : new Color(24, 24, 26, 102);
+  private static boolean darkSurface() {
+    Color color =
+        Lizzie.config == null
+            ? new Color(30, 33, 38)
+            : resolveCommentPanelFillColor(
+                Lizzie.config.commentBackgroundColor, Lizzie.config.isAppleStyle);
+    return color.getRed() * 0.2126 + color.getGreen() * 0.7152 + color.getBlue() * 0.0722 < 140;
   }
 
-  private Color glassPanelBorderColor() {
-    return Lizzie.config != null && Lizzie.config.theme != null
-        ? Lizzie.config.theme.glassPanelBorderColor()
-        : new Color(255, 255, 255, 26);
+  static Color primaryTextColor() {
+    return darkSurface() ? new Color(239, 242, 241) : new Color(28, 34, 32);
   }
 
-  private Color glassPanelHighlightColor() {
-    return Lizzie.config != null && Lizzie.config.theme != null
-        ? Lizzie.config.theme.glassPanelHighlightColor()
-        : new Color(255, 255, 255, 77);
+  static Color secondaryTextColor() {
+    return darkSurface() ? new Color(185, 195, 191) : new Color(72, 83, 79);
   }
 
-  private Color glassPanelShadowColor() {
-    return Lizzie.config != null && Lizzie.config.theme != null
-        ? Lizzie.config.theme.glassPanelShadowColor()
-        : new Color(0, 0, 0, 64);
+  static Color accentTextColor() {
+    return darkSurface() ? new Color(105, 211, 186) : new Color(18, 107, 98);
   }
 
-  private Color glassAccentColor() {
-    return Lizzie.config != null && Lizzie.config.theme != null
-        ? Lizzie.config.theme.glassAccentColor()
-        : new Color(96, 165, 250);
+  static Color lossTextColor() {
+    return darkSurface() ? new Color(255, 176, 164) : new Color(155, 43, 35);
   }
 
-  private int glassCornerRadius() {
-    return Lizzie.config != null && Lizzie.config.theme != null
-        ? Lizzie.config.theme.glassCornerRadius()
-        : 12;
+  static Color rowSeparatorColor() {
+    return darkSurface() ? new Color(255, 255, 255, 28) : new Color(0, 0, 0, 24);
+  }
+
+  static Color rowHighlightColor(boolean selected) {
+    Color accent = accentTextColor();
+    return new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), selected ? 25 : 12);
   }
 
   static Color resolveCommentPanelFillColor(Color configuredColor, boolean appleStyle) {
@@ -243,21 +165,7 @@ public class SidebarPanel extends JPanel {
         clampAlpha(configuredColor.getAlpha()));
   }
 
-  private static Color blend(Color base, Color overlay, double overlayRatio) {
-    double baseRatio = 1.0 - overlayRatio;
-    return new Color(
-        clampAlpha((int) Math.round(base.getRed() * baseRatio + overlay.getRed() * overlayRatio)),
-        clampAlpha(
-            (int) Math.round(base.getGreen() * baseRatio + overlay.getGreen() * overlayRatio)),
-        clampAlpha((int) Math.round(base.getBlue() * baseRatio + overlay.getBlue() * overlayRatio)),
-        base.getAlpha());
-  }
-
   private static int clampAlpha(int alpha) {
     return Math.max(0, Math.min(255, alpha));
-  }
-
-  private Color withAlpha(Color color, int alpha) {
-    return new Color(color.getRed(), color.getGreen(), color.getBlue(), clampAlpha(alpha));
   }
 }

@@ -98,6 +98,8 @@ ReadBoard 协议里的 `pass` 行在自动落子/交换顺序链路中表示用�
 - 这些被隔离的 live state 包含 `hasStartStone/startStonelist`、player title、komi、引擎 komi/best-move 等当前窗口状态；相关副作用只允许在调用方显式采用解析结果后发生。
 - SGF 分析标签 `LZ` / `LZ2` / `LZOP` / `LZOP2`（含双引擎对应 payload）在 detached `parseSgf(...)` 阶段必须写入解析目标 history/node 的 `BoardData`，不能读写或覆盖当前 live board 的分析字段。
 - detached `parseSgf(...) -> setHistory(...) -> saveToString(...)` round-trip 必须保留 analysis payload（`engineName` / `engineName2`、playouts、best-move 列表）。
+- 文件和字符串 SGF 导入保留谱内已保存的 analysis payload；让子／setup 或 `KM` 不等于默认贴目本身不构成分析失效证据，不能据此清空全谱缓存。让子／setup 导入继续采用谱内贴目并按既有流程同步引擎。
+- 启用 Lizzie 缓存时，导航回载入的已分析节点后，普通新分析流只有在可比计算量超过已保存值时才替换候选点、胜率、目差与变化图；既有显式缓存失效、PDA 变化、专用分析模式和 ownership 单独补全规则保持不变。
 - 文件、字符串、编辑态和 detached SGF 导入统一兼容属性值之外、结构空白位置的字面量 `\n` 与 `\r\n`；属性值原文继续交给既有 SGF 转义解析，不全文反转义，不改写输入文件。
 - 未知结构转义、双重包装、被转义换行拆开的属性名，以及含本次结构转义的未闭合树/属性值，必须导入失败；live 入口保留原棋谱，detached 入口返回 `null`。普通 SGF 的既有无关容错保持不变。
 - detached 与 live 导入都把 `RE` 保存为 `GameInfo.result`；不能将结果伪造成根或末节点注释，保存重开保持真实注释与对局结果。
@@ -218,6 +220,16 @@ ReadBoard 协议里的 `pass` 行在自动落子/交换顺序链路中表示用�
 - 自动快析借用的前台租约在归还时失败（最终 stop 发送失败、错误或超时，或规则／盘面恢复失败）后，`Leelaz` 把 owner 已记录的失败原因绑定到该租约实际借用的 reader incarnation，并在 EDT 发布时绑定当时的 primary generation；reader、primary 选择或实例变化后该记录不再适用，只有新 reader 的合法启动与恢复确认才使引擎重新可分析。租约未激活前的初始 stop 失败不是归还失败，沿用既有 fail-closed 处理；transport 关闭沿用引擎 down 处理；手动闪电分析保留既有提示。窗口只消费当前记录：状态区域分两行显示“引擎状态未恢复”与失败类别、既有“重启当前引擎”菜单，不再回退为“加载中”；分析按钮呈现为未计算并在 tooltip 给出同一指引。空格、按钮等显式继续被该状态拒绝时只显示同一份非模态恢复说明（最多一份同时显示），说明归属产生它的 reader，失败不再适用时自动关闭；拒绝时不修改用户暂停意图、不登记 pending resume、不同步盘面、不发送分析或重启引擎。`isLoaded=false` 与既有 readiness 门禁不放宽，导航、换谱和关闭提示都不清除该状态。
 - 当前 reader 的归还失败检查优先于分析控件对 active 自动任务的暂停判定：即使主线仍缺结果、自动任务正在退避重试，首次空格／分析按钮操作也只显示同一恢复说明，不取消任务或改变暂停意图。健康自动任务仍按原语义暂停／取消。
 - 前台租约的初始 stop 响应由租约 owner 直接消费，不经过普通 pending-response 匹配或未匹配响应隔离。仅租约捕获且仍为当前、未终止的 reader 上的精确 stop 编号成功 ACK 加终止空行才能激活；ACK 本身、错误编号、旧 reader 或缺失空行均不能激活。其他严格编号请求仍待回复时，不得截获该合法 ACK；错误、发送失败和超时保持既有 fail-closed 语义。
+- 自动棋谱快析通过本次使用凭据显式进入准备策略，包含复用预加载 worker；worker 构造用途、静默请求、显示名及 `useRemoteCompute` 均不授予流水资格。仅合法激活且实际 reader 绑定内置 `ZhiziGtpTransport` 的前台分析租约可启用最多 8 条在途准备命令。
+- 窗口只覆盖同一局面的连续真实 `play`（MOVE／PASS）；原规则捕获、元信息及 `set_position` 静态锚点保持确认屏障。逐条独立编号并在物理写出前登记义务；全部必要准备成功才发送一次分析，setup／dummy PASS 不进入真实重放。
+- 任一准备错误、发送失败或最早未结清义务超时均停止补发和该局面分析，沿用失败通知与真实租约归还结果；后续成功不刷新更早命令的截止时间。重复、迟到及无关编号与其终止空行不结算分析或最终 stop。
+- 使用权退休立即撤销新的发送许可，不等待已获许可的物理写出；后者由既有停止／恢复流程收敛。旧请求、reader 及 timeout 不推进后继使用者；手动接管不继承自动流水策略。本地、其他远程后端及非自动分析保持既有行为。
+- 同一自动用途凭据与实际内置智子 reader 的前台租约可在完整编号 `list_commands` 确认 `kata-search_analyze_cancellable`、`kata-get-param`、`kata-set-param`、`stop` 后选择有限搜索；每租约只选择一次。明确缺能力沿用持续分析，查询错误、畸形或超时失败；本地、其他远程与非自动请求保持原策略。
+- 有限搜索先以四条独立编号命令完整捕获 `maxVisits/maxPlayouts/maxTime/ponderingEnabled`，再以四条独立编号命令安装原批次 visits、同值 playouts、`1e20`、`false`；全部捕获成功前不覆盖，全部覆盖完整确认前不准备局面。各阶段固定截止不被后续 ACK 延长，参数小批次不扩大真实 play 窗口。租约在写出前持有原值及恢复义务，取消或不确定写出不能丢弃该义务。
+- 每节点以编号有限搜索的成功头、有效候选及 root visits、非取消 `play` 和终止空行为完成边界；root visits 至少达到原目标才通过同一结果准入采纳一次。选点不执行落子，不要求等于第一候选；中间 info 不触发逐节点 stop 或提前发布。完成 watchdog 从物理发送起计时，info 不续期。
+- 智子有限命令使用 `10000` 厘秒输出间隔，以取得自然结束时完整预算的最后 payload；持续分析保留既有输出间隔。该间隔不改变 visits/playouts 预算、不延长完成 watchdog，也不替代完整终态与 root visits 准入。
+- 有限搜索归还保留租约最终 stop，并等待原搜索终态与该 stop 的精确完整响应；随后由同一租约在原 reader 恢复所有可能覆盖的参数，全部成功确认后进入既有规则、最新棋盘和稳定恢复屏障。参数错误、缺 ACK、超时或 reader 替换均不能由后续 name 成功覆盖。恢复 ponder 参数不授予分析；预加载手动移交也等待该边界，用户暂停后的继续只恢复前台。
+- 参数恢复错误在引擎仲裁锁内判定归属，完整失败收尾在锁外执行；失败回调与 Board 导航采用的锁顺序兼容，必须结清一次失败并保持引擎不可用，不启动后继分析。
 
 ## ReadBoard 单次同步分析恢复（Issue #429 / Ticket 03）
 

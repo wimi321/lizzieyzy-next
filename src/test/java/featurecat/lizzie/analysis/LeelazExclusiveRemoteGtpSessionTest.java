@@ -52,6 +52,194 @@ class LeelazExclusiveRemoteGtpSessionTest {
   }
 
   @Test
+  void preparationCapabilityRequiresAnActiveLeaseOnTheActualZhiziReader() throws Exception {
+    for (boolean zhizi : List.of(false, true)) {
+      Leelaz engine = reusableKatagoEngine(false, false);
+      ByteArrayOutputStream output = installOutput(engine);
+      try (var transport = new featurecat.lizzie.analysis.remote.ZhiziGtpTransport(null, "", "--kata-weight 10b512t");
+          ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.install(engine)) {
+        Field readerField = Leelaz.class.getDeclaredField("readerStreamBinding");
+        readerField.setAccessible(true);
+        Object reader = readerField.get(engine);
+        if (zhizi) {
+          Field transportField = reader.getClass().getDeclaredField("remoteTransport");
+          transportField.setAccessible(true);
+          transportField.set(reader, transport);
+        }
+        var acquisition = engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {}, false);
+        var lease = acquisition.lease();
+        assertNotNull(lease);
+        assertFalse(lease.isActiveBuiltInZhizi());
+        String stop = output.toString(StandardCharsets.UTF_8).trim();
+        dispatch(engine, "=" + stop.substring(0, stop.indexOf(' ')));
+        assertFalse(lease.isActiveBuiltInZhizi(), "initial stop needs its terminating blank line");
+        dispatch(engine, "");
+        assertEquals(zhizi, lease.isActiveBuiltInZhizi());
+        lease.release(() -> {}, () -> {});
+        assertFalse(lease.isActiveBuiltInZhizi());
+        engine.installFreshCommandOutputForTest(new ByteArrayOutputStream());
+        assertFalse(lease.isActiveBuiltInZhizi(), "a replacement reader cannot inherit eligibility");
+      }
+    }
+  }
+
+  @Test
+  void finiteHandbackRequiresSearchTerminalEvenWhenFinalStopCompletesFirst() throws Exception {
+    try (RestoreHarness harness = RestoreHarness.open(false, false, true);
+        var transport = new featurecat.lizzie.analysis.remote.ZhiziGtpTransport(null, "", "--kata-weight 10b512t")) {
+      bindZhiziReader(harness.engine, transport);
+      harness.board.restoreHistory = new BoardHistoryList(BoardData.empty(19, 19));
+      assertTrue(harness.owner.installSearchParameter(101, "maxVisits", "999", "16"));
+      assertTrue(harness.engine.sendExclusiveGtpCommand("102 kata-search_analyze_cancellable B 1 rootInfo true"));
+      assertTrue(harness.owner.release(harness.completions::incrementAndGet, () -> {}));
+      String stop = harness.output.toString(StandardCharsets.UTF_8).lines().reduce((a, b) -> b).orElseThrow();
+      dispatch(harness.engine, "=" + stop.split(" ")[0]);
+      dispatch(harness.engine, "");
+      assertFalse(harness.output.toString(StandardCharsets.UTF_8).contains("kata-set-param maxVisits 999"));
+      assertEquals(0, harness.board.resendCount);
+      dispatch(harness.engine, "=102");
+      dispatch(harness.engine, "play cancelled");
+      assertEquals(0, harness.board.resendCount);
+      dispatch(harness.engine, "");
+      String restore = harness.output.toString(StandardCharsets.UTF_8).lines().reduce((a, b) -> b).orElseThrow();
+      assertTrue(restore.endsWith("kata-set-param maxVisits 999"));
+      dispatch(harness.engine, "=" + restore.split(" ")[0]);
+      assertEquals(0, harness.board.resendCount);
+      dispatch(harness.engine, "");
+      waitUntil(() -> harness.board.resendCount == 1);
+      completeForegroundRestore(harness.engine);
+      waitUntil(() -> harness.completions.get() == 1);
+    }
+  }
+
+  @Test
+  void parameterRestoreErrorAllowsSnapshotNavigationAndCompletesFailureOnce() throws Exception {
+    try (RestoreHarness harness = RestoreHarness.open(false, false, true);
+        var transport = new featurecat.lizzie.analysis.remote.ZhiziGtpTransport(null, "", "--kata-weight 10b512t")) {
+      bindZhiziReader(harness.engine, transport);
+      assertTrue(harness.owner.installSearchParameter(101, "maxVisits", "999", "16"));
+      AtomicInteger failed = new AtomicInteger();
+      assertTrue(harness.owner.release(harness.completions::incrementAndGet, failed::incrementAndGet));
+      String stop = harness.output.toString(StandardCharsets.UTF_8).lines().reduce((a, b) -> b).orElseThrow();
+      dispatch(harness.engine, "=" + stop.split(" ")[0]);
+      dispatch(harness.engine, "");
+      String restore = harness.output.toString(StandardCharsets.UTF_8).lines().reduce((a, b) -> b).orElseThrow();
+      assertTrue(restore.endsWith("kata-set-param maxVisits 999"));
+      String rejection = "?" + restore.split(" ")[0] + " parameter rejected";
+      AtomicReference<Throwable> readerFailure = new AtomicReference<>();
+      Thread reader = new Thread(() -> {
+        try { dispatch(harness.engine, rejection); }
+        catch (Throwable failure) { readerFailure.set(failure); }
+      }, "parameter-restore-error-reader");
+      Method lockMethod = Leelaz.class.getDeclaredMethod("engineArbitrationLock");
+      lockMethod.setAccessible(true);
+      Object arbitration = lockMethod.invoke(harness.engine);
+      var threads = java.lang.management.ManagementFactory.getThreadMXBean();
+      boolean heldArbitration;
+      boolean navigationReturned = false;
+      try {
+        synchronized (harness.board) {
+          reader.start();
+          waitUntil(() -> {
+            var info = threads.getThreadInfo(reader.getId());
+            return info != null && info.getThreadState() == Thread.State.BLOCKED
+                && info.getLockOwnerId() == Thread.currentThread().getId();
+          });
+          var info = threads.getThreadInfo(new long[] {reader.getId()}, true, false)[0];
+          heldArbitration = java.util.Arrays.stream(info.getLockedMonitors())
+              .anyMatch(monitor -> monitor.getIdentityHashCode() == System.identityHashCode(arbitration));
+          // Gate navigation on the proven lock boundary: a regression fails without stranding threads.
+          if (!heldArbitration) {
+            try { harness.engine.captureHistoryNavigationExactSnapshotRestoreAdmission(null); }
+            catch (Leelaz.ExactSnapshotRestoreAdmissionException expectedUnavailable) { }
+            navigationReturned = true;
+          }
+        }
+      } finally {
+        reader.join(3000L);
+      }
+      assertFalse(reader.isAlive());
+      assertEquals(null, readerFailure.get());
+      assertFalse(heldArbitration, "parameter failure must release arbitration before waiting for Board");
+      assertTrue(navigationReturned);
+      dispatch(harness.engine, rejection);
+      dispatch(harness.engine, "");
+      assertEquals(1, failed.get());
+      assertEquals(0, harness.completions.get());
+      assertFalse(harness.engine.isLoaded());
+      assertEquals(0, harness.engine.ponderCount);
+    }
+  }
+
+  @Test
+  void missingParameterRestoreBoundaryTimesOutDespiteUnrelatedNameSuccess() throws Exception {
+    try (RestoreHarness harness = RestoreHarness.open(false, false, true);
+        var transport = new featurecat.lizzie.analysis.remote.ZhiziGtpTransport(null, "", "--kata-weight 10b512t")) {
+      bindZhiziReader(harness.engine, transport);
+      assertTrue(harness.owner.installSearchParameter(101, "ponderingEnabled", "true", "false"));
+      harness.engine.releaseStopTimeoutMillis = 100L;
+      AtomicInteger failed = new AtomicInteger();
+      assertTrue(harness.owner.release(harness.completions::incrementAndGet, failed::incrementAndGet));
+      String stop = harness.output.toString(StandardCharsets.UTF_8).lines().reduce((a, b) -> b).orElseThrow();
+      dispatch(harness.engine, "=" + stop.split(" ")[0]);
+      dispatch(harness.engine, "");
+      String restore = harness.output.toString(StandardCharsets.UTF_8).lines().reduce((a, b) -> b).orElseThrow();
+      dispatch(harness.engine, "=" + restore.split(" ")[0]);
+      dispatch(harness.engine, "=199999999 KataGo");
+      dispatch(harness.engine, "");
+      waitUntil(() -> failed.get() == 1);
+      assertEquals(0, harness.completions.get());
+      assertEquals(0, harness.board.resendCount);
+      assertFalse(harness.engine.isLoaded());
+      assertEquals(0, harness.engine.ponderCount);
+    }
+  }
+
+  private static void bindZhiziReader(Leelaz engine,
+      featurecat.lizzie.analysis.remote.ZhiziGtpTransport transport) throws Exception {
+    Field readerField = Leelaz.class.getDeclaredField("readerStreamBinding");
+    readerField.setAccessible(true);
+    Object reader = readerField.get(engine);
+    Field transportField = reader.getClass().getDeclaredField("remoteTransport");
+    transportField.setAccessible(true);
+    transportField.set(reader, transport);
+  }
+
+  @Test
+  void outstandingPreparationRepliesCannotReleaseLeaseOrResumePausedPonder() throws Exception {
+    try (RestoreHarness harness = RestoreHarness.open(true, false, true)) {
+      List<Integer> outstanding = List.of(101, 102, 103, 104, 105, 106, 107, 108);
+      List<String> moves = List.of("B D4", "W Q16", "B D16", "W Q4", "B C6", "W R3", "B F3", "W R14");
+      for (int i = 0; i < outstanding.size(); i++) {
+        assertTrue(harness.engine.sendExclusiveGtpCommand(outstanding.get(i) + " play " + moves.get(i)));
+      }
+      Method pause = LizzieFrame.class.getDeclaredMethod("pauseFromAnalysisControl");
+      pause.setAccessible(true);
+      pause.invoke(Lizzie.frame);
+      harness.board.currentMarker = 7;
+      String rules = "{\"koRule\":\"POSITIONAL\",\"scoringRule\":\"AREA\",\"taxRule\":\"NONE\"}";
+      assertTrue(harness.owner.setRestoreRules(rules));
+      assertTrue(harness.owner.release(harness.completions::incrementAndGet, () -> {}));
+      String finalStop = harness.output.toString(StandardCharsets.UTF_8).lines().reduce((a, b) -> b).get();
+      assertFalse(harness.engine.sendExclusiveGtpCommand("109 play W Q16"));
+      for (int id : outstanding) {
+        dispatch(harness.engine, "=" + id);
+        dispatch(harness.engine, "");
+      }
+      assertEquals(0, harness.board.resendCount);
+      assertEquals(0, harness.completions.get());
+      dispatch(harness.engine, "=" + finalStop.substring(0, finalStop.indexOf(' ')));
+      dispatch(harness.engine, "");
+      waitUntil(() -> harness.board.resendCount == 1);
+      assertEquals(7, harness.board.restoredMarker);
+      assertTrue(harness.output.toString(StandardCharsets.UTF_8).contains("kata-set-rules " + rules));
+      completeForegroundRestore(harness.engine);
+      waitUntil(() -> harness.completions.get() == 1);
+      assertEquals(0, harness.engine.ponderCount);
+    }
+  }
+
+  @Test
   void initialStopCompletesThroughReaderWhileAnotherStrictRequestIsPending() throws Exception {
     Leelaz engine = reusableKatagoEngine(false, false);
     installInput(engine, "=800000001\n\n=800000000\n\n");

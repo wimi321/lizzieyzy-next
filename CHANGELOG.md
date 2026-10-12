@@ -4,6 +4,11 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Prevent repeated bundled KataGo profile creation across restarts when a manual default engine and a custom analysis command use different weights. Keep Auto Setup ownership and selected weights, including explicitly selected legacy weights, across renaming and restarts, while preserving user-edited commands and historical entries with unconfirmed ownership.
+- Use cancellable, visits-bounded searches for eligible built-in Zhizi automatic game analysis after checking capabilities. Accept complete natural results without per-position stop commands, and restore borrowed search parameters, rules and the latest board before cancellation or manual handoff releases the engine. Other engines and unsupported sessions retain their existing analysis path.
+- Set eligible Zhizi finite searches to a 10000-centisecond output interval so natural completion exposes the completed root budget. Keep continuous-analysis intervals, visit budgets, terminal validation and recovery unchanged.
+- Complete failed Zhizi search-parameter restoration outside engine arbitration so concurrent snapshot navigation can return and the borrowed engine is marked unavailable exactly once.
+- Align automatic-analysis regression fixtures with explicit request ownership and reader-bound foreground leases, preserving manual Yike completion coverage.
 - Keep pending game imports recoverable when comparison mode is exited during a local engine restart, including exit before the queued restart notification is delivered: retain the admitted restart token, then reconfirm the remaining primary engine before releasing the import gate and resuming analysis.
 - Show foreground recovery guidance on the first Space or analysis-button operation even while automatic quick analysis is retrying after a failed handback; preserve pause intent and the task, while keeping normal pause/cancel behavior for healthy engines.
 - Resume pending game synchronization after an explicit local engine restart, so changing games after a quick-analysis handback failure no longer leaves Space blocked. Reconfirm rules and position on the new reader, preserve pause and failure gates, and reject stale game or engine callbacks.

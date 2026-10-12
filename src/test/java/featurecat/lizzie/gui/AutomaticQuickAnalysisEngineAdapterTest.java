@@ -182,20 +182,34 @@ class AutomaticQuickAnalysisEngineAdapterTest {
     Consumer<ForegroundRestoreResult> oldFailure = worker.failure;
     worker.succeed(ForegroundRestoreResult.NOT_REQUIRED);
     flushEdt();
-    onEdt(() -> first.release(false));
+    onEdt(
+        () -> {
+          assertSame(first.use, worker.automaticUse);
+          first.release(false);
+          assertNull(worker.automaticUse);
+          assertEquals(List.of(first.use), worker.retiredUses);
+          assertTrue(first.releases.isEmpty());
+          assertNotNull(worker.completion, "Physical return has not run yet");
+        });
     executor.run(RETURN);
     onEdt(
         () -> {
           second.acquire();
           second.request();
+        });
+    executor.run(REQUEST);
+    onEdt(
+        () -> {
           first.registration.cancel();
           first.release(false);
           assertSame(worker, adapter.ownedEngine());
+          assertSame(second.use, worker.automaticUse);
+          assertEquals(List.of(first.use), worker.retiredUses);
         });
     oldCompletion.accept(ForegroundRestoreResult.FAILED);
     oldFailure.accept(ForegroundRestoreResult.FAILED);
     flushEdt();
-    executor.run(REQUEST);
+    assertSame(second.use, worker.automaticUse);
     worker.succeed(ForegroundRestoreResult.SUCCEEDED);
     flushEdt();
 
@@ -282,7 +296,16 @@ class AutomaticQuickAnalysisEngineAdapterTest {
     executor.run(REQUEST);
     worker.succeed(ForegroundRestoreResult.NOT_REQUIRED);
     flushEdt();
-    onEdt(() -> consumer.release(false));
+    onEdt(
+        () -> {
+          assertFalse(worker.automatic, "Preload retains its reusable worker policy");
+          assertSame(consumer.use, worker.automaticUse);
+          consumer.release(false);
+          assertNull(worker.automaticUse);
+          assertEquals(List.of(consumer.use), worker.retiredUses);
+          assertTrue(consumer.releases.isEmpty());
+          assertTrue(worker.live);
+        });
     executor.run(RETURN);
     onEdt(
         () -> {
@@ -337,31 +360,62 @@ class AutomaticQuickAnalysisEngineAdapterTest {
 
   @Test
   void transferSuppressesQueuedAutomaticDispatchWithoutStoppingManualReuse() throws Exception {
+    assertManualHandoff(false);
+  }
+
+  @Test
+  void transferRetiresActiveAutomaticRequestBeforeDeferredManualHandoff() throws Exception {
+    assertManualHandoff(true);
+  }
+
+  private void assertManualHandoff(boolean dispatched) throws Exception {
     PhysicalWorker worker = worker();
+    worker.delayTransfer = dispatched;
     Client automatic = new Client();
     onEdt(automatic::acquire);
     executor.run(STARTUP);
+    onEdt(automatic::request);
+    if (dispatched) {
+      executor.run(REQUEST);
+      assertSame(automatic.use, worker.automaticUse);
+    }
     onEdt(
         () -> {
-          automatic.request();
+          assertEquals(dispatched, worker.lifecycle);
           assertTrue(automatic.use.inProgress());
           automatic.release(true);
+          assertEquals(List.of(automatic.use), worker.retiredUses);
+          assertTrue(automatic.releases.isEmpty());
+          assertNull(worker.automaticUse);
+          assertTrue(worker.live);
+          assertNotNull(worker.completion, "Retirement precedes deferred callback cleanup");
         });
     Consumer<ForegroundRestoreResult> staleCompletion = worker.completion;
+    Consumer<ForegroundRestoreResult> staleFailure = worker.failure;
     // The manual owner is authorized only once the transfer callback has run.
     executor.run(RETURN);
+    if (dispatched) {
+      onEdt(() -> {
+        assertTrue(automatic.releases.isEmpty(), "manual use must wait for finite parameter handback");
+        assertSame(worker, Lizzie.frame.analysisEngine);
+      });
+      worker.transferFinished.accept(ForegroundRestoreResult.SUCCEEDED);
+      flushEdt();
+    }
     List<ForegroundRestoreResult> manualResults = new ArrayList<>();
     onEdt(
         () -> {
-          assertEquals(List.of(ForegroundRestoreResult.NOT_REQUIRED), automatic.releases);
+          assertEquals(List.of(dispatched ? ForegroundRestoreResult.SUCCEEDED
+              : ForegroundRestoreResult.NOT_REQUIRED), automatic.releases);
           assertNull(adapter.ownedEngine());
           assertSame(worker, Lizzie.frame.analysisEngine);
           worker.setCompletionCallback(manualResults::add);
         });
     worker.startRequest(0, 1, false);
     onEdt(() -> automatic.release(false));
-    executor.run(REQUEST);
+    if (!dispatched) executor.run(REQUEST);
     staleCompletion.accept(ForegroundRestoreResult.FAILED);
+    staleFailure.accept(ForegroundRestoreResult.FAILED);
     flushEdt();
     worker.succeed(ForegroundRestoreResult.SUCCEEDED);
     flushEdt();
@@ -369,10 +423,13 @@ class AutomaticQuickAnalysisEngineAdapterTest {
     onEdt(
         () -> {
           assertTrue(worker.manualRequest);
-          assertTrue(worker.dispatchedNodes.isEmpty());
+          assertEquals(
+              dispatched ? List.of(environment.browsingNode) : List.of(), worker.dispatchedNodes);
           assertEquals(List.of(ForegroundRestoreResult.SUCCEEDED), manualResults);
           assertTrue(automatic.results.isEmpty());
           assertTrue(worker.live);
+          assertNull(worker.automaticUse);
+          assertEquals(List.of(automatic.use), worker.retiredUses);
           assertSame(worker, Lizzie.frame.analysisEngine);
           assertFalse(executor.has(CLOSE));
           assertFalse(automatic.use.inProgress());
@@ -415,6 +472,9 @@ class AutomaticQuickAnalysisEngineAdapterTest {
           assertEquals(List.of(new RequestResult(true, requestRestore)), client.results);
           client.release(false);
           assertTrue(client.releases.isEmpty());
+          assertNull(worker.automaticUse);
+          assertEquals(List.of(client.use), worker.retiredUses);
+          assertNotNull(worker.completion, "Physical close has not run yet");
         });
     executor.run(CLOSE);
     onEdt(() -> assertTrue(client.releases.isEmpty(), "Release must await physical handback"));
@@ -434,6 +494,7 @@ class AutomaticQuickAnalysisEngineAdapterTest {
     PhysicalWorker worker = allocate(PhysicalWorker.class);
     worker.live = true;
     worker.dispatchedNodes = new ArrayList<>();
+    worker.retiredUses = new ArrayList<>();
     workers.addLast(worker);
     return worker;
   }
@@ -514,9 +575,13 @@ class AutomaticQuickAnalysisEngineAdapterTest {
     private boolean manualRequest;
     private boolean admissionClosed;
     private List<BoardHistoryNode> dispatchedNodes;
+    private Object automaticUse;
+    private List<Object> retiredUses;
     private Consumer<ForegroundRestoreResult> completion;
     private Consumer<ForegroundRestoreResult> failure;
     private Consumer<ForegroundRestoreResult> closeFinished;
+    private boolean delayTransfer;
+    private Consumer<ForegroundRestoreResult> transferFinished;
 
     private PhysicalWorker() throws IOException {
       super(false);
@@ -574,9 +639,11 @@ class AutomaticQuickAnalysisEngineAdapterTest {
     }
 
     @Override
-    public int startRequestMissingMainline(boolean showProgressDialog) {
+    public int startAutomaticQuickAnalysisRequest(Object useIdentity) {
       assertFalse(SwingUtilities.isEventDispatchThread());
-      assertFalse(showProgressDialog);
+      assertNotNull(useIdentity);
+      assertFalse(retiredUses.contains(useIdentity), "A retired use cannot dispatch again");
+      automaticUse = useIdentity;
       assertTrue(live, "A closed worker cannot dispatch a request");
       assertFalse(
           admissionClosed, "A stale owner must not close the successor's request admission");
@@ -588,9 +655,21 @@ class AutomaticQuickAnalysisEngineAdapterTest {
     }
 
     @Override
+    public int startRequestMissingMainline(boolean showProgressDialog) {
+      throw new AssertionError("Automatic requests must carry their use identity explicitly");
+    }
+
+    @Override
+    public void retireAutomaticQuickAnalysisRequest(Object useIdentity) {
+      retiredUses.add(useIdentity);
+      if (automaticUse == useIdentity) automaticUse = null;
+    }
+
+    @Override
     public void startRequest(int startMove, int endMove, boolean showProgressDialog) {
       assertTrue(live, "The transferred worker must remain usable for manual analysis");
       assertFalse(admissionClosed, "Transfer must preserve manual request admission");
+      assertNull(automaticUse, "Manual handoff cannot inherit the automatic request purpose");
       manualRequest = true;
       lifecycle = true;
     }
@@ -612,6 +691,12 @@ class AutomaticQuickAnalysisEngineAdapterTest {
     public void requestShutdown() {
       super.requestShutdown();
       admissionClosed = true;
+    }
+
+    @Override
+    public void returnAutomaticQuickAnalysisUse(Consumer<ForegroundRestoreResult> finished) {
+      if (delayTransfer) transferFinished = finished;
+      else finished.accept(ForegroundRestoreResult.NOT_REQUIRED);
     }
 
     @Override

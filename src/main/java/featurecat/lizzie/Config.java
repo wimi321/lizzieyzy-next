@@ -628,6 +628,35 @@ public class Config {
         appRoot.resolve(BUNDLED_WEIGHT_ROOT).resolve(BUNDLED_WEIGHT_NAME));
   }
 
+  private static String rebindManagedBundledCommand(String command, Path currentRoot) {
+    List<String> parts = Utils.splitCommand(command);
+    if (parts.size() < 2
+        || !("gtp".equals(parts.get(1)) || "analysis".equals(parts.get(1)))) return command;
+    Path executable = Path.of(parts.get(0));
+    Path platform = executable.getParent();
+    Path katago = platform == null ? null : platform.getParent();
+    Path engines = katago == null ? null : katago.getParent();
+    Path previousRoot = engines == null ? null : engines.getParent();
+    if (previousRoot == null
+        || previousRoot.equals(currentRoot)
+        || !"katago".equals(katago.getFileName().toString())
+        || !"engines".equals(engines.getFileName().toString())) return command;
+
+    // Auto Setup quotes these paths. Replace only whole path tokens, retaining all other options.
+    for (int i = 0; i < parts.size(); i++) {
+      if (i != 0
+          && !"-model".equals(parts.get(i - 1))
+          && !"-config".equals(parts.get(i - 1))) continue;
+      Path original = Path.of(parts.get(i));
+      if (!original.isAbsolute() || !original.startsWith(previousRoot)) continue;
+      Path relocated = currentRoot.resolve(previousRoot.relativize(original));
+      if (Files.isRegularFile(relocated)) {
+        command = command.replace('"' + parts.get(i) + '"', quotePath(relocated));
+      }
+    }
+    return command;
+  }
+
   private boolean applyBundledKataGoDefaults() {
     BundledKataGoConfig bundledConfig = detectBundledKataGoConfig();
     if (bundledConfig == null) {
@@ -692,7 +721,15 @@ public class Config {
     if (bundledEngine.optString("id", "").isBlank()) {
       bundledEngine.put("id", UUID.randomUUID().toString());
     }
-    bundledEngine.put("command", bundledConfig.engineCommand);
+    // Rebind package paths while retaining model/config choices made by Auto Setup.
+    String bundledCommand = bundledEngine.optString("command");
+    boolean managedBundledProfile = BundledKataGoProfile.isManaged(bundledEngine);
+    if (!managedBundledProfile) {
+      bundledCommand = bundledConfig.engineCommand;
+    } else {
+      bundledCommand = rebindManagedBundledCommand(bundledCommand, bundledConfig.appRoot);
+    }
+    bundledEngine.put("command", bundledCommand);
     BundledKataGoProfile.claim(bundledEngine);
       if (!newProfile) {
         boolean analysisCustomized =
@@ -701,11 +738,16 @@ public class Config {
                 ui.optBoolean("analysis-engine-command-customized", false),
                 ui.optString("analysis-engine-command", ""));
         String analysisCommand = ui.optString("analysis-engine-command", "");
+        boolean brokenAnalysisLauncher = isClearlyBrokenJavaJarCommand(analysisCommand);
         if ((!analysisCustomized
                 && !analysisCommandUsesJavaSsh(leelaz)
                 && isManagedBundledDefaultCommand(analysisCommand, bundledConfig.appRoot))
-            || isClearlyBrokenJavaJarCommand(analysisCommand)) {
-          ui.put("analysis-engine-command", bundledConfig.analysisCommand);
+            || brokenAnalysisLauncher) {
+          ui.put(
+              "analysis-engine-command",
+              managedBundledProfile && !brokenAnalysisLauncher && !analysisCommand.isBlank()
+                  ? rebindManagedBundledCommand(analysisCommand, bundledConfig.appRoot)
+                  : bundledConfig.analysisCommand);
           ui.put("analysis-engine-command-customized", false);
         }
         if (bundledConfig.transformerDefault) {
@@ -2852,6 +2894,7 @@ public class Config {
     ui.put("show-subboard", true);
     ui.put("large-subboard", false);
     ui.put("problem-list-metric", "winrate");
+    ui.put("problem-list-sort", "loss-desc");
     ui.put("problem-list-side-filter", "black");
     ui.put("problem-list-winrate-threshold", 10.0);
     ui.put("glass-panel-overlay-color", Theme.color2Array(new Color(24, 24, 26, 102)));

@@ -10,7 +10,6 @@ import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.Leelaz;
-import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -66,11 +65,10 @@ class AnalysisSettingsSaveConfigTest {
             "set_position",
             "kata-analyze"));
     setField(Leelaz.class, foreground, "endGetCommandList", true);
-    setField(
-        Leelaz.class,
-        foreground,
-        "outputStream",
-        new BufferedOutputStream(new ByteArrayOutputStream()));
+    var installOutput =
+        Leelaz.class.getDeclaredMethod("installCommandOutputForTest", java.io.OutputStream.class);
+    installOutput.setAccessible(true);
+    installOutput.invoke(foreground, new ByteArrayOutputStream());
     AtomicInteger starts = new AtomicInteger();
     try {
       Lizzie.frame = frame;

@@ -4150,10 +4150,10 @@ class LizzieFrameRegressionTest {
     }
 
     @Override
-    public int startRequestMissingMainline(boolean showProgressDialog) {
+    public int startAutomaticQuickAnalysisRequest(Object useIdentity) {
       analysisInProgress = true;
       requestLifecycleInProgress = true;
-      lastShowProgressDialog = showProgressDialog;
+      lastShowProgressDialog = false;
       return 1;
     }
 
@@ -4323,8 +4323,8 @@ class LizzieFrameRegressionTest {
     public void setKeepAliveAfterCurrentRequest(boolean keepAliveAfterCurrentRequest) {}
 
     @Override
-    public int startRequestMissingMainline(boolean showProgressDialog) {
-      lastShowProgressDialog = showProgressDialog;
+    public int startAutomaticQuickAnalysisRequest(Object useIdentity) {
+      lastShowProgressDialog = false;
       requestStarted.countDown();
       return 1;
     }
@@ -4379,7 +4379,16 @@ class LizzieFrameRegressionTest {
     }
 
     @Override
+    public int startAutomaticQuickAnalysisRequest(Object useIdentity) {
+      return recordRequestStarted();
+    }
+
+    @Override
     public int startRequestMissingMainline(boolean showProgressDialog) {
+      return recordRequestStarted();
+    }
+
+    private int recordRequestStarted() {
       requestStartedOnEdt = SwingUtilities.isEventDispatchThread();
       requestStartedLatch().countDown();
       return 1;

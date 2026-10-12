@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.MoveData;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
@@ -27,6 +29,67 @@ import org.junit.jupiter.params.provider.ValueSource;
 class SGFParserSemanticRoundTripTest {
   private static final int SIZE = 5;
   @TempDir Path tempDirectory;
+
+  @ParameterizedTest
+  @CsvSource({"file, true", "file, false", "string, true", "string, false"})
+  void handicapImportPreservesSavedAnalysisUntilNewStreamExceedsItsVisits(
+      String entrypoint, boolean readKomi) throws Exception {
+    try (RulesLayerTestHarness env = RulesLayerTestHarness.open(SIZE)) {
+      Lizzie.config.readKomi = readKomi;
+      Lizzie.config.enableLizzieCache = true;
+      String sgf =
+          "(;SZ[5]HA[2]AB[aa][ee]PL[W]KM[0.5]"
+              + "LZOP[b11 99.8 392 -18.1 13.6 0 rootVisits=392\n"
+              + "move C3 visits 392 winrate 20 scoreMean -18.1 pv C3]"
+              + ";W[bb];B[cc]LZ[b11 99.8 102k -18.1 13.9 0 rootVisits=101709\n"
+              + "move D4 visits 2638 winrate 20 scoreMean -18.1 pv D4 C4])";
+      if (entrypoint.equals("file")) {
+        Path input = tempDirectory.resolve("handicap-analysis.sgf");
+        Files.writeString(input, sgf);
+        assertTrue(SGFParser.load(input.toString(), false, false));
+        javax.swing.SwingUtilities.invokeAndWait(() -> {});
+      } else {
+        assertTrue(SGFParser.loadFromString(sgf, false));
+      }
+      BoardHistoryList history = env.board().getHistory();
+      assertEquals(0.5, history.getGameInfo().getKomi(), 0.0001);
+      assertEquals(392, history.getStart().getData().getPlayouts());
+      assertTrue(env.board().nextMove(false));
+      assertTrue(env.board().nextMove(false));
+      BoardData data = env.board().getData();
+      assertEquals(2, data.moveNumber);
+      assertEquals(101709, data.getPlayouts());
+      assertEquals(101709, data.rootVisits);
+      assertEquals("b11", data.engineName);
+      assertEquals(0.2, data.winrate, 0.0001);
+      assertEquals(-18.1, data.scoreMean, 0.0001);
+      assertEquals(List.of("D4", "C4"), data.bestMoves.get(0).variation);
+
+      BoardHistoryList saved = SGFParser.parseSgf(SGFParser.saveToString(false), true);
+      assertEquals(101709,
+          saved.getStart().next().orElseThrow().next().orElseThrow().getData().getPlayouts());
+
+      MoveData incoming = new MoveData();
+      incoming.coordinate = "C4";
+      incoming.isKataData = true;
+      incoming.winrate = 25;
+      incoming.scoreMean = -5;
+      Object newStream = new Object();
+      for (int visits : new int[] {1000, 101709, 101710}) {
+        incoming.playouts = visits;
+        BoardData.AnalysisAdoption adoption = data.adoptOrdinaryAnalysis(
+            new ArrayList<>(List.of(incoming)), "b11", Lizzie.leelaz, visits, visits,
+            null, newStream, false, false);
+        boolean deeper = visits > 101709;
+        assertEquals(deeper ? BoardData.AnalysisAdoption.FULL : BoardData.AnalysisAdoption.REJECTED,
+            adoption);
+        assertEquals(deeper ? visits : 101709, data.getPlayouts());
+        assertEquals(deeper ? 25 : 0.2, data.winrate, 0.0001);
+        assertEquals(deeper ? -5 : -18.1, data.scoreMean, 0.0001);
+        assertEquals(deeper ? "C4" : "D4", data.bestMoves.get(0).coordinate);
+      }
+    }
+  }
 
   @ParameterizedTest
   @ValueSource(strings = {"\n", "\\n", "\\r\\n"})

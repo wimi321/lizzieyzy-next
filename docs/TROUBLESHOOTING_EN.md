@@ -91,7 +91,9 @@ If you only want to replace the weight, you can usually keep the bundled KataGo.
 
 You can rename bundled KataGo in engine settings. Restarts, Auto Setup, and path updates after moving a portable package preserve its name and entry settings. Replacing `default.bin.gz` at the same path changes model information, not entry ownership. After you edit the engine command or enable Java SSH, bundled-profile repair leaves that command intact; a complete package still recreates its bundled default entry when needed.
 
-Legacy entries are migrated when their bundled ownership can be established. Already-renamed legacy entries pointing to another complete package are left alone, and historical duplicates are not merged by guesswork.
+Legacy entries are migrated when their bundled ownership can be established. A recognized legacy `KataGo Bundled` / `KataGo Auto Setup` pair is still deduplicated while preserving startup selections. Already-renamed legacy entries pointing to another complete package and other historical duplicates with unconfirmed ownership are left alone.
+
+After Auto Setup changes a managed profile's weight, including explicitly reselecting a legacy weight, restarts preserve that weight, its name, default-engine selection, and preload setting. A manually added default engine may use a different weight from a custom dedicated quick-analysis engine; this difference does not trigger automatic profile creation. If all old profiles have lost their managed identity, a complete package may create one valid bundled entry, after which the count should remain stable.
 
 ## 6. What should I include in a bug report
 

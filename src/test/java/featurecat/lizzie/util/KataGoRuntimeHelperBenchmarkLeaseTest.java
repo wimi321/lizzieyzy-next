@@ -21,7 +21,6 @@ import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
-import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -1010,9 +1009,10 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
     Field capabilityField = Leelaz.class.getDeclaredField("endGetCommandList");
     capabilityField.setAccessible(true);
     capabilityField.set(engine, true);
-    Field outputField = Leelaz.class.getDeclaredField("outputStream");
-    outputField.setAccessible(true);
-    outputField.set(engine, new BufferedOutputStream(new ByteArrayOutputStream()));
+    Method installOutput =
+        Leelaz.class.getDeclaredMethod("installCommandOutputForTest", java.io.OutputStream.class);
+    installOutput.setAccessible(true);
+    installOutput.invoke(engine, new ByteArrayOutputStream());
     return engine;
   }
 

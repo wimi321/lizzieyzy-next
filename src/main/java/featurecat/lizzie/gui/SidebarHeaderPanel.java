@@ -11,8 +11,6 @@ public class SidebarHeaderPanel extends JPanel {
   private final SidebarPanel parentPanel;
   private ProblemListSnapshot currentSnapshot;
 
-  private static final Color TEXT_NORMAL = new Color(255, 255, 255, 128);
-  private static final Color TEXT_SELECTED = new Color(255, 255, 255, 255);
   private static final Color BG_TRACK = new Color(255, 255, 255, 15);
   private static final Color BG_THUMB = new Color(255, 255, 255, 40);
   private static final Color PILL_BG = new Color(255, 255, 255, 20);
@@ -197,10 +195,7 @@ public class SidebarHeaderPanel extends JPanel {
       return text("SidebarHeader.progress.complete", "Evaluation complete");
     }
     return format(
-        "SidebarHeader.progress.partial",
-        "Evaluated {0}/{1}",
-        analyzedMoves,
-        snapshot.totalMoves);
+        "SidebarHeader.progress.partial", "Evaluated {0}/{1}", analyzedMoves, snapshot.totalMoves);
   }
 
   static String progressTooltipFor(ProblemListSnapshot snapshot) {
@@ -232,19 +227,19 @@ public class SidebarHeaderPanel extends JPanel {
       String commentsText = text("SidebarHeader.comments", "Comments");
       String problemsText = text("SidebarHeader.problems", "Problems");
 
-      g2.setColor(showBlunders ? TEXT_NORMAL : TEXT_SELECTED);
+      g2.setColor(
+          showBlunders ? SidebarPanel.secondaryTextColor() : SidebarPanel.primaryTextColor());
       g2.drawString(commentsText, layout.commentsTextX, layout.primaryBaseline);
-      g2.setColor(showBlunders ? TEXT_SELECTED : TEXT_NORMAL);
+      g2.setColor(
+          showBlunders ? SidebarPanel.primaryTextColor() : SidebarPanel.secondaryTextColor());
       g2.drawString(problemsText, layout.problemsTextX, layout.primaryBaseline);
 
       int underlineY = layout.primaryBaseline + 7;
       g2.setColor(withAlpha(accent, 220));
       if (showBlunders) {
-        g2.fillRoundRect(
-            layout.problemsTextX, underlineY, fm.stringWidth(problemsText), 3, 3, 3);
+        g2.fillRoundRect(layout.problemsTextX, underlineY, fm.stringWidth(problemsText), 3, 3, 3);
       } else {
-        g2.fillRoundRect(
-            layout.commentsTextX, underlineY, fm.stringWidth(commentsText), 3, 3, 3);
+        g2.fillRoundRect(layout.commentsTextX, underlineY, fm.stringWidth(commentsText), 3, 3, 3);
       }
 
       if (!layout.progress.isEmpty()) {
@@ -266,7 +261,7 @@ public class SidebarHeaderPanel extends JPanel {
             layout.progress.height - 1,
             11,
             11);
-        g2.setColor(running ? TEXT_SELECTED : TEXT_NORMAL);
+        g2.setColor(running ? SidebarPanel.primaryTextColor() : SidebarPanel.secondaryTextColor());
         g2.drawString(pillText, progressX, layout.primaryBaseline);
       }
 
@@ -274,23 +269,22 @@ public class SidebarHeaderPanel extends JPanel {
         String blackText = text("SidebarHeader.black", "Black");
         String whiteText = text("SidebarHeader.white", "White");
         boolean blackSelected = sideFilter == ProblemListSideFilter.BLACK;
-        g2.setColor(blackSelected ? TEXT_SELECTED : TEXT_NORMAL);
+        g2.setColor(
+            blackSelected ? SidebarPanel.primaryTextColor() : SidebarPanel.secondaryTextColor());
         g2.drawString(blackText, layout.blackTextX, layout.sideBaseline);
-        g2.setColor(!blackSelected ? TEXT_SELECTED : TEXT_NORMAL);
+        g2.setColor(
+            !blackSelected ? SidebarPanel.primaryTextColor() : SidebarPanel.secondaryTextColor());
         g2.drawString(whiteText, layout.whiteTextX, layout.sideBaseline);
 
         int sideUnderlineY = layout.sideBaseline + 7;
-        if (blackSelected) {
-          g2.setColor(new Color(16, 18, 22));
-          g2.fillRoundRect(layout.blackTextX, sideUnderlineY, fm.stringWidth(blackText), 3, 3, 3);
-          g2.setColor(new Color(255, 255, 255, 170));
-          g2.drawRoundRect(
-              layout.blackTextX, sideUnderlineY, fm.stringWidth(blackText) - 1, 2, 3, 3);
-        } else {
-          g2.setColor(new Color(245, 247, 250));
-          g2.fillRoundRect(
-              layout.whiteTextX, sideUnderlineY, fm.stringWidth(whiteText), 3, 3, 3);
-        }
+        g2.setColor(SidebarPanel.accentTextColor());
+        g2.fillRoundRect(
+            blackSelected ? layout.blackTextX : layout.whiteTextX,
+            sideUnderlineY,
+            fm.stringWidth(blackSelected ? blackText : whiteText),
+            3,
+            3,
+            3);
       }
       paintKeyboardFocus(g2);
       g2.dispose();
@@ -317,11 +311,12 @@ public class SidebarHeaderPanel extends JPanel {
       g2.fillRoundRect(x + halfW, y + 2, halfW - 2, segH - 4, arc - 2, arc - 2);
     }
 
-    g2.setColor(!showBlunders ? TEXT_SELECTED : TEXT_NORMAL);
+    g2.setColor(
+        !showBlunders ? SidebarPanel.primaryTextColor() : SidebarPanel.secondaryTextColor());
     String t1 = text("SidebarHeader.comments", "Comments");
     g2.drawString(t1, layout.commentsTextX, layout.primaryBaseline);
 
-    g2.setColor(showBlunders ? TEXT_SELECTED : TEXT_NORMAL);
+    g2.setColor(showBlunders ? SidebarPanel.primaryTextColor() : SidebarPanel.secondaryTextColor());
     String t2 = text("SidebarHeader.problems", "Problems");
     g2.drawString(t2, layout.problemsTextX, layout.primaryBaseline);
 
@@ -344,7 +339,7 @@ public class SidebarHeaderPanel extends JPanel {
           layout.progress.height - 1,
           arc,
           arc);
-      g2.setColor(TEXT_SELECTED);
+      g2.setColor(SidebarPanel.primaryTextColor());
       g2.drawString(pillText, layout.progress.x + 8, layout.primaryBaseline + 1);
     }
 
@@ -383,7 +378,8 @@ public class SidebarHeaderPanel extends JPanel {
       g2.fillOval(seg1X, dotY, APPLE_DOT_SIZE, APPLE_DOT_SIZE);
       g2.setColor(new Color(255, 255, 255, blackSelected ? 190 : 90));
       g2.drawOval(seg1X, dotY, APPLE_DOT_SIZE, APPLE_DOT_SIZE);
-      g2.setColor(blackSelected ? TEXT_SELECTED : TEXT_NORMAL);
+      g2.setColor(
+          blackSelected ? new Color(239, 242, 241) : SidebarPanel.secondaryTextColor());
       g2.drawString(b1, layout.blackTextX, layout.sideBaseline);
 
       int seg2Content = APPLE_DOT_SIZE + APPLE_DOT_GAP + fm.stringWidth(b2);
@@ -392,7 +388,7 @@ public class SidebarHeaderPanel extends JPanel {
       g2.fillOval(seg2X, dotY, APPLE_DOT_SIZE, APPLE_DOT_SIZE);
       g2.setColor(new Color(0, 0, 0, blackSelected ? 70 : 160));
       g2.drawOval(seg2X, dotY, APPLE_DOT_SIZE, APPLE_DOT_SIZE);
-      g2.setColor(!blackSelected ? new Color(28, 31, 36) : TEXT_NORMAL);
+      g2.setColor(!blackSelected ? new Color(28, 31, 36) : SidebarPanel.secondaryTextColor());
       g2.drawString(b2, layout.whiteTextX, layout.sideBaseline);
     }
 
@@ -518,12 +514,10 @@ public class SidebarHeaderPanel extends JPanel {
     int problemsTextX = commentsTextX + classicSecondLabelOffset(metrics, commentsText);
     int blackTextX =
         Math.max(
-            CLASSIC_SIDE_X,
-            problemsTextX + metrics.stringWidth(problemsText) + CLASSIC_LABEL_GAP);
+            CLASSIC_SIDE_X, problemsTextX + metrics.stringWidth(problemsText) + CLASSIC_LABEL_GAP);
     int whiteTextX = blackTextX + classicSecondLabelOffset(metrics, blackText);
     int whiteRight = whiteTextX + metrics.stringWidth(whiteText);
-    int progressReserve =
-        progressText.isEmpty() ? 0 : metrics.stringWidth(progressText) + 26;
+    int progressReserve = progressText.isEmpty() ? 0 : metrics.stringWidth(progressText) + 26;
     boolean wrap = showingBlunders && whiteRight + progressReserve > availableWidth;
     if (wrap) {
       blackTextX = CONTROL_X;
@@ -533,7 +527,8 @@ public class SidebarHeaderPanel extends JPanel {
     int primaryY = CLASSIC_PRIMARY_Y;
     int sideY = wrap ? CLASSIC_PRIMARY_Y + CLASSIC_ROW_HEIGHT : CLASSIC_PRIMARY_Y;
     int primaryBaseline = CLASSIC_PRIMARY_BASELINE;
-    int sideBaseline = wrap ? CLASSIC_PRIMARY_BASELINE + CLASSIC_ROW_HEIGHT : CLASSIC_PRIMARY_BASELINE;
+    int sideBaseline =
+        wrap ? CLASSIC_PRIMARY_BASELINE + CLASSIC_ROW_HEIGHT : CLASSIC_PRIMARY_BASELINE;
 
     Rectangle comments = classicTextBounds(metrics, commentsText, commentsTextX, primaryY);
     Rectangle problems =
@@ -553,9 +548,9 @@ public class SidebarHeaderPanel extends JPanel {
     int occupiedRight =
         showingBlunders && !wrap ? white.x + white.width : problems.x + problems.width;
     Rectangle progress =
-        classicProgressBounds(metrics, progressText, availableWidth, occupiedRight, primaryBaseline);
-    int height =
-        wrap ? CLASSIC_WRAPPED_HEIGHT : preferredHeight(showingBlunders, false);
+        classicProgressBounds(
+            metrics, progressText, availableWidth, occupiedRight, primaryBaseline);
+    int height = wrap ? CLASSIC_WRAPPED_HEIGHT : preferredHeight(showingBlunders, false);
     return new HeaderLayout(
         comments,
         problems,
@@ -590,14 +585,11 @@ public class SidebarHeaderPanel extends JPanel {
     int blackContent = APPLE_DOT_SIZE + APPLE_DOT_GAP + metrics.stringWidth(blackText);
     int whiteContent = APPLE_DOT_SIZE + APPLE_DOT_GAP + metrics.stringWidth(whiteText);
     int sideHalf =
-        Math.max(
-            APPLE_SIDE_WIDTH / 2,
-            Math.max(blackContent, whiteContent) + APPLE_LABEL_INSET);
+        Math.max(APPLE_SIDE_WIDTH / 2, Math.max(blackContent, whiteContent) + APPLE_LABEL_INSET);
     int sideW = sideHalf * 2;
     int sideX = Math.max(APPLE_SIDE_X, primaryX + primaryW + APPLE_CONTROL_GAP);
     int sideY = APPLE_SIDE_Y;
-    int progressReserve =
-        progressText.isEmpty() ? 0 : metrics.stringWidth(progressText) + 32;
+    int progressReserve = progressText.isEmpty() ? 0 : metrics.stringWidth(progressText) + 32;
     boolean wrap = showingBlunders && sideX + sideW + progressReserve > availableWidth;
     if (wrap) {
       sideX = CONTROL_X;
@@ -607,13 +599,14 @@ public class SidebarHeaderPanel extends JPanel {
     Rectangle comments = new Rectangle(primaryX, primaryY, halfW, APPLE_PRIMARY_HEIGHT);
     Rectangle problems = new Rectangle(primaryX + halfW, primaryY, halfW, APPLE_PRIMARY_HEIGHT);
     Rectangle black =
-        showingBlunders ? new Rectangle(sideX, sideY, sideHalf, APPLE_SIDE_HEIGHT) : new Rectangle();
+        showingBlunders
+            ? new Rectangle(sideX, sideY, sideHalf, APPLE_SIDE_HEIGHT)
+            : new Rectangle();
     Rectangle white =
         showingBlunders
             ? new Rectangle(sideX + sideHalf, sideY, sideHalf, APPLE_SIDE_HEIGHT)
             : new Rectangle();
-    int occupiedRight =
-        showingBlunders && !wrap ? sideX + sideW : primaryX + primaryW;
+    int occupiedRight = showingBlunders && !wrap ? sideX + sideW : primaryX + primaryW;
     Rectangle progress = appleProgressBounds(metrics, progressText, availableWidth, occupiedRight);
     int primaryBaseline = primaryY + APPLE_PRIMARY_HEIGHT / 2 + metrics.getAscent() / 2 - 1;
     int sideBaseline = sideY + APPLE_SIDE_HEIGHT / 2 + metrics.getAscent() / 2 - 1;
@@ -626,7 +619,9 @@ public class SidebarHeaderPanel extends JPanel {
         progress,
         primaryX + (halfW - metrics.stringWidth(commentsText)) / 2,
         primaryX + halfW + (halfW - metrics.stringWidth(problemsText)) / 2,
-        showingBlunders ? sideX + (sideHalf - blackContent) / 2 + APPLE_DOT_SIZE + APPLE_DOT_GAP : 0,
+        showingBlunders
+            ? sideX + (sideHalf - blackContent) / 2 + APPLE_DOT_SIZE + APPLE_DOT_GAP
+            : 0,
         showingBlunders
             ? sideX + sideHalf + (sideHalf - whiteContent) / 2 + APPLE_DOT_SIZE + APPLE_DOT_GAP
             : 0,
@@ -691,7 +686,8 @@ public class SidebarHeaderPanel extends JPanel {
   }
 
   private static int classicSecondLabelOffset(FontMetrics metrics, String firstText) {
-    return Math.max(CLASSIC_SECOND_LABEL_OFFSET, metrics.stringWidth(firstText) + CLASSIC_LABEL_GAP);
+    return Math.max(
+        CLASSIC_SECOND_LABEL_OFFSET, metrics.stringWidth(firstText) + CLASSIC_LABEL_GAP);
   }
 
   private Font headerFont() {
