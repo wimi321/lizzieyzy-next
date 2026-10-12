@@ -9,6 +9,9 @@ on:
       - 'src/main/resources/katago-assets.json'
       - 'src/test/java/featurecat/lizzie/gui/SgfUiAcceptanceIT.java'
       - 'src/test/java/featurecat/lizzie/gui/RealCpuEngineAcceptanceIT.java'
+      - 'src/main/java/featurecat/lizzie/rules/SGFParser.java'
+      - 'src/main/java/featurecat/lizzie/analysis/**'
+      - 'src/test/java/featurecat/lizzie/rules/HandicapSavedAnalysisPipelineTest.java'
       - 'src/test/resources/featurecat/lizzie/gui/d3-*.sgf'
       - 'src/test/resources/featurecat/lizzie/gui/d4-*.sgf'
   workflow_dispatch:
