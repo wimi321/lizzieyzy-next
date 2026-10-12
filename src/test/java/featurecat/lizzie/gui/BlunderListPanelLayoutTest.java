@@ -68,7 +68,7 @@ class BlunderListPanelLayoutTest {
       edt(
           () -> {
             Lizzie.config.isShowingBlunderTabel = true;
-            for (Color background : new Color[] {new Color(242, 245, 244), new Color(30, 33, 38)}) {
+            for (Color background : readableThemeSurfaces()) {
               Lizzie.config.commentBackgroundColor = background;
               for (String side : new String[] {"black", "white"}) {
                 Lizzie.config.problemListSideFilter = side;
@@ -581,6 +581,144 @@ class BlunderListPanelLayoutTest {
             }
           }
         });
+  }
+
+
+  @Test
+  void opaqueCustomThemesKeepTextAndKeyboardMarkersReadableAfterHighlighting() throws Exception {
+    edt(
+        () -> {
+          for (boolean apple : new boolean[] {false, true}) {
+            Lizzie.config.isAppleStyle = apple;
+            for (Color fill : readableThemeSurfaces()) {
+              Lizzie.config.commentBackgroundColor = fill;
+              assertPaintedRowsReadable(fill, fill);
+            }
+          }
+        });
+  }
+
+  @Test
+  void supportedTransparentThemesUseCompositedPixelsAndKeepUserAlpha() throws Exception {
+    edt(
+        () -> {
+          for (int alpha : new int[] {192, 220}) {
+            Color fill = new Color(30, 33, 38, alpha);
+            Lizzie.config.commentBackgroundColor = fill;
+            assertEquals(alpha, SidebarPanel.resolveCommentPanelFillColor(fill, false).getAlpha());
+            for (Color underlay :
+                new Color[] {Color.BLACK, Color.WHITE, new Color(139, 139, 139), Color.ORANGE}) {
+              assertPaintedRowsReadable(fill, underlay);
+            }
+          }
+          // Unknown wallpaper behind a low-alpha fill cannot be guaranteed by one text color.
+          // The contrast repair must not silently replace the user's transparency setting.
+          for (int alpha : new int[] {0, 16, 80}) {
+            Color fill = new Color(139, 139, 139, alpha);
+            Lizzie.config.commentBackgroundColor = fill;
+            SidebarPanel.primaryTextColor();
+            assertEquals(fill, SidebarPanel.resolveCommentPanelFillColor(fill, false));
+            assertEquals(fill, Lizzie.config.commentBackgroundColor);
+          }
+        });
+  }
+
+  @Test
+  void establishedOpaqueLightAndDarkPalettesRemainUnchanged() throws Exception {
+    edt(
+        () -> {
+          Lizzie.config.commentBackgroundColor = new Color(30, 33, 38);
+          assertEquals(new Color(239, 242, 241), SidebarPanel.primaryTextColor());
+          assertEquals(new Color(185, 195, 191), SidebarPanel.secondaryTextColor());
+          assertEquals(new Color(105, 211, 186), SidebarPanel.accentTextColor());
+          assertEquals(new Color(255, 176, 164), SidebarPanel.lossTextColor());
+          assertEquals(25, SidebarPanel.rowHighlightColor(true).getAlpha());
+          assertEquals(12, SidebarPanel.rowHighlightColor(false).getAlpha());
+          Lizzie.config.commentBackgroundColor = new Color(247, 249, 248);
+          assertEquals(new Color(28, 34, 32), SidebarPanel.primaryTextColor());
+          assertEquals(new Color(72, 83, 79), SidebarPanel.secondaryTextColor());
+          assertEquals(new Color(18, 107, 98), SidebarPanel.accentTextColor());
+          assertEquals(new Color(155, 43, 35), SidebarPanel.lossTextColor());
+          assertEquals(25, SidebarPanel.rowHighlightColor(true).getAlpha());
+          assertEquals(12, SidebarPanel.rowHighlightColor(false).getAlpha());
+        });
+  }
+
+  private static Color[] readableThemeSurfaces() {
+    return new Color[] {
+        new Color(30, 33, 38),
+        new Color(247, 249, 248),
+        new Color(139, 139, 139),
+        new Color(140, 140, 140),
+        new Color(116, 116, 116),
+        new Color(118, 118, 118),
+        new Color(0, 150, 130),
+        new Color(170, 80, 170),
+        new Color(225, 50, 50)
+    };
+  }
+
+  private static void assertPaintedRowsReadable(Color fill, Color underlay) {
+    List<Integer> navigation = new ArrayList<>();
+    BlunderListPanel panel =
+        new BlunderListPanel(entry -> navigation.add(entry.moveNumber), () -> ProblemListSideFilter.BLACK);
+    panel.updateSnapshot(
+        snapshot(new ProblemMoveEntry(true, 17, "D4", 32.8, 12.1, true, 18000, false, 5)),
+        null);
+    prepareList(panel, 360, 400);
+    JList<ProblemMoveEntry> list = panel.reviewList();
+    for (int state = 0; state < 4; state++) {
+      // Exercise the row's actual hover handler; native BasicListUI needs a display in headless mode.
+      MouseEvent hover =
+          new MouseEvent(list, MouseEvent.MOUSE_MOVED, System.currentTimeMillis(), 0,
+              state == 1 ? 50 : -1, state == 1 ? 10 : -1, 0, false);
+      for (MouseMotionListener listener : list.getMouseMotionListeners()) {
+        if (listener.getClass().getEnclosingClass() == BlunderListPanel.class) listener.mouseMoved(hover);
+      }
+      boolean selected = state >= 2;
+      boolean focused = state == 3;
+      JPanel cell = (JPanel) list.getCellRenderer().getListCellRendererComponent(
+          list, list.getModel().getElementAt(0), 0, selected, focused);
+      cell.setSize(cell.getPreferredSize());
+      cell.doLayout();
+      BufferedImage image = new BufferedImage(
+          cell.getWidth(), cell.getHeight(), BufferedImage.TYPE_INT_RGB);
+      Graphics2D graphics = image.createGraphics();
+      try {
+        graphics.setColor(underlay);
+        graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+        graphics.setColor(fill);
+        graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+        cell.paint(graphics);
+      } finally {
+        graphics.dispose();
+      }
+      Color paintedSurface = new Color(image.getRGB(5, 3));
+      for (Component text : cell.getComponents()) {
+        if (text.getWidth() > 0) {
+          assertTrue(contrastRatio(text.getForeground(), paintedSurface) >= 4.5,
+              fill + " state=" + state + " foreground=" + text.getForeground()
+                  + " painted=" + paintedSurface);
+        }
+      }
+      if (selected) {
+        Color marker = new Color(image.getRGB(0, 7));
+        assertTrue(contrastRatio(marker, paintedSurface) >= 3.0,
+            "Selected-row marker must remain visible after tinting");
+      }
+      if (focused) {
+        Color focus = new Color(image.getRGB(5, 1));
+        assertTrue(contrastRatio(focus, paintedSurface) >= 3.0,
+            "Keyboard focus must remain visible after tinting");
+      }
+    }
+    assertTrue(navigation.isEmpty(), "Painting and hovering must not navigate the board");
+  }
+
+  private static double contrastRatio(Color foreground, Color background) {
+    double first = luminance(foreground);
+    double second = luminance(background);
+    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
   }
 
   private static double luminance(Color color) {
