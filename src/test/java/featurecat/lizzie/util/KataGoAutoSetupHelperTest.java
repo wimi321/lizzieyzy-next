@@ -2042,6 +2042,93 @@ public class KataGoAutoSetupHelperTest {
         });
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void copiedPackageRebindsEveryManagedWeightProfile(boolean removeOldEngine) throws Exception {
+    Path previousRoot = Files.createTempDirectory("katago previous multi weight ");
+    Path currentRoot = Files.createTempDirectory("katago current multi weight ");
+    String legacyModel = KataGoAutoSetupHelper.LEGACY_DEFAULT_WEIGHT_MODEL + ".bin.gz";
+    for (Path root : List.of(previousRoot, currentRoot)) {
+      Files.createDirectories(root.resolve("save"));
+      touch(root.resolve(".lizzie-portable"));
+      touch(root.resolve("engines/katago").resolve(detectTestPlatformDir())
+          .resolve(testKataGoBinaryName()));
+      touch(root.resolve("engines/katago/configs/gtp.cfg"));
+      touch(root.resolve("engines/katago/configs/analysis.cfg"));
+      touch(root.resolve("weights/default.bin.gz"));
+      touch(root.resolve("weights").resolve(legacyModel));
+    }
+    withUserDirAndConfig(previousRoot, () -> {
+      Lizzie.config = ConfigTestHelper.createBootstrapped(previousRoot);
+      var added = KataGoAutoSetupHelper.addWeightEngineProfile(
+          KataGoAutoSetupHelper.inspectLocalSetup()
+              .withActiveWeight(previousRoot.resolve("weights").resolve(legacyModel)));
+      assertTrue(added.createdEngine);
+      assertEquals(1, added.engineIndex);
+      ArrayList<EngineData> original = Utils.getEngineData();
+      assertEquals(2, original.size());
+      for (int index = 0; index < original.size(); index++) {
+        EngineData entry = original.get(index);
+        assertTrue(BundledKataGoProfile.isManaged(entry));
+        entry.name = "Selected weight " + index;
+        entry.preload = true;
+        entry.komi = 6.5F;
+      }
+      // These carry ownership metadata but no longer authorize automatic path repair.
+      EngineData edited = engineData("Manual", previousRoot.resolve("engines/katago")
+          .resolve(detectTestPlatformDir()).resolve(testKataGoBinaryName()),
+          previousRoot.resolve("engines/katago/configs/gtp.cfg"),
+          previousRoot.resolve("weights/default.bin.gz"), false);
+      BundledKataGoProfile.claim(edited);
+      edited.commands += " -override-config numSearchThreads=3";
+      original.add(edited);
+      EngineData ssh = engineData("SSH", previousRoot.resolve("engines/katago")
+          .resolve(detectTestPlatformDir()).resolve(testKataGoBinaryName()),
+          previousRoot.resolve("engines/katago/configs/gtp.cfg"),
+          previousRoot.resolve("weights/default.bin.gz"), false);
+      BundledKataGoProfile.claim(ssh);
+      ssh.useJavaSSH = true;
+      original.add(ssh);
+      Utils.saveEngineSettings(original);
+      Lizzie.config.uiConfig.put("last-engine", 1);
+      Lizzie.config.save();
+      String expectedAnalysis = Lizzie.config.analysisEngineCommand
+          .replace(previousRoot.toString(), currentRoot.toString());
+      Files.copy(previousRoot.resolve("config.txt"), currentRoot.resolve("config.txt"));
+      if (removeOldEngine) {
+        Files.delete(previousRoot.resolve("engines/katago").resolve(detectTestPlatformDir())
+            .resolve(testKataGoBinaryName()));
+      }
+      System.setProperty("user.dir", currentRoot.toString());
+      for (int restart = 0; restart < 3; restart++) {
+        Lizzie.config = ConfigTestHelper.createBootstrapped(currentRoot);
+        for (int phase = 0; phase < 2; phase++) {
+          if (phase == 1) Utils.applyMaintainedDefaultSettings();
+          ArrayList<EngineData> actual = Utils.getEngineData();
+          assertEquals(original.stream().map(entry -> entry.id).toList(),
+              actual.stream().map(entry -> entry.id).toList());
+          for (int index = 0; index < 2; index++) {
+            EngineData before = original.get(index);
+            EngineData after = actual.get(index);
+            assertEquals(before.commands.replace(previousRoot.toString(), currentRoot.toString()),
+                after.commands, "Each owned weight must use the current package at phase " + phase);
+            assertEquals(before.name, after.name);
+            assertEquals(before.komi, after.komi);
+            assertEquals(before.preload, after.preload);
+            assertEquals(before.isDefault, after.isDefault);
+            assertTrue(BundledKataGoProfile.isManaged(after));
+          }
+          assertEquals(edited.commands, actual.get(2).commands);
+          assertEquals(ssh.commands, actual.get(3).commands);
+          assertTrue(actual.get(3).useJavaSSH);
+          assertEquals(1, Lizzie.config.uiConfig.getInt("default-engine"));
+          assertEquals(1, Lizzie.config.uiConfig.getInt("last-engine"));
+          assertEquals(expectedAnalysis, Lizzie.config.analysisEngineCommand);
+        }
+      }
+    });
+  }
+
   @Test
   void autoSetupReusesRenamedManagedEntryAndProtectsRepurposedCommand() throws Exception {
     Path root = Files.createTempDirectory("katago-renamed-profile");

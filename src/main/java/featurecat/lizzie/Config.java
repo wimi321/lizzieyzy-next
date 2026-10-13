@@ -680,6 +680,11 @@ public class Config {
       JSONObject entry = engineSettings.optJSONObject(i);
       if (entry == null) continue;
       if (BundledKataGoProfile.isManaged(entry)) {
+        // Weight selection can create several owned entries; relocate all of them before
+        // discovery chooses the default, even when the old portable directory still exists.
+        entry.put("command",
+            rebindManagedBundledCommand(entry.optString("command"), bundledConfig.appRoot));
+        BundledKataGoProfile.claim(entry);
         if (bundledIndex < 0) bundledIndex = i;
       } else if (BundledKataGoProfile.canMigrate(entry, bundledConfig.appRoot)) {
         if (legacyIndex < 0) legacyIndex = i;
