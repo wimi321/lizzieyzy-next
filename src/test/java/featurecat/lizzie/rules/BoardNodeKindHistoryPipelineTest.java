@@ -5772,10 +5772,7 @@ class BoardNodeKindHistoryPipelineTest {
 
       assertTrue(SGFParser.loadFromString(sgf), "loadFromString should parse handicap SGF.");
       awaitCondition(
-          () ->
-              engine.recordedCommands().contains("clear_board")
-                  && engine.recordedCommands().stream()
-                      .anyMatch(command -> command.startsWith("loadsgf ")),
+          () -> LizzieFrame.canGoAfterload,
           "live SGF synchronization should finish through the coordinator");
       assertEquals(
           1L,

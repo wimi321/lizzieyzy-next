@@ -2569,6 +2569,7 @@ class AnalysisEngineRequestTest {
       assertEquals(1, engine.startRequestMissingMainline(false));
       engine.parseResult(analysisResult(1, 200, 62.0));
       waitForMovelistRefreshThreads();
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
 
       assertEquals(1, completed.get());
       assertEquals(200, move.getData().getPlayouts());
