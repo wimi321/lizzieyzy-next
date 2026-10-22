@@ -141,21 +141,6 @@ public final class EngineGamePresentation {
     return blackToPlay ? blackEngine(snapshot) : whiteEngine(snapshot);
   }
 
-  public static void sendToParticipants(
-      EngineGameSnapshot snapshot, java.util.function.Consumer<Leelaz> action) {
-    if (action == null) {
-      return;
-    }
-    Leelaz first = firstEngine(snapshot);
-    Leelaz second = secondEngine(snapshot);
-    if (first != null) {
-      action.accept(first);
-    }
-    if (second != null) {
-      action.accept(second);
-    }
-  }
-
   public static boolean participantHasKataGoPda(EngineGameSnapshot snapshot) {
     Leelaz first = firstEngine(snapshot);
     Leelaz second = secondEngine(snapshot);

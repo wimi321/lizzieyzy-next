@@ -31,6 +31,7 @@ public final class EngineGamePlan {
   private final int maxMoves;
   private final EngineGameOutputChoices output;
   private final KataGoRules matchRules;
+  private final EngineGameOpeningParameters openingParameters;
 
   EngineGamePlan(
       EngineParticipantIdentity black,
@@ -54,7 +55,8 @@ public final class EngineGamePlan {
       boolean maxMoveLimitEnabled,
       int maxMoves,
       EngineGameOutputChoices output,
-      KataGoRules matchRules) {
+      KataGoRules matchRules,
+      EngineGameOpeningParameters openingParameters) {
 
     this.black = Objects.requireNonNull(black, "black");
     this.white = Objects.requireNonNull(white, "white");
@@ -79,6 +81,7 @@ public final class EngineGamePlan {
     this.maxMoves = maxMoves;
     this.output = Objects.requireNonNull(output, "output");
     this.matchRules = Objects.requireNonNull(matchRules, "matchRules");
+    this.openingParameters = Objects.requireNonNull(openingParameters, "openingParameters");
   }
 
   public EngineParticipantIdentity black() {
@@ -167,6 +170,11 @@ public final class EngineGamePlan {
 
   public KataGoRules matchRules() {
     return matchRules;
+  }
+
+  /** The batch's frozen opening settings, by participant position rather than color. */
+  public EngineGameOpeningParameters openingParameters() {
+    return openingParameters;
   }
 
   public boolean genmove() {

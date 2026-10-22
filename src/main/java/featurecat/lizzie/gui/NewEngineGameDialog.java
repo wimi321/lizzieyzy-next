@@ -12,6 +12,7 @@ import featurecat.lizzie.enginegame.Acceptance;
 import featurecat.lizzie.enginegame.EngineGameBatchSpec;
 import featurecat.lizzie.enginegame.EngineGameBatchSpecFactory;
 import featurecat.lizzie.enginegame.EngineGameMatchRulesSelection;
+import featurecat.lizzie.enginegame.EngineGameOpeningParameters;
 import featurecat.lizzie.enginegame.MatchRulesTexts;
 import featurecat.lizzie.enginegame.StartFailure;
 import featurecat.lizzie.enginegame.StartObserver;
@@ -68,7 +69,12 @@ public class NewEngineGameDialog extends JDialog {
   public JComboBox<String> enginePkWhite;
   private JComboBox<String> cbxRandomSgf;
 
-  private JCheckBox chkDisableWRNInGame;
+  private JFontLabel lblOpeningWrn;
+  private JFontTextField txtOpeningWrnFirst;
+  private JFontTextField txtOpeningWrnSecond;
+  private JFontLabel lblOpeningPda;
+  private JFontTextField txtOpeningPdaFirst;
+  private JFontTextField txtOpeningPdaSecond;
   private JComboBox<String> cmbBlackTimeMode;
   private JComboBox<String> cmbWhiteTimeMode;
   private JCheckBox chkSGFstart;
@@ -439,18 +445,19 @@ public class NewEngineGameDialog extends JDialog {
         });
     checkBoxAllowPonder.setSelected(Lizzie.config.enginePkPonder);
 
-    chkDisableWRNInGame =
-        new JFontCheckBox(Lizzie.resourceBundle.getString("NewAnaGameDialog.lblDisableWRNInGame"));
-    chkDisableWRNInGame.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.config.disableWRNInGame = chkDisableWRNInGame.isSelected();
-            Lizzie.config.uiConfig.put("disable-wrn-in-game", Lizzie.config.disableWRNInGame);
-          }
-        });
-    chkDisableWRNInGame.setSelected(Lizzie.config.disableWRNInGame);
-    chkDisableWRNInGame.setSelected(Lizzie.config.disableWRNInGame);
-    chkDisableWRNInGame.setVisible(!LizzieFrame.toolbar.isGenmoveToolbar);
+    String openingTip = Lizzie.resourceBundle.getString("NewEngineGameDialog.openingParametersTip");
+    EngineGameOpeningParameters openingParameters =
+        EngineGameOpeningParameters.stored(Lizzie.config);
+    lblOpeningWrn =
+        new JFontLabel(Lizzie.resourceBundle.getString("NewEngineGameDialog.lblOpeningWrn"));
+    lblOpeningWrn.setToolTipText(openingTip);
+    txtOpeningWrnFirst = openingField(openingParameters.firstWrn(), openingTip);
+    txtOpeningWrnSecond = openingField(openingParameters.secondWrn(), openingTip);
+    lblOpeningPda =
+        new JFontLabel(Lizzie.resourceBundle.getString("NewEngineGameDialog.lblOpeningPda"));
+    lblOpeningPda.setToolTipText(openingTip);
+    txtOpeningPdaFirst = openingField(openingParameters.firstPda(), openingTip);
+    txtOpeningPdaSecond = openingField(openingParameters.secondPda(), openingTip);
 
     chkSGFstart = new JFontCheckBox();
     chkSGFstart.addActionListener(
@@ -517,6 +524,10 @@ public class NewEngineGameDialog extends JDialog {
     setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkPlayputsWhite, engineColumnWidth);
     setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkFirstPlayputs, engineColumnWidth);
     setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkFirstPlayputsWhite, engineColumnWidth);
+    setPreferredControlWidth(txtOpeningWrnFirst, engineColumnWidth);
+    setPreferredControlWidth(txtOpeningWrnSecond, engineColumnWidth);
+    setPreferredControlWidth(txtOpeningPdaFirst, engineColumnWidth);
+    setPreferredControlWidth(txtOpeningPdaSecond, engineColumnWidth);
 
     JPanel enginePanel = createSectionPanel();
     addEngineHeader(enginePanel, lblB, lblW);
@@ -550,6 +561,8 @@ public class NewEngineGameDialog extends JDialog {
         LizzieFrame.toolbar.chkenginePkFirstPlayputs,
         LizzieFrame.toolbar.txtenginePkFirstPlayputs,
         LizzieFrame.toolbar.txtenginePkFirstPlayputsWhite);
+    addEngineRow(enginePanel, 7, lblOpeningWrn, null, txtOpeningWrnFirst, txtOpeningWrnSecond);
+    addEngineRow(enginePanel, 8, lblOpeningPda, null, txtOpeningPdaFirst, txtOpeningPdaSecond);
     addMainSection(mainPanel, enginePanel, 0);
 
     JPanel resignSection = createSectionPanel();
@@ -586,8 +599,7 @@ public class NewEngineGameDialog extends JDialog {
     addMainSection(mainPanel, gamePanel, 2);
 
     JPanel optionsPanel = createSectionPanel();
-    addFullWidth(optionsPanel, checkBoxAllowPonder, 0, new Insets(0, 0, 8, 0));
-    addFullWidth(optionsPanel, chkDisableWRNInGame, 1, new Insets(0, 0, 0, 0));
+    addFullWidth(optionsPanel, checkBoxAllowPonder, 0, new Insets(0, 0, 0, 0));
     addMainSection(mainPanel, optionsPanel, 3);
 
     addMainFiller(mainPanel, 4);
@@ -837,9 +849,21 @@ public class NewEngineGameDialog extends JDialog {
     component.setMinimumSize(new Dimension(Math.min(width, 48), Math.max(22, preferred.height)));
   }
 
+  private static JFontTextField openingField(double value, String tip) {
+    JFontTextField field = new JFontTextField();
+    field.setToolTipText(tip);
+    field.setText(EngineGameParametersDialog.formatValue(value));
+    return field;
+  }
+
   private void updateModeDependentControls(JPanel resignControls, JTextArea resignThresoldHint) {
     boolean genmoveMode = LizzieFrame.toolbar.isGenmoveToolbar;
-    chkDisableWRNInGame.setVisible(!genmoveMode);
+    lblOpeningWrn.setVisible(!genmoveMode);
+    txtOpeningWrnFirst.setVisible(!genmoveMode);
+    txtOpeningWrnSecond.setVisible(!genmoveMode);
+    lblOpeningPda.setVisible(!genmoveMode);
+    txtOpeningPdaFirst.setVisible(!genmoveMode);
+    txtOpeningPdaSecond.setVisible(!genmoveMode);
     resignControls.setVisible(!genmoveMode);
     resignThresoldHint.setVisible(genmoveMode);
     cmbBlackTimeMode.setEnabled(genmoveMode);
@@ -1060,6 +1084,23 @@ public class NewEngineGameDialog extends JDialog {
         Utils.showMsg(Lizzie.resourceBundle.getString("Menu.inputDoubleTip"), this);
         return;
       }
+      EngineGameOpeningParameters openingParameters = null;
+      if (!LizzieFrame.toolbar.isGenmoveToolbar) {
+        Double firstWrn = EngineGameOpeningParameters.parseWrn(txtOpeningWrnFirst.getText());
+        Double secondWrn = EngineGameOpeningParameters.parseWrn(txtOpeningWrnSecond.getText());
+        if (firstWrn == null || secondWrn == null) {
+          Utils.showMsg(Lizzie.resourceBundle.getString("EngineGameParameters.invalidWrn"), this);
+          return;
+        }
+        Double firstPda = EngineGameOpeningParameters.parsePda(txtOpeningPdaFirst.getText());
+        Double secondPda = EngineGameOpeningParameters.parsePda(txtOpeningPdaSecond.getText());
+        if (firstPda == null || secondPda == null) {
+          Utils.showMsg(Lizzie.resourceBundle.getString("EngineGameParameters.invalidPda"), this);
+          return;
+        }
+        openingParameters =
+            new EngineGameOpeningParameters(firstWrn, secondWrn, firstPda, secondPda);
+      }
       int handicap =
           parseEngineGameHandicap(textFieldHandicap.isEnabled(), textFieldHandicap.getText());
       DesktopTimeControl.commitEngineGameSelection(Lizzie.config, blackTimeMode, whiteTimeMode);
@@ -1099,6 +1140,10 @@ public class NewEngineGameDialog extends JDialog {
       Lizzie.config.uiConfig.put("new-engine-game-handicap", Lizzie.config.newEngineGameHandicap);
       Lizzie.config.persistEngineSgfStart(chkSGFstart.isSelected());
       EngineGameMatchRulesSelection.persist(Lizzie.config, matchRulesPicker.selected());
+      if (openingParameters != null) {
+        // Saved before the batch spec is captured: the capture reads the stored values.
+        EngineGameOpeningParameters.persist(Lizzie.config, openingParameters);
+      }
       EnginePkIdentity.persistSelection(
           Lizzie.config,
           Utils.getEngineData(),

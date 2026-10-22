@@ -50,14 +50,15 @@ class ToolbarSizingTest {
   @Test
   void kataGoFieldsKeepTheirPlaceWhileTheEngineStarts() {
     assertTrue(
-        ToolbarSizing.showsKataGoFields(true, false, false, false, false),
+        ToolbarSizing.showsKataGoFields(true, false, false, false),
         "starting engine: kind not known yet, keep the space so the toolbar does not jump");
-    assertTrue(ToolbarSizing.showsKataGoFields(true, false, false, true, true));
+    assertTrue(
+        ToolbarSizing.showsKataGoFields(true, false, true, true),
+        "KataGo, also during an engine game: the menu locks the fields instead of hiding them");
     assertFalse(
-        ToolbarSizing.showsKataGoFields(true, false, false, true, false),
+        ToolbarSizing.showsKataGoFields(true, false, true, false),
         "a loaded engine other than KataGo has no such parameters");
-    assertFalse(ToolbarSizing.showsKataGoFields(true, false, true, false, false), "no engine");
-    assertFalse(ToolbarSizing.showsKataGoFields(true, true, false, true, true), "engine game");
-    assertFalse(ToolbarSizing.showsKataGoFields(false, false, false, true, true), "turned off");
+    assertFalse(ToolbarSizing.showsKataGoFields(true, true, false, false), "no engine");
+    assertFalse(ToolbarSizing.showsKataGoFields(false, false, true, true), "turned off");
   }
 }

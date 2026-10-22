@@ -317,6 +317,45 @@ class MenuEngineSwitchUiStateTest {
     }
   }
 
+  @Test
+  void engineGameKeepsToolbarBreadthVisibleButLockedUntilTheBatchEnds() throws Exception {
+    Leelaz previous = Lizzie.leelaz;
+    Menu menu = allocate(Menu.class);
+    menu.chkWRN = new JFontCheckBox();
+    menu.chkWRN.setSelected(true);
+    menu.txtWRN = new JFontTextField();
+    menu.txtWRN.setText("0.37");
+    Leelaz ready =
+        new Leelaz("") {
+          @Override
+          public boolean canSetAnalysisWideRootNoise() {
+            return true;
+          }
+        };
+    try {
+      Lizzie.setPrimaryEngine(ready);
+      EngineGameSnapshotFixtures.publishPlaying();
+      SwingUtilities.invokeAndWait(
+          () -> {
+            menu.refreshBreadthAdmission();
+            assertFalse(menu.chkWRN.isEnabled(), "analysis engine games lock toolbar breadth");
+            assertFalse(menu.txtWRN.isEnabled());
+            assertTrue(menu.chkWRN.isSelected());
+            assertEquals("0.37", menu.txtWRN.getText());
+          });
+      EngineGameSnapshotFixtures.publishIdle();
+      SwingUtilities.invokeAndWait(
+          () -> {
+            menu.refreshBreadthAdmission();
+            assertTrue(menu.chkWRN.isEnabled());
+            assertTrue(menu.txtWRN.isEnabled());
+          });
+    } finally {
+      EngineGameSnapshotFixtures.publishIdle();
+      Lizzie.setPrimaryEngine(previous);
+    }
+  }
+
   private static EngineManager.EngineSwitchUiSnapshot failedSnapshot(
       int previousIndex, int targetIndex) throws Exception {
     return snapshot(

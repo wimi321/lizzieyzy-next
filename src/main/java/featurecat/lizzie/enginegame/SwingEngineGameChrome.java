@@ -3,8 +3,12 @@ package featurecat.lizzie.enginegame;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.BottomToolbar;
+import featurecat.lizzie.gui.EngineGameParametersDialog;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Menu;
+import featurecat.lizzie.gui.SetKataEngines;
+import featurecat.lizzie.util.Utils;
+import java.text.MessageFormat;
 import java.util.ResourceBundle;
 import javax.swing.SwingUtilities;
 
@@ -14,6 +18,11 @@ import javax.swing.SwingUtilities;
  */
 public class SwingEngineGameChrome implements EngineGameChrome {
   public static final SwingEngineGameChrome INSTANCE = new SwingEngineGameChrome();
+
+  /** Last parameter failure shown as a popup, with the game it belonged to; EDT only. */
+  private String shownParameterFailure;
+
+  private EngineGameTransaction shownParameterFailureGame;
 
   @Override
   public void publish(EngineGameChromeTransition transition) {
@@ -48,8 +57,46 @@ public class SwingEngineGameChrome implements EngineGameChrome {
         }
       }
       case START_FAILED, USER_STOPPED, BATCH_ENDED, LATER_GAME_FAILED -> applyIdle(toolbar, menu);
+      case PARAMETERS_CHANGED -> {
+        // The panel refresh and failure notice below cover it.
+      }
+      case PARAMETERS_RESUME_BLOCKED -> showMessage("EngineGameParameters.resumeBlocked", null);
+      case PARAMETERS_RESTORE_FAILED ->
+          showMessage(
+              "EngineGameParameters.restoreFailed", Lizzie.engineGame.parameterRestoreFailure());
     }
     if (menu != null) menu.refreshEngineGameKomi();
+    EngineGameParametersDialog.refreshIfOpen();
+    SetKataEngines.refreshOpenDialogs();
+    showParameterFailureOnce();
+  }
+
+  /** Pops up a parameter failure once per distinct failure, unless the panel shows it inline. */
+  private void showParameterFailureOnce() {
+    EngineGameParameterState state = Lizzie.engineGame.parameterState();
+    String failure = state == null ? null : state.failure();
+    if (failure == null) {
+      shownParameterFailure = null;
+      shownParameterFailureGame = null;
+      return;
+    }
+    EngineGameTransaction game = Lizzie.engineGame.transaction();
+    if (failure.equals(shownParameterFailure) && game == shownParameterFailureGame) {
+      return;
+    }
+    shownParameterFailure = failure;
+    shownParameterFailureGame = game;
+    if (!EngineGameParametersDialog.isOpen()) {
+      showMessage("EngineGameParameters.failed", failure);
+    }
+  }
+
+  private static void showMessage(String key, String detail) {
+    String pattern = text(key, null);
+    if (pattern == null) {
+      return;
+    }
+    Utils.showMsg(MessageFormat.format(pattern, detail == null ? "" : detail));
   }
 
   private static void applyStarting(BottomToolbar toolbar, Menu menu) {

@@ -18,7 +18,8 @@ public record EngineGameBatchSpec(
     boolean maxMoveLimitEnabled,
     int maxMoves,
     EngineGameOutputChoices output,
-    featurecat.lizzie.analysis.KataGoRules matchRules) {
+    featurecat.lizzie.analysis.KataGoRules matchRules,
+    EngineGameOpeningParameters openingParameters) {
   public EngineGameBatchSpec {
     first = Objects.requireNonNull(first, "first");
     second = Objects.requireNonNull(second, "second");
@@ -28,5 +29,6 @@ public record EngineGameBatchSpec(
     opening = Objects.requireNonNull(opening, "opening");
     output = Objects.requireNonNull(output, "output");
     matchRules = Objects.requireNonNull(matchRules, "matchRules");
+    openingParameters = Objects.requireNonNull(openingParameters, "openingParameters");
   }
 }

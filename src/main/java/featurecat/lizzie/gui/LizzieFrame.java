@@ -17525,23 +17525,16 @@ public class LizzieFrame extends JFrame {
       menu.txtWRN.setEnabled(false);
       menu.chkWRN.setEnabled(false);
       Lizzie.config.chkKataEngineWRN = false;
-    } else {
-      if ((EngineGamePresentation.current().startingOrPlaying() || isAnaPlayingAgainstLeelaz)
-          && Lizzie.config.disableWRNInGame) {
-        WRNStatusBeforeGame = Lizzie.config.chkKataEngineWRN || Lizzie.config.autoLoadKataEngineWRN;
-        autoWRNStatusBeforeGame = Lizzie.config.autoLoadKataEngineWRN;
-        menu.chkWRN.setSelected(false);
-        menu.txtWRN.setEnabled(false);
-        Lizzie.config.chkKataEngineWRN = false;
-        if (isAnaPlayingAgainstLeelaz) {
-          if (Lizzie.leelaz.isKatago) {
-            Lizzie.leelaz.wrn = 0;
-            Lizzie.leelaz.sendCommand("kata-set-param analysisWideRootNoise 0");
-          }
-        } else {
-          // Engine-game analysis applies WRN 0 before ponder. Sending it here would interrupt
-          // kata-analyze and leave the first move waiting for info that never arrives.
-        }
+    } else if (isAnaPlayingAgainstLeelaz && Lizzie.config.disableWRNInGame) {
+      // Human analysis games only; engine games apply their own per-position breadth.
+      WRNStatusBeforeGame = Lizzie.config.chkKataEngineWRN || Lizzie.config.autoLoadKataEngineWRN;
+      autoWRNStatusBeforeGame = Lizzie.config.autoLoadKataEngineWRN;
+      menu.chkWRN.setSelected(false);
+      menu.txtWRN.setEnabled(false);
+      Lizzie.config.chkKataEngineWRN = false;
+      if (Lizzie.leelaz.isKatago) {
+        Lizzie.leelaz.wrn = 0;
+        Lizzie.leelaz.sendCommand("kata-set-param analysisWideRootNoise 0");
       }
     }
   }

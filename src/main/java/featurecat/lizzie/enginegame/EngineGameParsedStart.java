@@ -40,6 +40,7 @@ public final class EngineGameParsedStart {
   private final boolean saveWinrateImage;
   private final String batchName;
   private final KataGoRules matchRules;
+  private final EngineGameOpeningParameters openingParameters;
 
   private EngineGameParsedStart(Builder builder) {
     this.first = Objects.requireNonNull(builder.first, "first");
@@ -85,6 +86,10 @@ public final class EngineGameParsedStart {
         builder.matchRules == null
             ? KataGoRules.parse("chinese").orElseThrow()
             : builder.matchRules;
+    this.openingParameters =
+        builder.openingParameters == null
+            ? EngineGameOpeningParameters.NEUTRAL
+            : builder.openingParameters;
   }
 
   public static Builder builder() {
@@ -227,6 +232,10 @@ public final class EngineGameParsedStart {
     return matchRules;
   }
 
+  public EngineGameOpeningParameters openingParameters() {
+    return openingParameters;
+  }
+
   public static final class Builder {
     private EngineParticipantIdentity first;
     private EngineParticipantIdentity second;
@@ -262,6 +271,7 @@ public final class EngineGameParsedStart {
     private boolean saveWinrateImage;
     private String batchName = "";
     private KataGoRules matchRules = KataGoRules.parse("chinese").orElseThrow();
+    private EngineGameOpeningParameters openingParameters = EngineGameOpeningParameters.NEUTRAL;
 
     public Builder first(EngineParticipantIdentity first) {
       this.first = first;
@@ -430,6 +440,11 @@ public final class EngineGameParsedStart {
 
     public Builder matchRules(KataGoRules matchRules) {
       this.matchRules = matchRules;
+      return this;
+    }
+
+    public Builder openingParameters(EngineGameOpeningParameters openingParameters) {
+      this.openingParameters = openingParameters;
       return this;
     }
 

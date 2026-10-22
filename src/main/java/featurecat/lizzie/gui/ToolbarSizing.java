@@ -35,10 +35,11 @@ final class ToolbarSizing {
 
   /**
    * Whether the KataGo search fields (aggressiveness, breadth) are shown: for KataGo, and while the
-   * engine is still starting, so that the toolbar does not grow a row once it reports itself.
+   * engine is still starting, so that the toolbar does not grow a row once it reports itself. An
+   * engine game keeps them shown; the menu locks them instead.
    */
   static boolean showsKataGoFields(
-      boolean wanted, boolean engineGame, boolean noEngine, boolean loaded, boolean kataGo) {
-    return wanted && !engineGame && !noEngine && (kataGo || !loaded);
+      boolean wanted, boolean noEngine, boolean loaded, boolean kataGo) {
+    return wanted && !noEngine && (kataGo || !loaded);
   }
 }

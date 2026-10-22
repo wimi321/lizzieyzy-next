@@ -19,6 +19,9 @@ public record EngineGameChromeTransition(Kind kind, EngineGameSnapshot snapshot)
     START_FAILED,
     USER_STOPPED,
     BATCH_ENDED,
-    LATER_GAME_FAILED
+    LATER_GAME_FAILED,
+    PARAMETERS_CHANGED,
+    PARAMETERS_RESUME_BLOCKED,
+    PARAMETERS_RESTORE_FAILED
   }
 }

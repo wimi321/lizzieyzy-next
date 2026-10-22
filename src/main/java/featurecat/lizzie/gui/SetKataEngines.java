@@ -58,6 +58,9 @@ public class SetKataEngines extends JDialog {
   private boolean threadInputEdited;
   private boolean applyingThreads;
   private int threadQueryGeneration;
+  // Breadth/aggressiveness as the dialog loaded them; a draft equal to these is not an edit.
+  private String loadedWrn;
+  private String loadedPda;
 
   public SetKataEngines() {
     // this.setModal(true);
@@ -599,10 +602,9 @@ public class SetKataEngines extends JDialog {
     //      chkAutoRPT.setEnabled(true);
     //      chkEditRPT.setSelected(true);
     //    }
-    if (Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.engineGame.current().playingGenmove()) {
-      txtWRN.setEnabled(false);
-      chkEditWRN.setEnabled(false);
-    }
+    refreshParameterEditors();
+    loadedWrn = draft(chkEditWRN, txtWRN);
+    loadedPda = draft(chkEditPDA, txtPDA);
 
     if (isPdaEngine) {
       txtPDA.setVisible(false);
@@ -623,10 +625,10 @@ public class SetKataEngines extends JDialog {
 
   private void confirmSettings() {
     if (applyingThreads) return;
-    if (runtimeThreads != null && !runtimeThreads.isCurrent()) {
-      showThreadError("SetKataEngines.threadStale");
-      return;
-    }
+    // Outside an engine game, saving also writes breadth and aggressiveness to the engine the
+    // dialog opened on, so that engine must still be the current one. An engine game takes only
+    // the preferences, which do not depend on it.
+    if (!EngineGameDesktop.batchActive() && staleThreads()) return;
     Leelaz.RuntimeThreadOverrideState state =
         runtimeThreads == null
             ? Leelaz.RuntimeThreadOverrideState.OFF
@@ -639,9 +641,10 @@ public class SetKataEngines extends JDialog {
           showThreadError("SetKataEngines.threadRemoteRestoreUnsupported");
           return;
         }
+        if (staleThreads()) return;
         restoreSource();
       } else {
-        applyExistingSettings(openingEngine, true);
+        applyExistingSettings(openingEngine, true, false);
       }
       return;
     }
@@ -662,9 +665,10 @@ public class SetKataEngines extends JDialog {
         && !threadInputEdited
         && runtimeThreads.lastConfirmedValue() != null
         && threads == runtimeThreads.lastConfirmedValue()) {
-      applyExistingSettings(openingEngine, true);
+      applyExistingSettings(openingEngine, true, false);
       return;
     }
+    if (staleThreads()) return;
     beginThreadOperation();
     int generation = threadQueryGeneration;
     runtimeThreads
@@ -682,9 +686,46 @@ public class SetKataEngines extends JDialog {
                                 : "SetKataEngines.threadStale",
                             failure);
                       } else {
-                        applyExistingSettings(openingEngine, true);
+                        applyExistingSettings(openingEngine, true, true);
                       }
                     }));
+  }
+
+  /**
+   * A thread operation, and outside an engine game any save, needs the engine instance the dialog
+   * opened on; an engine game's preference-only save does not.
+   */
+  private boolean staleThreads() {
+    if (runtimeThreads == null || runtimeThreads.isCurrent()) return false;
+    showThreadError("SetKataEngines.threadStale");
+    return true;
+  }
+
+  /** Refreshes the breadth/aggressiveness editors of every open dialog after a game transition. */
+  public static void refreshOpenDialogs() {
+    for (java.awt.Window window : java.awt.Window.getWindows()) {
+      if (window instanceof SetKataEngines dialog && dialog.isShowing()) {
+        dialog.refreshParameterEditors();
+      }
+    }
+  }
+
+  /**
+   * Breadth and aggressiveness are edited here only outside an engine game, which takes them from
+   * its game panel; a human game also owns breadth. Each value field follows its own checkbox.
+   */
+  private void refreshParameterEditors() {
+    boolean engineGame = EngineGameDesktop.batchActive();
+    boolean wrnOwned =
+        engineGame
+            || Lizzie.frame.isPlayingAgainstLeelaz
+            || Lizzie.engineGame.current().playingGenmove();
+    chkEditWRN.setEnabled(!wrnOwned);
+    txtWRN.setEnabled(!wrnOwned && chkEditWRN.isSelected());
+    chkEditPDA.setEnabled(!engineGame);
+    txtPDA.setEnabled(!engineGame && chkEditPDA.isSelected());
+    EngineGameParameterControls.explainAdvancedLock(
+        engineGame, chkEditWRN, txtWRN, chkEditPDA, txtPDA);
   }
 
   private int previousCloseOperation;
@@ -756,7 +797,7 @@ public class SetKataEngines extends JDialog {
                           throw new IllegalStateException(
                               Lizzie.resourceBundle.getString("SetKataEngines.threadStale"));
                         }
-                        applyExistingSettings(openingEngine, false);
+                        applyExistingSettings(openingEngine, false, true);
                         runtimeThreads = successor;
                         applied.complete(null);
                       } catch (Throwable failure) {
@@ -807,7 +848,22 @@ public class SetKataEngines extends JDialog {
     txtThreads.setToolTipText(Lizzie.resourceBundle.getString(key));
   }
 
-  private void applyExistingSettings(Leelaz engine, boolean resume) {
+  private static String draft(JCheckBox edit, JFontTextField value) {
+    return edit.isSelected() + " " + value.getText();
+  }
+
+  /**
+   * Saves the dialog. Outside an engine game it also applies breadth and aggressiveness; a thread
+   * callback ({@code editsOnly}) applies only those the user changed, so an unedited copy never
+   * overwrites a value set while the thread operation ran or by the restarted engine's startup.
+   */
+  private void applyExistingSettings(Leelaz engine, boolean resume, boolean editsOnly) {
+    // An engine game owns its participants' runtime parameters: keep only the preferences.
+    boolean engineGame = EngineGameDesktop.batchActive();
+    String pdaDraft = draft(chkEditPDA, txtPDA);
+    String wrnDraft = draft(chkEditWRN, txtWRN);
+    boolean applyPda = !engineGame && (!editsOnly || !pdaDraft.equals(loadedPda));
+    boolean applyWrn = !engineGame && (!editsOnly || !wrnDraft.equals(loadedWrn));
     Lizzie.config.showWRNInMenu = chkWRNInMenu.isSelected();
     Lizzie.config.uiConfig.put("show-wrn-in-menu", Lizzie.config.showWRNInMenu);
 
@@ -815,36 +871,37 @@ public class SetKataEngines extends JDialog {
     Lizzie.config.uiConfig.put("show-pda-in-menu", Lizzie.config.showPDAInMenu);
 
     if (!isPdaEngine) {
-      Lizzie.config.chkKataEnginePDA = chkEditPDA.isSelected();
+      boolean editPda = chkEditPDA.isSelected();
+      String pda = txtPDA.getText();
       Lizzie.config.autoLoadKataEnginePDA = chkAutoLoadPDA.isSelected();
-      Lizzie.config.txtKataEnginePDA = txtPDA.getText();
-      if (Lizzie.config.chkKataEnginePDA) {
-        engine.setPda(Lizzie.config.txtKataEnginePDA);
-        if (Lizzie.config.autoLoadKataEnginePDA) {
-          Lizzie.config.autoLoadTxtKataEnginePDA = Lizzie.config.txtKataEnginePDA;
-          Lizzie.config.uiConfig.put(
-              "auto-load-txt-kata-engine-pda", Lizzie.config.autoLoadTxtKataEnginePDA);
-        }
-      } else engine.setPda("0");
-      LizzieFrame.menu.setUseGfPda(Lizzie.config.chkKataEnginePDA, Lizzie.config.txtKataEnginePDA);
+      if (editPda && Lizzie.config.autoLoadKataEnginePDA) {
+        Lizzie.config.autoLoadTxtKataEnginePDA = pda;
+        Lizzie.config.uiConfig.put("auto-load-txt-kata-engine-pda", pda);
+      }
+      if (applyPda) {
+        loadedPda = pdaDraft;
+        Lizzie.config.chkKataEnginePDA = editPda;
+        Lizzie.config.txtKataEnginePDA = pda;
+        engine.setPda(editPda ? pda : "0");
+        LizzieFrame.menu.setUseGfPda(editPda, pda);
+      }
     }
 
-    //  if (!Lizzie.config.showWRNInMenu) {
-    Lizzie.config.chkKataEngineWRN = chkEditWRN.isSelected();
+    boolean editWrn = chkEditWRN.isSelected();
+    String wrn = txtWRN.getText();
     Lizzie.config.autoLoadKataEngineWRN = chkAutoLoadWRN.isSelected();
-    Lizzie.config.txtKataEngineWRN = txtWRN.getText();
-    if (Lizzie.config.chkKataEngineWRN) {
-      engine.sendCommand("kata-set-param analysisWideRootNoise " + Lizzie.config.txtKataEngineWRN);
-      Lizzie.board.clearBestMovesAfter(Lizzie.board.getHistory().getStart());
-      if (Lizzie.config.autoLoadKataEngineWRN) {
-        Lizzie.config.autoLoadTxtKataEngineWRN = Lizzie.config.txtKataEngineWRN;
-        Lizzie.config.uiConfig.put(
-            "auto-load-txt-kata-engine-wrn", Lizzie.config.autoLoadTxtKataEngineWRN);
-      }
-
-    } else engine.sendCommand("kata-set-param analysisWideRootNoise 0");
-    LizzieFrame.menu.setUseWrn(Lizzie.config.chkKataEngineWRN, Lizzie.config.txtKataEngineWRN);
-    //  }
+    if (editWrn && Lizzie.config.autoLoadKataEngineWRN) {
+      Lizzie.config.autoLoadTxtKataEngineWRN = wrn;
+      Lizzie.config.uiConfig.put("auto-load-txt-kata-engine-wrn", wrn);
+    }
+    if (applyWrn) {
+      loadedWrn = wrnDraft;
+      Lizzie.config.chkKataEngineWRN = editWrn;
+      Lizzie.config.txtKataEngineWRN = wrn;
+      engine.sendCommand("kata-set-param analysisWideRootNoise " + (editWrn ? wrn : "0"));
+      if (editWrn) Lizzie.board.clearBestMovesAfter(Lizzie.board.getHistory().getStart());
+      LizzieFrame.menu.setUseWrn(editWrn, wrn);
+    }
 
     //            Lizzie.config.chkKataEngineRPT = chkEditRPT.isSelected();
     //            Lizzie.config.autoLoadKataEngineRPT = chkAutoRPT.isSelected();
@@ -871,7 +928,7 @@ public class SetKataEngines extends JDialog {
     Lizzie.config.uiConfig.put("txt-kata-engine-wrn", Lizzie.config.txtKataEngineWRN);
     if (resume) setVisible(false);
     LizzieFrame.menu.updateMenuStatusForEngine();
-    if (resume && engine.isPondering()) engine.ponder();
+    if (resume && !engineGame && engine.isPondering()) engine.ponder();
   }
 
   @Override

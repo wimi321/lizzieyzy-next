@@ -163,11 +163,14 @@ SGF `DD[true]` 恢复独立的 dummy PASS 占位节点，包括保存器输出�
 - 对局中所有贴目入口统一提交给当前 engine-game owner；界面区分已确认贴目与待应用目标，连续输入只保留最新目标，不修改 frozen opening plan 或后续批次默认值。GENMOVE 已发出的当前合法手须先完成并由对手接受，再开始贴目切换。
 - runtime komi 使用 captured owner 与 reader incarnation 授权，双方 `komi` ACK 及最终 `name` fence 均成功后，才原子提交当前 GameInfo 与分析缓存；连续目标间不恢复搜索，最终恢复遵循最新暂停意图。旧 komi revision 的分析与落子回调不得提交。
 - 任一贴目确认拒绝、发送失败、超时或实例丢失均 fail-closed 结束当前批次，保留最后确认贴目，不制造结果或 successor。部分写入后失败或取消须退役可能持有未确认贴目的原实例；旧实例确认不得影响替换实例或新对局。
+- 分析模式 KataGo 引擎对局的广度（`analysisWideRootNoise`）与激进度（`playoutDoublingAdvantage`）由 `EngineGameParameterSession` 按批次持有，按引擎 1／引擎 2 位置而非颜色绑定。首局覆盖前按 exact engine + reader incarnation 读取双方两项实际值作为不可变的批次前恢复值，全部读取完成后才开始写入；每局应用批次冻结的两项开局值并逐项回读确认，局中“对局参数”修改只影响本局，不写配置、不改冻结开局值或恢复值。
+- 局中修改经当前 engine-game owner 与落子提交、runtime komi 串行：runtime komi 与参数更新由同一 `EngineGameSearchUpdates` worker 按提交顺序逐个执行，排队中的更新以自身 pending 状态阻止中途恢复搜索。每次更新先停止并排空已准入的落子操作，再递增 search revision 使旧搜索结果失去落子资格，然后只为目标与已确认值不同的位置/参数设值、回读（只改 PDA 不重发 WRN，反之亦然），全部所改项确认后才按最新暂停/终止意图恢复搜索，不重置本手计时；部分确认不算成功。确认失败暂停对局，未解决的参数不一致阻止普通继续。一次请求中任一所选位置不支持所改参数时，在任何写入前整体拒绝。非 KataGo 参赛方不支持两项，专用 PDA 引擎（`KataGoPda`、报告动态 PDA 的引擎）不支持激进度，不通过 `kata-set-param` 覆盖其策略，也不读取或恢复其 PDA：开局值 0 视为不改并跳过，非零则拒绝开局。不改写 `playoutDoublingAdvantagePla` 等颜色/动态配置。
+- 批次正常结束或用户终止后才恢复各位置两项原值（批次间隔不恢复）；恢复只写原 incarnation，逐项设值并回读，任一项失败时强制退出该进程并报告；原进程已被替换或退出时不向替换进程重放旧恢复，但同样报告该位置未能恢复。对局期间普通工具栏与高级参数的 WRN/PDA 直接修改禁用，不再存在引擎对局专用的“关闭广度”。
 - `PreparedRestore` 可在首次 `execute()` 前由捕获它的 owner 调用 one-shot `discard()` 释放 captured admission；`discard()` 不写临时 SGF、不发任何命令。首次 `execute()` 或 `discard()` 后，另一操作必须以既有 `Exact snapshot restore has already been executed` 失败；一旦 execute 开始，所有失败仍按 owner 的既有 fail-closed 语义处理。
 - 没有可用静态锚点时，调用方保留既有 root replay；默认空 root 不是 exact 锚点。exact 一旦开始，`loadsgf`、tail 或 arbitration 失败都原样失败，禁止猜测性 root fallback。
 - lifecycle exact/root 抛错时，owner 将 frozen target 标为 unavailable，并在既有 completion boundary 释放 reservation；该路径不引入 `ENGINE_STATE_UNRESTORED` 或通用 retry。ReadBoard GMA 固定点既有 quarantine/retirement 行为保持独立。
 - ponder 只由 lifecycle owner 在全部目标恢复和自身 board fence 成功后按 capture 时的 disposition 决定；restore module 不擅自停止或启动 ponder。
-- 当前进程线程覆盖的来源恢复复用自动 restart owner。该操作可将 captured ponder 延后到 final fence 与 endpoint release 之后：只向同一 Leelaz 的精确后继 reader 回读线程值、异步交接 PDA/WRN 草稿；交接成功且原 foreground identity 仍有效才执行一次既有 resume。失败或替换不恢复分析，普通 restart caller 的完成时序不变。
+- 当前进程线程覆盖的来源恢复复用自动 restart owner。该操作可将 captured ponder 延后到 final fence 与 endpoint release 之后：只向同一 Leelaz 的精确后继 reader 回读线程值、异步交接 PDA/WRN 草稿；交接成功且原 foreground identity 仍有效才执行一次既有 resume。失败或替换不恢复分析，普通 restart caller 的完成时序不变。线程设置或来源恢复回调只交接窗口打开后用户实际改过的 PDA/WRN 草稿；未改的副本不覆盖后继初始化或期间产生的较新值。
 - 回滚恢复的初始化若将 KataGo 能力探测明确延迟到当前 lifecycle completion claim 释放 endpoint 后，允许同一 reader incarnation 先提交恢复；在后续分析命令实际写出前，旧分析输出仍保持隔离。需要继续分析且未延迟的恢复继续要求新的物理分析 owner，不能把 READY 或排队成功当作分析所有权。
 - tail replay 的 module 完成边界不等同于每条 GTP response 完成；后续 response/error、超时和 late-response isolation 继续由 `Leelaz` 管理。
 - exact module 在任何 `clear_board`、Remote Compute restore 或其他 engine mutation 之前，为全部本地 target 完成 SGF 落盘、可读性检查与 process-incarnation 复验；任一 target 无安全路径或落盘失败时，清理本轮已创建文件并以 snapshot-preparation failure 终止，不能留下半恢复状态。

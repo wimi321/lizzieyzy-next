@@ -1,6 +1,7 @@
 package featurecat.lizzie.enginegame;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.EngineGameParameterSession;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.EngineRulesResult;
 import featurecat.lizzie.analysis.GameInfo;
@@ -35,6 +36,7 @@ public final class EngineGameModule implements EngineGameControl, EngineGameStat
   private EngineGameChrome chrome = SwingEngineGameChrome.INSTANCE;
   private MatchRulesSnapshot matchRulesSnapshot;
   private EngineGameKomiState komiState;
+  private String parameterRestoreFailure;
   private MatchRulesAdmission.ConsentKey grantedMatchRulesConsent;
   private MatchRulesConsent matchRulesConsent =
       featurecat.lizzie.gui.SwingMatchRulesConsent.INSTANCE;
@@ -174,6 +176,7 @@ public final class EngineGameModule implements EngineGameControl, EngineGameStat
   @Override
   public void resume() {
     EngineGameTransaction resumedTransaction = null;
+    boolean blocked = false;
     synchronized (lock) {
       if (snapshot instanceof EngineGameSnapshot.BatchActive active
           && active.activity() instanceof GameActivity.Playing playing
@@ -184,14 +187,25 @@ public final class EngineGameModule implements EngineGameControl, EngineGameStat
             && (komiState == null || !komiState.pending())) {
           return;
         }
-        if (transaction != null) {
-          transaction.setPaused(false);
+        EngineGameParameterState parameters =
+            EngineGameParameterSession.state(ownerOf(transaction));
+        if (parameters != null && parameters.unresolved()) {
+          // Continue cannot bypass a participant whose parameter is unknown or unmet.
+          blocked = true;
+        } else {
+          if (transaction != null) {
+            transaction.setPaused(false);
+          }
+          publishLocked(
+              new EngineGameSnapshot.BatchActive(
+                  active.batch(), new GameActivity.Playing(playing.view(), RunState.RUNNING)));
+          resumedTransaction = transaction;
         }
-        publishLocked(
-            new EngineGameSnapshot.BatchActive(
-                active.batch(), new GameActivity.Playing(playing.view(), RunState.RUNNING)));
-        resumedTransaction = transaction;
       }
+    }
+    if (blocked) {
+      publishChrome(EngineGameChromeTransition.Kind.PARAMETERS_RESUME_BLOCKED);
+      return;
     }
     if (resumedTransaction != null) {
       publishChrome(EngineGameChromeTransition.Kind.RESUMED);
@@ -230,6 +244,68 @@ public final class EngineGameModule implements EngineGameControl, EngineGameStat
       }
     }
     publishChrome(EngineGameChromeTransition.Kind.KOMI_CHANGED);
+  }
+
+  /** Submits one game-parameter apply to the current game's owner; nothing else writes it. */
+  public EngineGameParameterRevision reviseParameters(EngineGameParameterRequest request) {
+    EngineGameTransaction captured;
+    synchronized (lock) {
+      if (!snapshot.playing() || transaction == null) {
+        return EngineGameParameterRevision.NOT_PLAYING;
+      }
+      captured = transaction;
+    }
+    return EngineGameParameterSession.revise(
+        ownerOf(captured), request, () -> onParametersChanged(captured));
+  }
+
+  /** The playing game's parameters by participant position, or null without one. */
+  public EngineGameParameterState parameterState() {
+    EngineGameTransaction captured;
+    synchronized (lock) {
+      if (!snapshot.playing()) {
+        return null;
+      }
+      captured = transaction;
+    }
+    return EngineGameParameterSession.state(ownerOf(captured));
+  }
+
+  /** Last batch whose participants could not be restored; their processes were stopped. */
+  public String parameterRestoreFailure() {
+    synchronized (lock) {
+      return parameterRestoreFailure;
+    }
+  }
+
+  public void reportParameterRestoreFailure(String detail) {
+    synchronized (lock) {
+      parameterRestoreFailure = detail;
+    }
+    publishChrome(EngineGameChromeTransition.Kind.PARAMETERS_RESTORE_FAILED);
+  }
+
+  private void onParametersChanged(EngineGameTransaction captured) {
+    boolean paused = false;
+    synchronized (lock) {
+      if (transaction != captured) return;
+      EngineGameParameterState state = EngineGameParameterSession.state(ownerOf(captured));
+      if (state != null
+          && state.unresolved()
+          && snapshot instanceof EngineGameSnapshot.BatchActive active
+          && active.activity() instanceof GameActivity.Playing playing
+          && playing.runState() == RunState.RUNNING) {
+        captured.setPaused(true);
+        publishLocked(
+            new EngineGameSnapshot.BatchActive(
+                active.batch(), new GameActivity.Playing(playing.view(), RunState.PAUSED)));
+        paused = true;
+      }
+    }
+    if (paused) {
+      publishChrome(EngineGameChromeTransition.Kind.PAUSED);
+    }
+    publishChrome(EngineGameChromeTransition.Kind.PARAMETERS_CHANGED);
   }
 
   @Override
@@ -727,7 +803,8 @@ public final class EngineGameModule implements EngineGameControl, EngineGameStat
         spec.maxMoveLimitEnabled(),
         spec.maxMoves(),
         spec.output(),
-        spec.matchRules());
+        spec.matchRules(),
+        spec.openingParameters());
   }
 
   private void attachRecordContextToCurrentHistoryLocked() {

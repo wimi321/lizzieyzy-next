@@ -43,6 +43,10 @@ public final class ExactSnapshotRestoreProtocolFixture {
       return new Response('=', "");
     }
 
+    public static Response success(String payload) {
+      return new Response('=', payload == null ? "" : payload);
+    }
+
     public static Response error(String detail) {
       return new Response('?', detail == null ? "" : detail);
     }

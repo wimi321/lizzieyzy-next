@@ -13,6 +13,22 @@ public final class EngineGamePlans {
 
   public static EngineGamePlan harness(
       int blackIndex, int whiteIndex, int firstIndex, int secondIndex, boolean genmove) {
+    return harness(
+        blackIndex,
+        whiteIndex,
+        firstIndex,
+        secondIndex,
+        genmove,
+        EngineGameOpeningParameters.NEUTRAL);
+  }
+
+  public static EngineGamePlan harness(
+      int blackIndex,
+      int whiteIndex,
+      int firstIndex,
+      int secondIndex,
+      boolean genmove,
+      EngineGameOpeningParameters opening) {
     EngineParticipantIdentity black = new EngineParticipantIdentity("black", "black");
     EngineParticipantIdentity white = new EngineParticipantIdentity("white", "white");
     EngineGameSideLimits limits =
@@ -40,6 +56,7 @@ public final class EngineGamePlans {
         false,
         0,
         new EngineGameOutputChoices(false, false, ""),
-        KataGoRules.parse("chinese").orElseThrow());
+        KataGoRules.parse("chinese").orElseThrow(),
+        opening);
   }
 }
