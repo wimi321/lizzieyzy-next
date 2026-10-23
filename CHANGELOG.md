@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- AI Coach keeps localized win-chance and points-lost text inside its decision card. Long text wraps, and decision buttons stack when their translated labels do not fit side by side.
+
 - KataGo Auto Setup keeps its existing interface while handling background work more reliably.
   - Runtime inspection and cache sizing run off the UI thread. Progress and cancellation remain available, and late results from a closed window are discarded.
   - Saving engine settings preserves concurrent profile changes and the selected default engine.

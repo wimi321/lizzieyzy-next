@@ -114,6 +114,7 @@ final class CoachMoveCard extends JPanel {
   /** The 恶手 decision or a hint: tag and title, the headline, why, then the buttons. */
   private int prompt(Graphics2D g, CoachPanelState.Prompt prompt, int width) {
     int inner = width - 2 * PROMPT_PADDING;
+    if (inner <= 0) return 0;
     Font bodyFont = CoachPaint.font(prompt.body(), Font.PLAIN, 13.5f);
     List<String> body = CoachPaint.wrap(prompt.body(), getFontMetrics(bodyFont), inner);
     int y = PROMPT_PADDING;
@@ -145,22 +146,8 @@ final class CoachMoveCard extends JPanel {
           y + (24 - title.getHeight()) / 2 + title.getAscent());
     }
     y += 24;
-    if (prompt.headline() != null) {
-      y += GAP;
-      if (g != null) {
-        g.setFont(CoachPaint.font(prompt.headline(), Font.BOLD, 28f));
-        FontMetrics headline = g.getFontMetrics();
-        g.setColor(CoachPaint.verdictColor(prompt.verdict()));
-        int baseline = y + headline.getAscent();
-        g.drawString(prompt.headline(), PROMPT_PADDING, baseline);
-        if (prompt.detail() != null) {
-          int detailX = PROMPT_PADDING + headline.stringWidth(prompt.headline()) + 12;
-          g.setFont(CoachPaint.font(prompt.detail(), Font.PLAIN, 14f));
-          g.setColor(WARM_DETAIL);
-          g.drawString(prompt.detail(), detailX, baseline);
-        }
-      }
-      y += 36;
+    if (prompt.headline() != null || prompt.detail() != null) {
+      y = promptHeadline(g, prompt, inner, y + GAP);
     }
     if (!body.isEmpty()) {
       y += GAP;
@@ -184,12 +171,60 @@ final class CoachMoveCard extends JPanel {
     return y + PROMPT_PADDING;
   }
 
+  /** Uses the same wrapping and height calculation when measuring and painting the card. */
+  private int promptHeadline(Graphics2D g, CoachPanelState.Prompt prompt, int inner, int top) {
+    Font headlineFont = CoachPaint.font(prompt.headline(), Font.BOLD, 28f);
+    Font detailFont = CoachPaint.font(prompt.detail(), Font.PLAIN, 14f);
+    FontMetrics headline = getFontMetrics(headlineFont);
+    FontMetrics detail = getFontMetrics(detailFont);
+    List<String> headlines = CoachPaint.wrap(prompt.headline(), headline, inner);
+    List<String> details = CoachPaint.wrap(prompt.detail(), detail, inner);
+    boolean sameLine =
+        headlines.size() == 1
+            && details.size() == 1
+            && headline.stringWidth(headlines.get(0)) + GAP + detail.stringWidth(details.get(0))
+                <= inner;
+    int headlineHeight = Math.max(36, headline.getHeight());
+    int detailHeight = Math.max(LINE, detail.getHeight());
+    if (g != null) {
+      g.setFont(headlineFont);
+      g.setColor(
+          prompt.verdict() == null ? CoachPanel.TEXT : CoachPaint.verdictColor(prompt.verdict()));
+      for (int i = 0; i < headlines.size(); i++) {
+        g.drawString(
+            headlines.get(i), PROMPT_PADDING, top + i * headlineHeight + headline.getAscent());
+      }
+      g.setFont(detailFont);
+      g.setColor(WARM_DETAIL);
+      for (int i = 0; i < details.size(); i++) {
+        int x = PROMPT_PADDING + (sameLine ? headline.stringWidth(headlines.get(0)) + GAP : 0);
+        int baseline =
+            sameLine
+                ? top + headline.getAscent()
+                : top + headlines.size() * headlineHeight + i * detailHeight + detail.getAscent();
+        g.drawString(details.get(i), x, baseline);
+      }
+    }
+    return top + headlines.size() * headlineHeight + (sameLine ? 0 : details.size() * detailHeight);
+  }
+
   /**
-   * Two buttons side by side, a third one under them across the card; a single one takes the left
-   * half. Returns the bottom of the buttons.
+   * Two buttons side by side when their labels fit; otherwise stack them at full width. A third
+   * button always spans the card. Returns the bottom of the buttons.
    */
   private int placeButtons(int top, int inner, int count) {
     int half = (inner - 8) / 2;
+    if (count > 0
+        && (!buttonFits(buttons.get(0), half)
+            || count >= 2 && !buttonFits(buttons.get(1), inner - half - 8))) {
+      int bottom = top;
+      for (int i = 0; i < count; i++) {
+        int height = i == 2 ? QUIET_BUTTON : BUTTON;
+        buttons.get(i).setBounds(PROMPT_PADDING, bottom, Math.max(0, inner), height);
+        bottom += height + 8;
+      }
+      return bottom - 8;
+    }
     buttons.get(0).setBounds(PROMPT_PADDING, top, half, BUTTON);
     if (count >= 2) {
       buttons.get(1).setBounds(PROMPT_PADDING + half + 8, top, inner - half - 8, BUTTON);
@@ -200,6 +235,13 @@ final class CoachMoveCard extends JPanel {
       bottom += 8 + QUIET_BUTTON;
     }
     return bottom;
+  }
+
+  private boolean buttonFits(CoachButton button, int width) {
+    boolean bold =
+        button.kind() == CoachButton.Kind.PRIMARY || button.kind() == CoachButton.Kind.ACCENT;
+    Font font = CoachPaint.font(button.getText(), bold ? Font.BOLD : Font.PLAIN, 14f);
+    return getFontMetrics(font).stringWidth(button.getText()) + 24 <= width;
   }
 
   /** The modes that do not rate moves: the label, then the move in bold. */
