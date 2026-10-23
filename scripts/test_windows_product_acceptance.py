@@ -67,6 +67,100 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def assert_exited_launcher_cleanup(
+    case: unittest.TestCase,
+    result: subprocess.CompletedProcess[str],
+    evidence: Path,
+    diagnostic_root: Path,
+) -> None:
+    """Keep this short-lived native launcher's evidence when an assertion fails."""
+    cleanup = None
+    try:
+        case.assertNotEqual(0, result.returncode)
+        case.assertRegex(result.stderr + result.stdout,
+                         r"Packaged launcher (exited|process tree disappeared) before readiness")
+        case.assertNotIn("empty array", result.stderr + result.stdout)
+        cleanup = json.loads((evidence / "startup-cleanup.json").read_text(encoding="utf-8"))
+        case.assertTrue(cleanup["complete"])
+        case.assertEqual([], cleanup["remainingOwnedPids"])
+        case.assertFalse((evidence / "run.json").exists())
+    except (AssertionError, OSError, ValueError) as failure:
+        details = {
+            "command": result.args,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "cleanup": cleanup,
+        }
+        diagnostic = json.dumps(details, ensure_ascii=False, indent=2)
+        failure.add_note(diagnostic)
+        try:
+            diagnostic_root.mkdir(parents=True, exist_ok=True)
+            retained = Path(tempfile.mkdtemp(prefix="exited-launcher-", dir=diagnostic_root))
+            (retained / "command-result.json").write_text(diagnostic + "\n", encoding="utf-8")
+            for name in ("startup-cleanup.json", "candidate.json", "prepared.json"):
+                source = evidence / name
+                if source.is_file():
+                    shutil.copy2(source, retained / name)
+            failure.add_note(f"Retained synthetic fixture evidence: {retained}")
+        except OSError as retention_failure:
+            failure.add_note(f"Could not retain fixture files: {retention_failure}")
+        raise
+
+
+class ExitedLauncherDiagnosticsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.evidence = self.root / "evidence"
+        self.evidence.mkdir()
+        self.diagnostics = self.root / "diagnostics"
+        self.cleanup = {"complete": True, "remainingOwnedPids": [], "identityErrors": [], "errors": []}
+        for name in ("candidate.json", "prepared.json"):
+            (self.evidence / name).write_text('{"synthetic": true}\n', encoding="utf-8")
+        self.result = subprocess.CompletedProcess(
+            ["synthetic-runner", "-Command", "Start"], 1,
+            "synthetic stdout", "Packaged launcher exited before readiness with code 0.",
+        )
+
+    def check_result(self) -> None:
+        (self.evidence / "startup-cleanup.json").write_text(
+            json.dumps(self.cleanup), encoding="utf-8")
+        assert_exited_launcher_cleanup(self, self.result, self.evidence, self.diagnostics)
+
+    def test_success_does_not_write_diagnostics(self) -> None:
+        self.check_result()
+        self.assertFalse(self.diagnostics.exists())
+
+    def test_incomplete_cleanup_retains_original_reason_and_command(self) -> None:
+        self.cleanup.update(complete=False, identityErrors=["unbound synthetic child"],
+                            errors=["Startup process ownership unverified"])
+        with self.assertRaises(AssertionError) as raised:
+            self.check_result()
+        notes = "\n".join(getattr(raised.exception, "__notes__", []))
+        self.assertIn("unbound synthetic child", notes)
+        self.assertIn(self.result.stdout, notes)
+        self.assertIn(self.result.stderr, notes)
+        retained, = self.diagnostics.iterdir()
+        for name in ("startup-cleanup.json", "candidate.json", "prepared.json"):
+            self.assertEqual((self.evidence / name).read_bytes(), (retained / name).read_bytes())
+        record = json.loads((retained / "command-result.json").read_text(encoding="utf-8"))
+        self.assertEqual(self.cleanup, record["cleanup"])
+        self.assertEqual(self.result.args, record["command"])
+        self.assertEqual(1, record["returncode"])
+
+    def test_remaining_process_assertion_still_fails(self) -> None:
+        self.cleanup["remainingOwnedPids"] = [42]
+        with self.assertRaises(AssertionError):
+            self.check_result()
+
+    def test_unexpected_run_record_assertion_still_fails(self) -> None:
+        (self.evidence / "run.json").write_text("{}", encoding="utf-8")
+        with self.assertRaises(AssertionError):
+            self.check_result()
+
+
 @unittest.skipUnless(WINDOWS_FIXTURES_AVAILABLE, "requires native Windows or WSL with Windows PowerShell")
 class WindowsProductAcceptanceFixtureTest(unittest.TestCase):
     @classmethod
@@ -76,6 +170,7 @@ class WindowsProductAcceptanceFixtureTest(unittest.TestCase):
         cls.jvm_host = cls.class_root / "fixture-jvm-host.exe"
         cls.sleepy_launcher = cls.class_root / "fixture-sleepy-launcher.exe"
         cls.java = cls.class_root / "fixture-java.exe"
+        cls.exiting_launcher = cls.class_root / "fixture-exiting-launcher.exe"
         cls.malicious_java = cls.class_root / "fixture-malicious-java.exe"
         cls.argv_recorder = cls.class_root / "fixture-argv-recorder.exe"
         cls.jvm = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32/version.dll" if os.name == "nt" else Path("/mnt/c/Windows/System32/version.dll")
@@ -152,6 +247,10 @@ namespace FixtureLauncher {
             "using System; namespace FixtureJava { public static class Program { "
             "public static void Main() { Console.Error.WriteLine(\"openjdk version 21 fixture 64-Bit x86_64\"); } } }"
         )
+        exiting_source = (
+            "namespace FixtureExitingLauncher { public static class Program { "
+            "[System.STAThread] public static void Main() {} } }"
+        )
         malicious_source = (
             "using System; using System.IO; namespace FixtureMaliciousJava { public static class Program { "
             "public static void Main() { File.WriteAllText(Path.Combine(AppContext.BaseDirectory, \"executed.marker\"), \"executed\"); } } }"
@@ -165,6 +264,7 @@ namespace FixtureLauncher {
             f"Add-Type -TypeDefinition @'\n{ready_source}\n'@ -ReferencedAssemblies System.Windows.Forms -OutputAssembly '{windows_path(cls.jvm_host)}' -OutputType WindowsApplication; "
             f"Add-Type -TypeDefinition @'\n{sleepy_source}\n'@ -OutputAssembly '{windows_path(cls.sleepy_launcher)}' -OutputType WindowsApplication; "
             f"Add-Type -TypeDefinition @'\n{java_source}\n'@ -OutputAssembly '{windows_path(cls.java)}' -OutputType ConsoleApplication; "
+            f"Add-Type -TypeDefinition @'\n{exiting_source}\n'@ -OutputAssembly '{windows_path(cls.exiting_launcher)}' -OutputType WindowsApplication; "
             f"Add-Type -TypeDefinition @'\n{malicious_source}\n'@ -OutputAssembly '{windows_path(cls.malicious_java)}' -OutputType ConsoleApplication; "
             f"Add-Type -TypeDefinition @'\n{argv_source}\n'@ -OutputAssembly '{windows_path(cls.argv_recorder)}' -OutputType ConsoleApplication"
         )
@@ -544,7 +644,18 @@ namespace FixtureLauncher {
         self.assertFalse((evidence / "run.json").exists())
 
     def test_exited_launcher_preserves_original_failure_and_cleanup_record(self) -> None:
-        asset, manifest = self.create_portable(launcher_override=self.java)
+        # Match the packaged GUI launcher, without the extra console-host lifecycle of a console app.
+        for image, expected_subsystem in ((self.java, 3), (self.launcher, 2), (self.exiting_launcher, 2)):
+            contents = image.read_bytes()
+            self.assertEqual(b"MZ", contents[:2], str(image))
+            pe_offset = int.from_bytes(contents[0x3C:0x40], "little")
+            self.assertEqual(b"PE\0\0", contents[pe_offset:pe_offset + 4], str(image))
+            subsystem_offset = pe_offset + 24 + 68
+            self.assertGreaterEqual(len(contents), subsystem_offset + 2, str(image))
+            self.assertEqual(expected_subsystem,
+                             int.from_bytes(contents[subsystem_offset:subsystem_offset + 2], "little"),
+                             str(image))
+        asset, manifest = self.create_portable(launcher_override=self.exiting_launcher)
         evidence, prepared = self.prepare(asset, manifest, "exited launcher evidence")
         self.assertEqual(0, prepared.returncode, prepared.stderr or prepared.stdout)
         result = self.run_script(
@@ -553,14 +664,8 @@ namespace FixtureLauncher {
             "-Scenario", "live-session", "-EvidenceDir", windows_path(evidence),
             "-WaitSeconds", "5",
         )
-        self.assertNotEqual(0, result.returncode)
-        self.assertRegex(result.stderr + result.stdout,
-                         r"Packaged launcher (exited|process tree disappeared) before readiness")
-        self.assertNotIn("empty array", result.stderr + result.stdout)
-        cleanup = json.loads((evidence / "startup-cleanup.json").read_text(encoding="utf-8"))
-        self.assertTrue(cleanup["complete"])
-        self.assertEqual([], cleanup["remainingOwnedPids"])
-        self.assertFalse((evidence / "run.json").exists())
+        assert_exited_launcher_cleanup(
+            self, result, evidence, ROOT / "target/local-ci/windows-scripts/fixture-failures")
 
     def test_missing_readiness_times_out_and_cleans_owned_process(self) -> None:
         asset, manifest = self.create_portable(ready=False)
@@ -1160,11 +1265,13 @@ function Get-CimInstance {
     if ($failed -and $script:case -eq 'missing-child-time') { $childTime=$null }
     if ($script:case -eq 'early-exit-old-child') { $childTime=$script:old.AddSeconds(-1) }
     if ($script:case -eq 'early-exit-unknown-child-time') { $childTime=$null }
+    if ($script:case -eq 'early-exit-unbound-conhost') { $childTime=$script:old.AddTicks(50530) }
     if ($script:case -notlike 'early-exit*' -and -not ($failed -and $script:case -eq 'exited-root-known-child') -and -not $script:killed.Contains(4242)) {
         New-Snapshot 4242 1 $rootImage $rootTime
     }
     if ($script:case -notin @('early-exit','missing-launch-time') -and -not $script:killed.Contains(4243)) {
         $childImage=if ($script:case -in @('early-exit-external-child','early-exit-unrelated-process')) { Join-Path $PSScriptRoot 'external-runtime/helper.exe' } else { $script:childPath }
+        if ($script:case -eq 'early-exit-unbound-conhost') { $childImage='C:\Windows\System32\conhost.exe' }
         $childParent=if ($script:case -in @('early-exit-orphan-product-process','early-exit-unrelated-process')) { 9000 } else { 4242 }
         New-Snapshot 4243 $childParent $childImage $childTime
     }
@@ -1318,6 +1425,19 @@ if ($script:entryPoint -ne 'prepared') { $cleanup=Read-JsonFile -Path (Join-Path
 
     def test_early_exit_with_external_child_does_not_claim_ownership(self) -> None:
         self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-external-child"))
+
+    def test_early_exit_with_unbound_conhost_remains_incomplete_and_never_kills_it(self) -> None:
+        for entry_point in ("prepared", "start", "run"):
+            with self.subTest(entry_point=entry_point):
+                value = self.run_failure("early-exit-unbound-conhost", entry_point)
+                self.assert_unrecorded_child_is_unverified(value)
+                process, = value["cleanup"]["unverifiedProcesses"]
+                self.assertEqual(r"C:\Windows\System32\conhost.exe", process["image"])
+                self.assertEqual(4242, process["parentPid"])
+                if entry_point == "run":
+                    self.assertFalse(value["acceptance"]["cleanup"]["complete"])
+                    self.assertTrue(value["acceptance"]["cleanup"]["remainingOwnedResources"])
+                    self.assertEqual("FAIL", value["acceptance"]["status"])
 
     def test_early_exit_with_orphan_product_process_keeps_cleanup_uncertain(self) -> None:
         self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-orphan-product-process"))
