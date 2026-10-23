@@ -1172,7 +1172,7 @@ function Start-PreparedProduct {
             complete = ($survivors.Count -eq 0 -and $firewallRemaining.Count -eq 0 -and $auditRestored -and $configRestored -and $sharedUnchanged -and $cleanupErrors.Count -eq 0 -and $processCleanup.identityErrors.Count -eq 0)
             remainingOwnedPids = @($survivors); firewallRulesRemaining = @($firewallRemaining); auditPolicyRestored = $auditRestored; configRestored = $configRestored
             sharedDataUnchanged = $sharedUnchanged; uninstallComplete = $null; identityErrors = @($processCleanup.identityErrors); errors = $cleanupErrors.ToArray()
-            processes = @($processCleanup.processes); observedProcesses = @($processCleanup.observedProcesses)
+            processes = @($processCleanup.processes); observedProcesses = @($processCleanup.observedProcesses); unverifiedProcesses = @($processCleanup.unverifiedProcesses)
         }
         $failure.Exception.Data["StartupCleanup"] = $startupCleanup
         throw $failure
@@ -1197,6 +1197,32 @@ function Test-ProcessSnapshotMatch {
     $expectedCreation = Get-ProcessCreationIdentity -Value $Expected.creationDate
     $actualCreation = Get-ProcessCreationIdentity -Value $Actual.creationDate
     return ($null -ne $expectedCreation -and $expectedCreation -eq $actualCreation -and [int]$Expected.pid -eq [int]$Actual.pid -and [string]$Expected.image -and [string]$Actual.image -and [System.IO.Path]::GetFullPath([string]$Expected.image) -ieq [System.IO.Path]::GetFullPath([string]$Actual.image))
+}
+
+function Get-UnverifiedStartupProcesses {
+    param([object[]]$Snapshots, [hashtable]$Known, [object]$LauncherIdentity, [string]$ProductRoot)
+    $started = Get-ProcessCreationIdentity -Value $LauncherIdentity.creationDate
+    $prefix = [System.IO.Path]::GetFullPath($ProductRoot).TrimEnd('\') + '\'
+    $possibleIds = New-Object 'System.Collections.Generic.HashSet[int]'
+    foreach ($processId in $Known.Keys) { [void]$possibleIds.Add([int]$processId) }
+    # This walk identifies uncertainty only. A missing parent cannot bind a child,
+    # so none of these snapshots may be adopted into the termination set.
+    do {
+        $changed = $false
+        foreach ($snapshot in $Snapshots) {
+            $created = Get-ProcessCreationIdentity -Value $snapshot.creationDate
+            if ($null -ne $started -and $null -ne $created -and $created -lt $started) { continue }
+            if ($possibleIds.Contains([int]$snapshot.parentPid) -and $possibleIds.Add([int]$snapshot.pid)) { $changed = $true }
+        }
+    } while ($changed)
+    return @($Snapshots | Where-Object {
+        $snapshot = $_
+        $created = Get-ProcessCreationIdentity -Value $snapshot.creationDate
+        $old = $null -ne $started -and $null -ne $created -and $created -lt $started
+        $inProduct = $snapshot.image -and [System.IO.Path]::GetFullPath([string]$snapshot.image).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+        -not $old -and ($possibleIds.Contains([int]$snapshot.pid) -or $inProduct) -and
+            -not (Test-ProcessSnapshotMatch -Expected $Known[[int]$snapshot.pid] -Actual $snapshot)
+    })
 }
 
 function Stop-OwnedStartupProcesses {
@@ -1246,13 +1272,22 @@ function Stop-OwnedStartupProcesses {
         catch { $errors.Add("Startup process $processId cleanup: $($_.Exception.Message)") }
     }
     $survivors = @()
+    $unverified = @()
     if ($known.Count -gt 0) {
         try {
-            $survivors = @(Get-ProcessSnapshot -ProcessIds @($known.Keys) | Where-Object { Test-ProcessSnapshotMatch -Expected $known[[int]$_.pid] -Actual $_ } | ForEach-Object { [int]$_.pid })
+            # A launcher can spawn and exit before the first readiness sample. Audit
+            # one complete final snapshot, rather than only the PIDs already bound.
+            $finalSnapshots = @(Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object { ConvertTo-ProcessSnapshot -Process $_ })
+            $survivors = @($finalSnapshots | Where-Object { Test-ProcessSnapshotMatch -Expected $known[[int]$_.pid] -Actual $_ } | ForEach-Object { [int]$_.pid })
+            $unverified = @(Get-UnverifiedStartupProcesses -Snapshots $finalSnapshots -Known $known -LauncherIdentity $LauncherIdentity -ProductRoot $ProductRoot)
+            foreach ($snapshot in $unverified) {
+                $observed.Add($snapshot)
+                $identityErrors.Add("Possible startup descendant or product process PID $($snapshot.pid) remains unbound; ownership is unverified and it was not terminated.")
+            }
         }
         catch { $errors.Add("Startup process cleanup verification: $($_.Exception.Message)") }
     }
-    return [ordered]@{ remainingOwnedPids = @($survivors); processes = @($known.Values); observedProcesses = $observed.ToArray(); identityErrors = $identityErrors.ToArray(); errors = $errors.ToArray() }
+    return [ordered]@{ remainingOwnedPids = @($survivors); processes = @($known.Values); observedProcesses = $observed.ToArray(); unverifiedProcesses = @($unverified); identityErrors = $identityErrors.ToArray(); errors = $errors.ToArray() }
 }
 
 function Assert-LiveRunIdentity {

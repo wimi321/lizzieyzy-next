@@ -1134,7 +1134,7 @@ function Start-Process {
     if ($script:case -eq 'missing-launch-time') { $p.StartTime=$null }
     $p | Add-Member ScriptMethod Refresh {
         if ($script:case -eq 'failure-before-first-poll') { $script:phase='failed'; throw 'fixture startup failure' }
-        if ($script:case -in @('early-reused-root','early-exit')) {
+        if ($script:case -like 'early-*') {
             $script:phase='failed'; $this.HasExited=$true
         }
     }
@@ -1158,11 +1158,15 @@ function Get-CimInstance {
         $childTime=$script:new
     }
     if ($failed -and $script:case -eq 'missing-child-time') { $childTime=$null }
-    if ($script:case -ne 'early-exit' -and -not ($failed -and $script:case -eq 'exited-root-known-child') -and -not $script:killed.Contains(4242)) {
+    if ($script:case -eq 'early-exit-old-child') { $childTime=$script:old.AddSeconds(-1) }
+    if ($script:case -eq 'early-exit-unknown-child-time') { $childTime=$null }
+    if ($script:case -notlike 'early-exit*' -and -not ($failed -and $script:case -eq 'exited-root-known-child') -and -not $script:killed.Contains(4242)) {
         New-Snapshot 4242 1 $rootImage $rootTime
     }
     if ($script:case -notin @('early-exit','missing-launch-time') -and -not $script:killed.Contains(4243)) {
-        New-Snapshot 4243 4242 $script:childPath $childTime
+        $childImage=if ($script:case -in @('early-exit-external-child','early-exit-unrelated-process')) { Join-Path $PSScriptRoot 'external-runtime/helper.exe' } else { $script:childPath }
+        $childParent=if ($script:case -in @('early-exit-orphan-product-process','early-exit-unrelated-process')) { 9000 } else { 4242 }
+        New-Snapshot 4243 $childParent $childImage $childTime
     }
     if ($failed -and $script:case -in @('early-reused-root','reused-root') -and -not $script:killed.Contains(4244)) {
         New-Snapshot 4244 4242 $script:childPath $script:new.AddSeconds(1)
@@ -1301,6 +1305,50 @@ if ($script:entryPoint -ne 'prepared') { $cleanup=Read-JsonFile -Path (Join-Path
         value = self.run_failure("early-exit")
         self.assertEqual([], value["killed"])
         self.assertTrue(value["cleanup"]["complete"])
+
+    def assert_unrecorded_child_is_unverified(self, value: dict) -> None:
+        self.assertEqual([], value["killed"], "unbound descendants must never be terminated")
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+        self.assertEqual([4243], [item["pid"] for item in value["cleanup"]["unverifiedProcesses"]])
+        self.assertEqual([4242], [item["pid"] for item in value["cleanup"]["processes"]])
+
+    def test_early_exit_with_unrecorded_child_reports_incomplete_cleanup(self) -> None:
+        self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-unrecorded-child"))
+
+    def test_early_exit_with_external_child_does_not_claim_ownership(self) -> None:
+        self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-external-child"))
+
+    def test_early_exit_with_orphan_product_process_keeps_cleanup_uncertain(self) -> None:
+        self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-orphan-product-process"))
+
+    def test_early_exit_ignores_unrelated_process_outside_product_root(self) -> None:
+        value = self.run_failure("early-exit-unrelated-process")
+        self.assertEqual([], value["killed"])
+        self.assertTrue(value["cleanup"]["complete"])
+        self.assertEqual([], value["cleanup"]["identityErrors"])
+        self.assertEqual([], value["cleanup"]["unverifiedProcesses"])
+
+    def test_early_exit_with_missing_child_time_keeps_cleanup_uncertain(self) -> None:
+        self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-unknown-child-time"))
+
+    def test_early_exit_ignores_child_predating_the_started_launcher(self) -> None:
+        value = self.run_failure("early-exit-old-child")
+        self.assertEqual([], value["killed"])
+        self.assertTrue(value["cleanup"]["complete"])
+        self.assertEqual([], value["cleanup"]["identityErrors"])
+
+    def test_start_wrapper_preserves_unrecorded_child_uncertainty(self) -> None:
+        value = self.run_failure("early-exit-unrecorded-child", "start")
+        self.assert_unrecorded_child_is_unverified(value)
+        self.assertIn("ownership", value["message"])
+
+    def test_run_wrapper_preserves_unrecorded_child_uncertainty(self) -> None:
+        value = self.run_failure("early-exit-unrecorded-child", "run")
+        self.assert_unrecorded_child_is_unverified(value)
+        self.assertFalse(value["acceptance"]["cleanup"]["complete"])
+        self.assertTrue(value["acceptance"]["cleanup"]["remainingOwnedResources"])
+        self.assertEqual("FAIL", value["acceptance"]["status"])
 
     def test_start_wrapper_preserves_original_error_and_explains_uncertain_cleanup(self) -> None:
         value = self.run_failure("reused-root", "start")

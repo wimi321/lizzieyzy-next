@@ -4,7 +4,7 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
-- Windows final-package acceptance binds startup cleanup to the original launcher and child process identities instead of blindly trusting PIDs. Detected PID reuse or missing identity data prevents termination and remains visible in cleanup results while configuration and isolation resources are restored.
+- Windows final-package acceptance binds startup cleanup to the original launcher and child process identities instead of blindly trusting PIDs. Detected PID reuse or missing identity data prevents termination and remains visible in cleanup results while configuration and isolation resources are restored. Possible surviving descendants after an early launcher exit remain unverified, never silently counted as complete cleanup or terminated by ancestry alone.
 
 - AI Coach scrolls its side panel on short windows so blunder decisions and game actions never overlap.
 
