@@ -112,6 +112,8 @@ class SetupBackgroundActionTest {
                     finished.countDown();
                   }));
       assertTrue(finished.await(5, TimeUnit.SECONDS));
+      // Let the EDT finish exception dispatch before inspecting its uncaught handler's result.
+      SwingUtilities.invokeAndWait(() -> {});
       assertSame(expected, uncaught.get());
     } finally {
       SwingUtilities.invokeAndWait(
