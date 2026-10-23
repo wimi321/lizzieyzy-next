@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- AI Coach discards late review notifications after a game is closed, preventing the old session from refreshing a detached or replacement interface.
+
 - Top menus keep shortcut hints clear of help buttons, preserve user-defined Quick Links names,
   and expose custom-layout shortcuts to screen readers after reopening the menu.
 

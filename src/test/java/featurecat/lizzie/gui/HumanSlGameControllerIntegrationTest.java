@@ -1643,9 +1643,7 @@ class HumanSlGameControllerIntegrationTest {
             () -> events.add("ui-complete"));
         controller.start(pause.transferRestoreResponsibility());
         // Avoid opening an error dialog in the failure-injection harness.
-        Lizzie.frame = null;
-
-        assertDoesNotThrow(controller::abort);
+        assertDoesNotThrow(() -> withoutFrameOnEdt(controller::abort));
 
         assertTrue(controller.isExitRecoveryPending(), failingPhase);
         assertFalse(events.contains("ui-complete"), events.toString());
@@ -1717,9 +1715,7 @@ class HumanSlGameControllerIntegrationTest {
           },
           () -> events.add("ui-complete"));
       controller.start(pause.transferRestoreResponsibility());
-      Lizzie.frame = null;
-
-      assertDoesNotThrow(controller::abort);
+      assertDoesNotThrow(() -> withoutFrameOnEdt(controller::abort));
 
       assertTrue(controller.isExitRecoveryPending());
       assertEquals(1, preparations.get());
@@ -1839,9 +1835,7 @@ class HumanSlGameControllerIntegrationTest {
           () -> events.add("ui-complete"));
       controller.start(pause.transferRestoreResponsibility());
       // Avoid opening an error dialog for the deliberately rejected first dispatch.
-      Lizzie.frame = null;
-
-      assertDoesNotThrow(controller::abort);
+      assertDoesNotThrow(() -> withoutFrameOnEdt(controller::abort));
 
       assertTrue(controller.isExitRecoveryPending());
       assertFalse(admissionActive.get(), "a rejected worker must not acquire replay admission");
@@ -1900,10 +1894,10 @@ class HumanSlGameControllerIntegrationTest {
           },
           () -> events.add("ui-complete"));
       controller.start(pause.transferRestoreResponsibility());
-      Lizzie.frame = null;
       AtomicBoolean continuationRan = new AtomicBoolean();
 
-      assertDoesNotThrow(() -> controller.abortAndThen(() -> continuationRan.set(true)));
+      assertDoesNotThrow(
+          () -> withoutFrameOnEdt(() -> controller.abortAndThen(() -> continuationRan.set(true))));
 
       assertTrue(controller.isExitRecoveryPending());
       assertFalse(controller.isFinished(), "a stop request must not publish teardown completion");
@@ -2034,8 +2028,7 @@ class HumanSlGameControllerIntegrationTest {
 
       // Suppress the deliberately injected first-retry error dialog while retaining the frame
       // instance that owns the deferred load continuation.
-      Lizzie.frame = null;
-      SwingUtilities.invokeAndWait(
+      withoutFrameOnEdt(
           () ->
               accepted.set(
                   frame.loadDownloadedSgfString(
@@ -2046,8 +2039,11 @@ class HumanSlGameControllerIntegrationTest {
       assertTrue(completions.isEmpty());
       assertEquals(1, preparations.get());
 
-      Lizzie.frame = frame;
-      SwingUtilities.invokeAndWait(controller::abort);
+      SwingUtilities.invokeAndWait(
+          () -> {
+            Lizzie.frame = frame;
+            controller.abort();
+          });
 
       assertEquals(2, preparations.get());
       assertEquals(List.of(true), completions);
@@ -2158,6 +2154,15 @@ class HumanSlGameControllerIntegrationTest {
         .fromCurrentPosition(true)
         .moveTimeSeconds(2)
         .build();
+  }
+
+  /** Removing the fixture frame and closing its reviewer must be one event-owner transition. */
+  private static void withoutFrameOnEdt(Runnable action) throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          Lizzie.frame = null;
+          action.run();
+        });
   }
 
   private static KeyEvent keyPressed(JPanel source, int keyCode) {
