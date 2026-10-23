@@ -50,6 +50,8 @@ import java.util.function.BooleanSupplier;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class HumanSlGameControllerIntegrationTest {
   private static final int BOARD_SIZE = 3;
@@ -266,6 +268,52 @@ class HumanSlGameControllerIntegrationTest {
       assertFalse(engine.isPondering());
       assertSame(controller, Lizzie.frame.humanSlGame);
       assertFalse(controller.isFinished());
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      ints = {
+        KeyEvent.ALT_DOWN_MASK,
+        KeyEvent.ALT_GRAPH_DOWN_MASK,
+        KeyEvent.ALT_DOWN_MASK | KeyEvent.CTRL_DOWN_MASK,
+        KeyEvent.ALT_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK
+      })
+  void altSpaceDoesNotStopLiveAnalysisCoach(int modifiers) throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      HumanSlGameController controller =
+          env.startCoach(new BlockingHumanSlRunner(), TrainingMode.LIVE_ANALYSIS);
+      BoardHistoryNode position = Lizzie.board.getHistory().getCurrentHistoryNode();
+      SwingUtilities.invokeAndWait(
+          () -> {
+            KeyEvent key =
+                new KeyEvent(
+                    new JPanel(), KeyEvent.KEY_PRESSED, 0L, modifiers, KeyEvent.VK_SPACE, ' ');
+            new Input().keyPressed(key);
+            assertFalse(key.isConsumed(), "the window system/input method still owns Alt+Space");
+            assertFalse(controller.isStopRequested());
+            assertSame(controller, Lizzie.frame.humanSlGame);
+            assertSame(position, Lizzie.board.getHistory().getCurrentHistoryNode());
+          });
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {0, KeyEvent.CTRL_DOWN_MASK, KeyEvent.SHIFT_DOWN_MASK})
+  void nonAltSpaceKeepsExistingLiveCoachStopAction(int modifiers) throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      HumanSlGameController controller =
+          env.startCoach(new BlockingHumanSlRunner(), TrainingMode.LIVE_ANALYSIS);
+      SwingUtilities.invokeAndWait(
+          () -> {
+            new Input()
+                .keyPressed(
+                    new KeyEvent(
+                        new JPanel(), KeyEvent.KEY_PRESSED, 0L, modifiers, KeyEvent.VK_SPACE, ' '));
+            assertTrue(controller.isStopRequested());
+            assertTrue(controller.isFinished());
+            assertNull(Lizzie.frame.humanSlGame);
+          });
     }
   }
 
