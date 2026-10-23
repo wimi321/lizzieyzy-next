@@ -29,10 +29,20 @@ final class TopMenuStyle {
   /** A composite row's shortcut, taken out of its label. */
   static final String HINT_PROPERTY = "lizzie.top-menu.hint";
 
+  static final String USER_TEXT_PROPERTY = "lizzie.top-menu.user-text";
+  static final String TRAILING_SPACE_PROPERTY = "lizzie.top-menu.trailing-space";
+
   private static final String LISTENER_PROPERTY = "lizzie.top-menu.listener";
   private static final int BUTTON_GAP = 10;
 
   private TopMenuStyle() {}
+
+  /** User names are content, even when they end in a key-like parenthesis. */
+  static JFontMenuItem userContent(String name) {
+    JFontMenuItem item = new JFontMenuItem(name);
+    item.putClientProperty(USER_TEXT_PROPERTY, Boolean.TRUE);
+    return item;
+  }
 
   static void install(JPopupMenu popup) {
     if (popup == null) {
@@ -108,6 +118,8 @@ final class TopMenuStyle {
     }
     MenuShortcutHint.Split split = MenuShortcutHint.split(label.getText());
     if (split.hint() != null) {
+      label.getAccessibleContext().setAccessibleName(label.getText());
+      item.getAccessibleContext().setAccessibleName(label.getText());
       label.setText(split.label());
       item.putClientProperty(HINT_PROPERTY, split.hint());
     }

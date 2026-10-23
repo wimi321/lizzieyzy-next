@@ -846,6 +846,63 @@ class ReviewedReleaseNotesTest(unittest.TestCase):
 
 
 class ReleaseWorkflowResilienceTest(unittest.TestCase):
+    def display_dependency_steps(self):
+        common_packages = ["xvfb", "xauth", "fonts-dejavu-core", "fonts-noto-cjk"]
+        cases = (
+            ("ci.yml", "Install display and font dependencies",
+             ["xvfb", "xauth", "openbox", "x11-utils", "fonts-dejavu-core",
+              "fonts-noto-cjk", "fonts-noto-core"]),
+            ("ci.yml", "Install Linux display dependencies", common_packages),
+            ("acceptance-integration.yml", "Install isolated display dependencies",
+             common_packages),
+        )
+        for filename, name, packages in cases:
+            workflow = (
+                SCRIPT_PATH.parents[1] / ".github/workflows" / filename
+            ).read_text(encoding="utf-8")
+            marker = f"      - name: {name}\n"
+            self.assertEqual(1, workflow.count(marker), name)
+            step = workflow.split(marker, 1)[1].split("\n      - ", 1)[0]
+            run = textwrap.dedent(step.split("        run: |\n", 1)[1])
+            commands = [line.split() for line in run.replace("\\\n", " ").splitlines()
+                        if line.strip()]
+            yield name, step, commands, packages
+
+    def test_linux_display_installs_prefer_the_existing_official_mirror(self):
+        for name, step, commands, packages in self.display_dependency_steps():
+            with self.subTest(step=name):
+                self.assertNotIn("continue-on-error", step)
+                self.assertEqual([
+                    ["sudo", "--preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH",
+                     "python3", "scripts/prefer_ubuntu_apt_mirror.py"],
+                    ["apt-config", "dump", "Acquire::Retries", "Acquire::http::Timeout",
+                     "Acquire::https::Timeout"],
+                    ["sudo", "apt-get", "update"],
+                    ["sudo", "apt-get", "install", "-y", *packages],
+                ], commands)
+
+    def test_linux_display_installs_preserve_the_complete_dependency_lists(self):
+        for name, _step, commands, packages in self.display_dependency_steps():
+            with self.subTest(step=name):
+                installs = [command for command in commands if "install" in command]
+                self.assertEqual(1, len(installs))
+                arguments = installs[0][installs[0].index("install") + 1:]
+                self.assertEqual(["-y", *packages], arguments)
+
+    def test_mirror_preference_keeps_native_execution_and_required_gate_wiring(self):
+        root = SCRIPT_PATH.parents[1]
+        ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        acceptance = (root / ".github/workflows/acceptance-integration.yml").read_text(encoding="utf-8")
+        for required in (
+            "--profile portable --group desktop --require-clean",
+            "--profile ${{ matrix.profile }} --group engine-process --require-clean",
+            "needs: [repository-checks, script-tests, windows-script-tests, java-linux, java-windows, desktop-smoke, engine-process]",
+        ):
+            self.assertIn(required, ci)
+        self.assertIn("'--scenario', 'sgf-ui', '--scenario', 'real-cpu-engine'", acceptance)
+        from scripts import run_local_ci
+        self.assertIn("scripts.test_prefer_ubuntu_apt_mirror", run_local_ci.UNITTEST_MODULES)
+
     def select_ci_archive(self, releases):
         workflow = (
             SCRIPT_PATH.parents[1] / ".github/workflows/acceptance-integration.yml"
