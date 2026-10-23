@@ -28,6 +28,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import javax.swing.JComponent;
 import javax.swing.SwingUtilities;
@@ -54,18 +57,40 @@ class SetKataRulesWindowTest {
           + "\"hasButton\":false,\"whiteHandicapBonus\":\"0\",\"friendlyPassOk\":true}";
 
   @Test
+  void statusWaitAndMutatingReadUseEventThread() throws Exception {
+    SetKataRules dialog = allocate(EdtCheckedReadback.class);
+    awaitStatus(dialog, "confirmed");
+    assertTrue(readOnEdt(dialog::getRules));
+  }
+
+  /** No native window is needed to verify the test helpers' thread ownership. */
+  private static final class EdtCheckedReadback extends SetKataRules {
+    @Override
+    String statusText() {
+      assertTrue(SwingUtilities.isEventDispatchThread(), "statusText must be read on the EDT");
+      return "confirmed";
+    }
+
+    @Override
+    public boolean getRules() {
+      assertTrue(SwingUtilities.isEventDispatchThread(), "getRules mutates Swing state");
+      return true;
+    }
+  }
+
+  @Test
   void navigationFocusesScoringControlsWithoutChangingRulesOrSaving() throws Exception {
     assumeFalse(GraphicsEnvironment.isHeadless());
     try (Fixture fixture = Fixture.ordinary()) {
-      SetKataRules dialog = new SetKataRules(fixture.engine);
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
       JFontRadioButton area = dialog.editor.rdoArea;
       JFontRadioButton territory = dialog.editor.rdoTerritory;
-      Border areaBorder = area.getBorder();
-      Border territoryBorder = territory.getBorder();
-      boolean areaBorderPainted = area.isBorderPainted();
-      boolean territoryBorderPainted = territory.isBorderPainted();
-      boolean areaSelected = area.isSelected();
-      boolean territorySelected = territory.isSelected();
+      Border areaBorder = readOnEdt(area::getBorder);
+      Border territoryBorder = readOnEdt(territory::getBorder);
+      boolean areaBorderPainted = readOnEdt(area::isBorderPainted);
+      boolean territoryBorderPainted = readOnEdt(territory::isBorderPainted);
+      boolean areaSelected = readOnEdt(area::isSelected);
+      boolean territorySelected = readOnEdt(territory::isSelected);
       String configBefore = Lizzie.config.uiConfig.toString();
 
       SwingUtilities.invokeAndWait(
@@ -85,24 +110,30 @@ class SetKataRulesWindowTest {
       assertTrue(highlightVisible[0], "scoring controls must paint the navigation highlight");
       long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
       while (System.nanoTime() < deadline
-          && KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner()
+          && readOnEdt(() -> KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner())
               != (territorySelected ? territory : area)) {
         Thread.sleep(20L);
         SwingUtilities.invokeAndWait(() -> {});
       }
 
-      assertSame(
-          territorySelected ? territory : area,
-          KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner());
-      assertEquals(areaSelected, area.isSelected());
-      assertEquals(territorySelected, territory.isSelected());
+      runOnEdt(
+          () -> {
+            assertSame(
+                territorySelected ? territory : area,
+                KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner());
+            assertEquals(areaSelected, area.isSelected());
+            assertEquals(territorySelected, territory.isSelected());
+          });
       assertEquals(configBefore, Lizzie.config.uiConfig.toString());
       SwingUtilities.invokeAndWait(() -> dialog.setVisible(false));
-      assertSame(areaBorder, area.getBorder());
-      assertSame(territoryBorder, territory.getBorder());
-      assertEquals(areaBorderPainted, area.isBorderPainted());
-      assertEquals(territoryBorderPainted, territory.isBorderPainted());
-      dialog.dispose();
+      runOnEdt(
+          () -> {
+            assertSame(areaBorder, area.getBorder());
+            assertSame(territoryBorder, territory.getBorder());
+            assertEquals(areaBorderPainted, area.isBorderPainted());
+            assertEquals(territoryBorderPainted, territory.isBorderPainted());
+            dialog.dispose();
+          });
     }
   }
 
@@ -110,31 +141,39 @@ class SetKataRulesWindowTest {
   void mismatchedManualReadbackDoesNotChangeSessionTarget() throws Exception {
     assumeFalse(GraphicsEnvironment.isHeadless());
     try (Fixture fixture = Fixture.ordinary()) {
-      SetKataRules dialog = new SetKataRules(fixture.engine);
-      assertTrue(dialog.statusText().contains("Confirming engine rules"));
-      assertTrue(
-          dialog.chkbxAutoLoadRules.getText().contains("startup default"),
-          dialog.chkbxAutoLoadRules.getText());
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
+      runOnEdt(
+          () -> {
+            assertTrue(dialog.statusText().contains("Confirming engine rules"));
+            assertTrue(
+                dialog.chkbxAutoLoadRules.getText().contains("startup default"),
+                dialog.chkbxAutoLoadRules.getText());
+          });
 
       int queryId = commandIdFor(fixture.output.toString(), "kata-get-rules");
       dispatch(fixture.engine, "=" + queryId + " " + POSITIONAL_CHINESE);
       awaitConfirmedReadback(dialog);
-      assertTrue(dialog.hasRulesResponse());
-      assertTrue(dialog.getRules());
-      assertTrue(dialog.editor.rdoPositionKo.isSelected());
+      runOnEdt(
+          () -> {
+            assertTrue(dialog.hasRulesResponse());
+            assertTrue(dialog.getRules());
+            assertTrue(dialog.editor.rdoPositionKo.isSelected());
+          });
       assertEquals(KataGoRules.Summary.OTHER, fixture.engine.rulesSummary);
       BoardHistoryList.SessionRulesTarget originalTarget =
           Lizzie.board.getHistory().captureSessionRules();
 
-      dialog.editor.rdoTerritory.setSelected(true);
-      dialog.editor.rdoSeKiTax.setSelected(true);
-      dialog.editor.rdoNoHandicapKomi.setSelected(true);
-      dialog.editor.rdoSimpleKo.setSelected(true);
-      dialog.editor.rdoNoSuicide.setSelected(true);
-      SwingUtilities.invokeAndWait(() -> dialog.setVisible(true));
-      dialog.applySelectedRules();
-
-      assertTrue(dialog.statusText().contains("Confirming engine rules"));
+      runOnEdt(
+          () -> {
+            dialog.editor.rdoTerritory.setSelected(true);
+            dialog.editor.rdoSeKiTax.setSelected(true);
+            dialog.editor.rdoNoHandicapKomi.setSelected(true);
+            dialog.editor.rdoSimpleKo.setSelected(true);
+            dialog.editor.rdoNoSuicide.setSelected(true);
+            dialog.setVisible(true);
+            dialog.applySelectedRules();
+            assertTrue(dialog.statusText().contains("Confirming engine rules"));
+          });
       assertEquals(KataGoRules.Summary.OTHER, fixture.engine.rulesSummary);
       assertTrue(fixture.output.toString().contains("experimentalKo"));
       assertFalse(fixture.engine.engineRulesResult().isConfirmed());
@@ -144,16 +183,18 @@ class SetKataRulesWindowTest {
       int readbackId = commandIdFor(fixture.output.toString(), "kata-get-rules");
       dispatch(fixture.engine, "=" + readbackId + " " + JAPANESE);
       awaitStatus(dialog, "Failed to set engine rules");
-      assertFalse(dialog.getRules());
-
-      assertTrue(dialog.statusText().contains("Failed to set engine rules"));
-      assertTrue(dialog.editor.rdoTerritory.isSelected());
-      assertFalse(dialog.editor.rdoArea.isSelected());
+      runOnEdt(
+          () -> {
+            assertFalse(dialog.getRules());
+            assertTrue(dialog.statusText().contains("Failed to set engine rules"));
+            assertTrue(dialog.editor.rdoTerritory.isSelected());
+            assertFalse(dialog.editor.rdoArea.isSelected());
+          });
       assertEquals(KataGoRules.Summary.JAPANESE, fixture.engine.rulesSummary);
       assertTrue(fixture.engine.engineRulesResult().isConfirmed());
       assertEquals("TERRITORY", fixture.engine.engineRulesResult().observed().string("scoring"));
       assertSame(originalTarget, Lizzie.board.getHistory().captureSessionRules());
-      assertTrue(dialog.isVisible(), "A mismatched readback must remain visible");
+      assertTrue(readOnEdt(dialog::isVisible), "A mismatched readback must remain visible");
       assertTrue(KataGoRules.parse(POSITIONAL_CHINESE).orElseThrow().hasField("experimentalKo"));
       closeDialog(dialog);
     }
@@ -163,20 +204,23 @@ class SetKataRulesWindowTest {
   void closingAfterApplyStillPublishesMatchingManualReadback() throws Exception {
     assumeFalse(GraphicsEnvironment.isHeadless());
     try (Fixture fixture = Fixture.ordinary()) {
-      SetKataRules dialog = new SetKataRules(fixture.engine);
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
       int queryId = commandIdFor(fixture.output.toString(), "kata-get-rules");
       dispatch(fixture.engine, "=" + queryId + " " + CHINESE);
       awaitConfirmedReadback(dialog);
       BoardHistoryList history = Lizzie.board.getHistory();
       BoardHistoryList.SessionRulesTarget original = history.captureSessionRules();
 
-      dialog.editor.rdoTerritory.setSelected(true);
-      dialog.editor.rdoSeKiTax.setSelected(true);
-      dialog.editor.rdoNoHandicapKomi.setSelected(true);
-      dialog.editor.rdoSimpleKo.setSelected(true);
-      dialog.editor.rdoNoSuicide.setSelected(true);
-      dialog.applySelectedRules();
-      closeDialog(dialog);
+      runOnEdt(
+          () -> {
+            dialog.editor.rdoTerritory.setSelected(true);
+            dialog.editor.rdoSeKiTax.setSelected(true);
+            dialog.editor.rdoNoHandicapKomi.setSelected(true);
+            dialog.editor.rdoSimpleKo.setSelected(true);
+            dialog.editor.rdoNoSuicide.setSelected(true);
+            dialog.applySelectedRules();
+            closeDialog(dialog);
+          });
 
       int setId = commandIdFor(fixture.output.toString(), "kata-set-rules");
       dispatch(fixture.engine, "=" + setId);
@@ -201,23 +245,25 @@ class SetKataRulesWindowTest {
   void confirmSavesStartupRulesAndClosesAfterMatchingReadback() throws Exception {
     assumeFalse(GraphicsEnvironment.isHeadless());
     try (Fixture fixture = Fixture.ordinary()) {
-      SetKataRules dialog = new SetKataRules(fixture.engine);
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
       SwingUtilities.invokeAndWait(() -> dialog.setVisible(true));
       int queryId = commandIdFor(fixture.output.toString(), "kata-get-rules");
       dispatch(fixture.engine, "=" + queryId + " " + CHINESE);
       awaitConfirmedReadback(dialog);
       BoardHistoryList history = Lizzie.board.getHistory();
       BoardHistoryList.SessionRulesTarget original = history.captureSessionRules();
-      assertTrue(dialog.isVisible(), "Opening readback must not close the editor");
-      dialog.chkbxAutoLoadRules.setSelected(true);
-
-      dialog.editor.rdoTerritory.setSelected(true);
-      dialog.editor.rdoSeKiTax.setSelected(true);
-      dialog.editor.rdoNoHandicapKomi.setSelected(true);
-      dialog.editor.rdoSimpleKo.setSelected(true);
-      dialog.editor.rdoNoSuicide.setSelected(true);
+      runOnEdt(
+          () -> {
+            assertTrue(dialog.isVisible(), "Opening readback must not close the editor");
+            dialog.chkbxAutoLoadRules.setSelected(true);
+            dialog.editor.rdoTerritory.setSelected(true);
+            dialog.editor.rdoSeKiTax.setSelected(true);
+            dialog.editor.rdoNoHandicapKomi.setSelected(true);
+            dialog.editor.rdoSimpleKo.setSelected(true);
+            dialog.editor.rdoNoSuicide.setSelected(true);
+          });
       clickApply(dialog);
-      assertTrue(dialog.isVisible(), "Keep the editor open until the engine confirms");
+      assertTrue(readOnEdt(dialog::isVisible), "Keep the editor open until the engine confirms");
       JSONObject saved =
           new JSONObject(Files.readString(Path.of(Lizzie.config.getConfigFilePath())))
               .getJSONObject("ui");
@@ -236,9 +282,9 @@ class SetKataRulesWindowTest {
 
       BoardHistoryList.SessionRulesTarget published = history.captureSessionRules();
       assertEquals(original.revision() + 1L, published.revision());
-      assertTrue(dialog.getRules());
+      assertTrue(readOnEdt(dialog::getRules));
       assertEquals(original.revision() + 1L, history.captureSessionRules().revision());
-      assertFalse(dialog.isVisible(), "Successful confirmation must close the editor");
+      assertFalse(readOnEdt(dialog::isVisible), "Successful confirmation must close the editor");
       closeDialog(dialog);
     }
   }
@@ -247,16 +293,19 @@ class SetKataRulesWindowTest {
   void confirmClosesWhenTheOperationCompletesAfterItsConfirmedSnapshot() throws Exception {
     assumeFalse(GraphicsEnvironment.isHeadless());
     try (Fixture fixture = Fixture.ordinary()) {
-      SetKataRules dialog = new SetKataRules(fixture.engine);
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
       SwingUtilities.invokeAndWait(() -> dialog.setVisible(true));
       int queryId = commandIdFor(fixture.output.toString(), "kata-get-rules");
       dispatch(fixture.engine, "=" + queryId + " " + CHINESE);
       awaitConfirmedReadback(dialog);
-      dialog.editor.rdoTerritory.setSelected(true);
-      dialog.editor.rdoSeKiTax.setSelected(true);
-      dialog.editor.rdoNoHandicapKomi.setSelected(true);
-      dialog.editor.rdoSimpleKo.setSelected(true);
-      dialog.editor.rdoNoSuicide.setSelected(true);
+      runOnEdt(
+          () -> {
+            dialog.editor.rdoTerritory.setSelected(true);
+            dialog.editor.rdoSeKiTax.setSelected(true);
+            dialog.editor.rdoNoHandicapKomi.setSelected(true);
+            dialog.editor.rdoSimpleKo.setSelected(true);
+            dialog.editor.rdoNoSuicide.setSelected(true);
+          });
       clickApply(dialog);
       dispatch(fixture.engine, "=" + commandIdFor(fixture.output.toString(), "kata-set-rules"));
       int readbackId = commandIdFor(fixture.output.toString(), "kata-get-rules");
@@ -282,7 +331,7 @@ class SetKataRulesWindowTest {
         assertTrue(GatedRefreshFrame.entered.await(5, TimeUnit.SECONDS));
         Thread.sleep(300L);
         SwingUtilities.invokeAndWait(() -> {});
-        assertTrue(dialog.isVisible(), "Not closed before the operation completes");
+        assertTrue(readOnEdt(dialog::isVisible), "Not closed before the operation completes");
       } finally {
         GatedRefreshFrame.release.countDown();
         reader.join(5_000L);
@@ -290,7 +339,8 @@ class SetKataRulesWindowTest {
 
       awaitHidden(dialog);
       assertFalse(
-          dialog.isVisible(), "Completion after the confirmed snapshot must close the editor");
+          readOnEdt(dialog::isVisible),
+          "Completion after the confirmed snapshot must close the editor");
       closeDialog(dialog);
     }
   }
@@ -299,19 +349,25 @@ class SetKataRulesWindowTest {
   void delayedQueryStaysPendingUntilProtocolSettlesThenAppliesRadios() throws Exception {
     assumeFalse(GraphicsEnvironment.isHeadless());
     try (Fixture fixture = Fixture.ordinary()) {
-      SetKataRules dialog = new SetKataRules(fixture.engine);
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
       Thread.sleep(250L);
       SwingUtilities.invokeAndWait(() -> {});
-      assertTrue(dialog.statusText().contains("Confirming engine rules"));
-      assertFalse(dialog.hasRulesResponse());
-      assertFalse(dialog.editor.rdoPositionKo.isSelected());
+      runOnEdt(
+          () -> {
+            assertTrue(dialog.statusText().contains("Confirming engine rules"));
+            assertFalse(dialog.hasRulesResponse());
+            assertFalse(dialog.editor.rdoPositionKo.isSelected());
+          });
 
       int queryId = commandIdFor(fixture.output.toString(), "kata-get-rules");
       dispatch(fixture.engine, "=" + queryId + " " + POSITIONAL_CHINESE);
       awaitConfirmedReadback(dialog);
-      assertTrue(dialog.hasRulesResponse());
-      assertTrue(dialog.editor.rdoPositionKo.isSelected());
-      assertFalse(dialog.statusText().contains("Failed to read engine rules"));
+      runOnEdt(
+          () -> {
+            assertTrue(dialog.hasRulesResponse());
+            assertTrue(dialog.editor.rdoPositionKo.isSelected());
+            assertFalse(dialog.statusText().contains("Failed to read engine rules"));
+          });
       closeDialog(dialog);
     }
   }
@@ -320,11 +376,11 @@ class SetKataRulesWindowTest {
   void windowShowsQueryFailureWithoutTreatingLastKnownAsSuccess() throws Exception {
     assumeFalse(GraphicsEnvironment.isHeadless());
     try (Fixture fixture = Fixture.ordinary()) {
-      SetKataRules dialog = new SetKataRules(fixture.engine);
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
       int queryId = commandIdFor(fixture.output.toString(), "kata-get-rules");
       dispatch(fixture.engine, "=" + queryId + " " + CHINESE);
       awaitConfirmedReadback(dialog);
-      assertTrue(dialog.getRules());
+      assertTrue(readOnEdt(dialog::getRules));
       String previous = fixture.engine.recentRulesLine;
 
       fixture.engine.queryEngineRules();
@@ -334,8 +390,11 @@ class SetKataRulesWindowTest {
 
       EngineRulesResult result = fixture.engine.engineRulesResult();
       assertEquals(EngineRulesResult.Status.QUERY_FAILED, result.status());
-      assertTrue(dialog.statusText().contains("Failed to read engine rules"));
-      assertTrue(dialog.statusText().contains("Last known rules may be stale"));
+      runOnEdt(
+          () -> {
+            assertTrue(dialog.statusText().contains("Failed to read engine rules"));
+            assertTrue(dialog.statusText().contains("Last known rules may be stale"));
+          });
       assertEquals(previous, fixture.engine.recentRulesLine);
       assertFalse(result.isConfirmed());
       assertTrue(result.lastKnownStale());
@@ -352,14 +411,17 @@ class SetKataRulesWindowTest {
       json.put("experimentalKo", "X");
       KataGoRules initial = KataGoRules.fromJson(json);
 
-      SetKataRules cancelled = new SetKataRules(fixture.engine, true, initial);
+      SetKataRules cancelled = readOnEdt(() -> new SetKataRules(fixture.engine, true, initial));
       closeDialog(cancelled);
       assertNull(composedRules(cancelled));
 
-      SetKataRules dialog = new SetKataRules(fixture.engine, true, initial);
-      assertTrue(dialog.editor.rdoSimpleKo.isSelected());
-      assertTrue(dialog.editor.rdoArea.isSelected());
-      dialog.applySelectedRules();
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine, true, initial));
+      runOnEdt(
+          () -> {
+            assertTrue(dialog.editor.rdoSimpleKo.isSelected());
+            assertTrue(dialog.editor.rdoArea.isSelected());
+            dialog.applySelectedRules();
+          });
       KataGoRules confirmed = composedRules(dialog);
       assertTrue(confirmed.hasRequiredFields());
       assertTrue(confirmed.hasField("friendlyPassOk"));
@@ -367,9 +429,12 @@ class SetKataRulesWindowTest {
       assertTrue(confirmed.hasField("experimentalKo"));
       assertTrue(initial.semanticallyEquals(confirmed));
 
-      SetKataRules edited = new SetKataRules(fixture.engine, true, initial);
-      edited.editor.rdoPositionKo.setSelected(true);
-      edited.applySelectedRules();
+      SetKataRules edited = readOnEdt(() -> new SetKataRules(fixture.engine, true, initial));
+      runOnEdt(
+          () -> {
+            edited.editor.rdoPositionKo.setSelected(true);
+            edited.applySelectedRules();
+          });
       KataGoRules overlaid = composedRules(edited);
       assertEquals("POSITIONAL", overlaid.string("ko"));
       assertTrue(overlaid.hasRequiredFields());
@@ -391,9 +456,9 @@ class SetKataRulesWindowTest {
     try (Fixture fixture = Fixture.ordinary()) {
       for (String preset : KataGoRules.officialPresetNames()) {
         KataGoRules initial = KataGoRules.parse(preset).orElseThrow();
-        SetKataRules dialog = new SetKataRules(fixture.engine, true, initial);
+        SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine, true, initial));
         try {
-          dialog.applySelectedRules();
+          runOnEdt(dialog::applySelectedRules);
           assertTrue(initial.semanticallyEquals(composedRules(dialog)), preset);
         } finally {
           closeDialog(dialog);
@@ -408,7 +473,7 @@ class SetKataRulesWindowTest {
     try (Fixture fixture = Fixture.ordinary()) {
       KataGoRules initial = KataGoRules.parse("tromp-taylor").orElseThrow();
       for (String preset : List.of("goe", "tromp-taylor", "stone-scoring", "chinese", "japanese")) {
-        SetKataRules dialog = new SetKataRules(fixture.engine, true, initial);
+        SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine, true, initial));
         KataRulesEditor editor = dialog.editor;
         JFontButton button =
             switch (preset) {
@@ -419,24 +484,30 @@ class SetKataRulesWindowTest {
               default -> editor.btnJpnRule;
             };
         SwingUtilities.invokeAndWait(button::doClick);
-        dialog.applySelectedRules();
+        runOnEdt(dialog::applySelectedRules);
         assertTrue(
             composedRules(dialog).semanticallyEquals(KataGoRules.parse(preset).orElseThrow()),
             preset + " -> " + composedRules(dialog));
         closeDialog(dialog);
       }
 
-      SetKataRules dialog = new SetKataRules(fixture.engine, true, initial);
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine, true, initial));
       KataRulesEditor editor = dialog.editor;
-      assertTrue(editor.rdoNoFriendlyPass.isSelected());
+      assertTrue(readOnEdt(editor.rdoNoFriendlyPass::isSelected));
       SwingUtilities.invokeAndWait(editor.rdoTerritory::doClick);
-      assertTrue(editor.rdoNoFriendlyPass.isSelected());
-      assertFalse(editor.rdoFriendlyPass.isEnabled());
-      assertFalse(editor.rdoNoFriendlyPass.isEnabled());
+      runOnEdt(
+          () -> {
+            assertTrue(editor.rdoNoFriendlyPass.isSelected());
+            assertFalse(editor.rdoFriendlyPass.isEnabled());
+            assertFalse(editor.rdoNoFriendlyPass.isEnabled());
+          });
       SwingUtilities.invokeAndWait(editor.rdoArea::doClick);
-      assertTrue(editor.rdoNoFriendlyPass.isSelected());
-      assertTrue(editor.rdoNoFriendlyPass.isEnabled());
-      dialog.applySelectedRules();
+      runOnEdt(
+          () -> {
+            assertTrue(editor.rdoNoFriendlyPass.isSelected());
+            assertTrue(editor.rdoNoFriendlyPass.isEnabled());
+            dialog.applySelectedRules();
+          });
       assertFalse(composedRules(dialog).bool(KataGoRules.FRIENDLY_PASS_OK));
       assertFalse(fixture.output.toString().contains("kata-set-rules"));
       closeDialog(dialog);
@@ -448,39 +519,82 @@ class SetKataRulesWindowTest {
     assumeFalse(GraphicsEnvironment.isHeadless());
     try (Fixture fixture = Fixture.ordinary()) {
       GameInfo game = Lizzie.board.getHistory().getGameInfo();
-      game.setKomiNoMenu(7.5);
-      SetKataRules dialog = new SetKataRules(fixture.engine);
+      runOnEdt(() -> game.setKomiNoMenu(7.5));
+      SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
       int queryId = commandIdFor(fixture.output.toString(), "kata-get-rules");
       dispatch(fixture.engine, "=" + queryId + " " + CHINESE);
       awaitConfirmedReadback(dialog);
-      assertEquals("", dialog.komiHintText());
+      assertEquals("", readOnEdt(dialog::komiHintText));
 
       SwingUtilities.invokeAndWait(dialog.editor.btnJpnRule::doClick);
-      String hint = dialog.komiHintText();
+      String hint = readOnEdt(dialog::komiHintText);
       assertTrue(hint.contains("7.5") && hint.contains("6.5"), hint);
       assertEquals(7.5, game.getKomi());
 
-      game.setKomiNoMenu(6.5);
+      runOnEdt(() -> game.setKomiNoMenu(6.5));
       activate(dialog);
-      assertEquals("", dialog.komiHintText(), "komi edited elsewhere refreshes on reactivation");
+      assertEquals(
+          "", readOnEdt(dialog::komiHintText), "komi edited elsewhere refreshes on reactivation");
 
-      game.setKomiNoMenu(0.5);
-      game.setHandicap(2);
+      runOnEdt(
+          () -> {
+            game.setKomiNoMenu(0.5);
+            game.setHandicap(2);
+          });
       activate(dialog);
-      assertEquals("", dialog.komiHintText(), "handicap games use their own komi");
-      game.setHandicap(0);
-      game.setKomiNoMenu(7.5);
+      assertEquals("", readOnEdt(dialog::komiHintText), "handicap games use their own komi");
+      runOnEdt(
+          () -> {
+            game.setHandicap(0);
+            game.setKomiNoMenu(7.5);
+          });
 
       SwingUtilities.invokeAndWait(dialog.editor.btnChnRule::doClick);
-      assertEquals("", dialog.komiHintText());
+      assertEquals("", readOnEdt(dialog::komiHintText));
       closeDialog(dialog);
 
       SetKataRules compose =
-          new SetKataRules(fixture.engine, true, KataGoRules.parse("japanese").orElseThrow());
+          readOnEdt(
+              () ->
+                  new SetKataRules(
+                      fixture.engine, true, KataGoRules.parse("japanese").orElseThrow()));
       activate(compose);
-      assertEquals("", compose.komiHintText(), "match-rules composing has no game komi");
+      assertEquals("", readOnEdt(compose::komiHintText), "match-rules composing has no game komi");
       closeDialog(compose);
     }
+  }
+
+  private static void runOnEdt(CheckedAction action) {
+    readOnEdt(
+        () -> {
+          action.run();
+          return null;
+        });
+  }
+
+  /** Reads and mutating reads such as getRules() must share the status watcher's EDT owner. */
+  private static <T> T readOnEdt(Callable<T> action) {
+    FutureTask<T> task = new FutureTask<>(action);
+    try {
+      if (SwingUtilities.isEventDispatchThread()) {
+        task.run();
+      } else {
+        SwingUtilities.invokeAndWait(task);
+      }
+      return task.get();
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError(interrupted);
+    } catch (ExecutionException failure) {
+      if (failure.getCause() instanceof Error error) throw error;
+      throw new AssertionError(failure.getCause());
+    } catch (java.lang.reflect.InvocationTargetException failure) {
+      throw new AssertionError(failure.getCause());
+    }
+  }
+
+  private interface CheckedAction {
+    void run() throws Exception;
   }
 
   private static void activate(SetKataRules dialog) throws Exception {
@@ -494,7 +608,7 @@ class SetKataRulesWindowTest {
   private static KataGoRules composedRules(SetKataRules dialog) throws Exception {
     Field field = SetKataRules.class.getDeclaredField("composed");
     field.setAccessible(true);
-    return (KataGoRules) field.get(dialog);
+    return readOnEdt(() -> (KataGoRules) field.get(dialog));
   }
 
   private static void awaitConfirmedReadback(SetKataRules dialog) throws Exception {
@@ -508,7 +622,7 @@ class SetKataRulesWindowTest {
       }
       Thread.sleep(20L);
     }
-    throw new AssertionError("Confirmed readback did not settle: " + dialog.statusText());
+    throw new AssertionError("Confirmed readback did not settle: " + readOnEdt(dialog::statusText));
   }
 
   private static void clickApply(SetKataRules dialog) throws Exception {
@@ -582,18 +696,19 @@ class SetKataRulesWindowTest {
   private static void awaitStatus(SetKataRules dialog, String fragment) throws Exception {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
     while (System.nanoTime() < deadline) {
-      SwingUtilities.invokeAndWait(() -> {});
-      if (dialog.statusText().contains(fragment)) {
+      if (readOnEdt(() -> dialog.statusText().contains(fragment))) {
         return;
       }
       Thread.sleep(20L);
     }
-    throw new AssertionError("status was: " + dialog.statusText());
+    throw new AssertionError("status was: " + readOnEdt(dialog::statusText));
   }
 
   private static void closeDialog(SetKataRules dialog) {
-    dialog.dispatchEvent(
-        new java.awt.event.WindowEvent(dialog, java.awt.event.WindowEvent.WINDOW_CLOSING));
+    runOnEdt(
+        () ->
+            dialog.dispatchEvent(
+                new java.awt.event.WindowEvent(dialog, java.awt.event.WindowEvent.WINDOW_CLOSING)));
   }
 
   private static int commandIdFor(String commands, String command) {
@@ -653,7 +768,8 @@ class SetKataRulesWindowTest {
 
   private static final class Fixture implements AutoCloseable {
     private final java.util.Set<java.awt.Window> previousWindows =
-        java.util.Set.copyOf(java.util.Arrays.asList(java.awt.Window.getWindows()));
+        readOnEdt(
+            () -> java.util.Set.copyOf(java.util.Arrays.asList(java.awt.Window.getWindows())));
     private final Config previousConfig;
     private final Leelaz previousLeelaz;
     private final Leelaz previousSecondary;
@@ -692,7 +808,7 @@ class SetKataRulesWindowTest {
     }
 
     static Fixture ordinary() throws Exception {
-      return new Fixture();
+      return readOnEdt(Fixture::new);
     }
 
     private static Leelaz liveEngine(ByteArrayOutputStream stream) throws Exception {
@@ -723,7 +839,7 @@ class SetKataRulesWindowTest {
       } catch (Exception failure) {
         throw new AssertionError("Could not dispose test rule windows", failure);
       } finally {
-        restoreState();
+        runOnEdt(this::restoreState);
       }
     }
 
