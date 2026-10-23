@@ -55,6 +55,27 @@ class HumanSlGameControllerIntegrationTest {
   private static final int BOARD_SIZE = 3;
 
   @Test
+  void fixtureEngineCanReleaseModeReservationsWithoutStartingAProcess() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      Leelaz engine = Lizzie.leelaz;
+      java.lang.reflect.Field process = Leelaz.class.getDeclaredField("process");
+      process.setAccessible(true);
+      assertNull(process.get(engine));
+      assertFalse(engine.isStarted());
+
+      SwingUtilities.invokeAndWait(
+          () -> {
+            Leelaz.EngineModeReservation reservation = engine.beginEngineModeReservation();
+            assertNotNull(reservation);
+            assertDoesNotThrow(reservation::close);
+          });
+
+      assertNull(process.get(engine));
+      assertFalse(engine.isStarted());
+    }
+  }
+
+  @Test
   void fixtureCleanupWaitsForItsMoveListRefreshBeforeRestoringGlobals() throws Exception {
     CoachEnvironment env = CoachEnvironment.open();
     CoachBoard board = (CoachBoard) Lizzie.board;
@@ -2943,7 +2964,9 @@ class HumanSlGameControllerIntegrationTest {
       config.newMoveNumberInBranch = false;
       Lizzie.config = config;
       Lizzie.frame = allocate(CoachFrame.class);
-      Lizzie.leelaz = allocate(Leelaz.class);
+      // Mode reservations release through real Leelaz code, which needs its initialized queues
+      // and ThreadLocals. An empty command constructs the owner without starting a process.
+      Lizzie.leelaz = new Leelaz("");
       LizzieFrame.toolbar = allocate(SilentBottomToolbar.class);
       LizzieFrame.menu = allocate(SilentMenu.class);
       LizzieFrame.winrateGraph = allocate(WinrateGraph.class);
