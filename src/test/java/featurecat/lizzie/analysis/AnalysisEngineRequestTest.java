@@ -39,6 +39,7 @@ import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -4136,7 +4137,10 @@ class AnalysisEngineRequestTest {
   }
 
   private static Board boardWithHistory(BoardHistoryList history) throws Exception {
-    Board board = allocate(Board.class);
+    waitForMovelistRefreshThreads();
+    RequestBoard board = allocate(RequestBoard.class);
+    board.movelistWorkers = new CopyOnWriteArrayList<>();
+    board.movelistFailures = new CopyOnWriteArrayList<>();
     board.startStonelist = new ArrayList<>();
     board.hasStartStone = false;
     board.setHistory(history);
@@ -4308,9 +4312,149 @@ class AnalysisEngineRequestTest {
   }
 
   private static void waitForMovelistRefreshThreads() throws InterruptedException {
-    for (Thread thread : Thread.getAllStackTraces().keySet()) {
-      if ("lizzie-movelist-refresh".equals(thread.getName()) && thread.isAlive()) {
-        thread.join(1000);
+    if (Lizzie.board instanceof RequestBoard) {
+      ((RequestBoard) Lizzie.board).awaitMovelistRefresh();
+    }
+  }
+
+  private static final class RequestBoard extends Board {
+    private List<Thread> movelistWorkers;
+    private List<Throwable> movelistFailures;
+    private volatile CountDownLatch refreshStarted;
+    private CountDownLatch awaitStarted;
+    private Runnable beforeRefreshUpdate;
+
+    @Override
+    public synchronized void setMovelistAll(Runnable onComplete) {
+      if (getHistory() == null) return;
+      CountDownLatch started = new CountDownLatch(1);
+      refreshStarted = started;
+      super.setMovelistAll(onComplete);
+      // Bind each actual production worker before another generation can supersede it.
+      // The first update records the thread before calling code that may need this monitor.
+      try {
+        assertTrue(started.await(5, TimeUnit.SECONDS), "move-list worker must start");
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError("interrupted waiting for move-list worker", e);
+      }
+    }
+
+    @Override
+    public void updateMovelist(BoardHistoryNode node) {
+      Thread worker = Thread.currentThread();
+      if (!"lizzie-movelist-refresh".equals(worker.getName())) {
+        super.updateMovelist(node);
+        return;
+      }
+      if (!movelistWorkers.contains(worker)) {
+        movelistWorkers.add(worker);
+        refreshStarted.countDown();
+      }
+      try {
+        if (beforeRefreshUpdate != null) beforeRefreshUpdate.run();
+        super.updateMovelist(node);
+      } catch (RuntimeException | Error failure) {
+        movelistFailures.add(failure);
+        throw failure;
+      }
+    }
+
+    private void awaitMovelistRefresh() throws InterruptedException {
+      if (awaitStarted != null) awaitStarted.countDown();
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+      for (Thread worker : movelistWorkers) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining > 0) TimeUnit.NANOSECONDS.timedJoin(worker, remaining);
+        assertFalse(worker.isAlive(), "owned move-list worker must exit");
+      }
+      assertTrue(movelistFailures.isEmpty(), () -> "move-list failures: " + movelistFailures);
+    }
+  }
+
+  @Test
+  void alreadyBoundMovelistWorkerCannotReleaseTheNextStartGate() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      RequestBoard board = (RequestBoard) boardWithHistory(history);
+      CountDownLatch entered = new CountDownLatch(1);
+      CountDownLatch release = new CountDownLatch(1);
+      AtomicInteger updates = new AtomicInteger();
+      board.beforeRefreshUpdate =
+          () -> {
+            if (updates.getAndIncrement() != 0) return;
+            entered.countDown();
+            try {
+              assertTrue(release.await(5, TimeUnit.SECONDS), "test must release first node");
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              throw new AssertionError(e);
+            }
+          };
+      try {
+        board.setMovelistAll();
+        assertTrue(entered.await(5, TimeUnit.SECONDS));
+        CountDownLatch nextStart = new CountDownLatch(1);
+        board.refreshStarted = nextStart;
+        release.countDown();
+        board.awaitMovelistRefresh();
+        assertEquals(2, updates.get(), "both real history nodes must be refreshed");
+        assertEquals(1, nextStart.getCount(), "an old worker cannot bind a new generation");
+      } finally {
+        release.countDown();
+      }
+    }
+  }
+
+  @Test
+  void environmentCloseWaitsForOwnedMovelistWorkerBeforeRestoringGlobals() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    Config scopedConfig = Lizzie.config;
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(
+        moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+    RequestBoard board = (RequestBoard) boardWithHistory(history);
+    CountDownLatch release = new CountDownLatch(1);
+    board.awaitStarted = new CountDownLatch(1);
+    var observedConfig = new java.util.concurrent.atomic.AtomicReference<Config>();
+    board.beforeRefreshUpdate =
+        () -> {
+          try {
+            assertTrue(release.await(10, TimeUnit.SECONDS), "test must release refresh");
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+          }
+          observedConfig.set(Lizzie.config);
+        };
+    var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    java.util.concurrent.Future<?> closing = null;
+    try {
+      board.setMovelistAll();
+      closing =
+          executor.submit(
+              () -> {
+                env.close();
+                return null;
+              });
+      assertTrue(board.awaitStarted.await(5, TimeUnit.SECONDS), "close must join owned refreshes");
+      assertFalse(closing.isDone(), "close cannot restore globals while the worker is blocked");
+      assertSame(scopedConfig, Lizzie.config);
+      release.countDown();
+      closing.get(5, TimeUnit.SECONDS);
+      assertSame(scopedConfig, observedConfig.get());
+      assertTrue(board.movelistWorkers.stream().noneMatch(Thread::isAlive));
+    } finally {
+      release.countDown();
+      try {
+        if (closing != null) closing.get(5, TimeUnit.SECONDS);
+        else env.close();
+      } finally {
+        executor.shutdownNow();
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        for (Thread worker : board.movelistWorkers) worker.join(5000);
       }
     }
   }
@@ -4705,14 +4849,29 @@ class AnalysisEngineRequestTest {
 
     @Override
     public void close() throws Exception {
-      closeExclusiveSessionForTest(Lizzie.leelaz);
-      Board.boardWidth = previousBoardWidth;
-      Board.boardHeight = previousBoardHeight;
-      Zobrist.init();
-      Lizzie.config = previousConfig;
-      Lizzie.board = previousBoard;
-      Lizzie.frame = previousFrame;
-      Lizzie.leelaz = previousLeelaz;
+      Throwable failure = null;
+      try {
+        closeExclusiveSessionForTest(Lizzie.leelaz);
+      } catch (Exception | Error error) {
+        failure = error;
+      }
+      try {
+        waitForMovelistRefreshThreads();
+        javax.swing.SwingUtilities.invokeAndWait(() -> {});
+      } catch (Exception | Error error) {
+        if (failure == null) failure = error;
+        else failure.addSuppressed(error);
+      } finally {
+        Board.boardWidth = previousBoardWidth;
+        Board.boardHeight = previousBoardHeight;
+        Zobrist.init();
+        Lizzie.config = previousConfig;
+        Lizzie.board = previousBoard;
+        Lizzie.frame = previousFrame;
+        Lizzie.leelaz = previousLeelaz;
+      }
+      if (failure instanceof Error) throw (Error) failure;
+      if (failure != null) throw (Exception) failure;
     }
   }
 
