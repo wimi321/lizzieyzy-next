@@ -101,8 +101,9 @@ OpenCL 免安装包也能直接打开 `KataGo 一键设置`，点一次“智能
 
 1. 优先下载 `windows64.nvidia.portable.zip`。
 2. 解压后运行 `LizzieYzy Next NVIDIA.exe`。
-3. 第一次启动时，程序会自动把需要的官方 NVIDIA 运行库准备到你的用户目录。
-4. 这个包内置的是官方 KataGo CUDA Windows 版本。想把线程数调到更合适，可以打开 `KataGo 一键设置`，点一次“智能测速优化”。
+3. 正式 NVIDIA 完整包已内置所需官方 NVIDIA 运行库，正常首启无需另行下载 CUDA / cuDNN；仍需兼容的显卡和驱动。
+4. 若提示内置运行库缺失，请重新安装 NVIDIA 完整包，不要等待首启自动补下载。TensorRT 等可选组件通过 `KataGo 一键设置` 按需安装。
+5. 这个包内置 KataGo CUDA Windows 版本。想把线程数调到更合适，可以打开 `KataGo 一键设置`，点一次“智能测速优化”。
 
 如果你更喜欢安装流程：
 

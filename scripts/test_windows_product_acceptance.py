@@ -1097,6 +1097,275 @@ if (-not $script:rolledBack -or $script:fixtureEntry) {{ throw 'owned installer 
         self.assertIn("candidate binding differs", result.stderr + result.stdout)
 
 
+@unittest.skipUnless(os.name == "nt" and shutil.which("pwsh.exe"), "requires native Windows and PowerShell 7")
+class StartupCleanupIdentityTest(unittest.TestCase):
+    """Exercise startup failure with fake processes; never terminate a real PID."""
+
+    def run_failure(self, scenario: str, entry_point: str = "prepared") -> dict:
+        with tempfile.TemporaryDirectory(prefix="lizzie-startup-cleanup-") as directory:
+            driver = Path(directory) / "cleanup.ps1"
+            script_path = str(SCRIPT.resolve()).replace("'", "''")
+            driver.write_text(
+                f". '{script_path}' -Command Prepare\n"
+                f"$script:case = '{scenario}'; $script:entryPoint = '{entry_point}'\n" + r'''
+$script:phase = 'starting'
+$script:killed = [System.Collections.Generic.List[int]]::new()
+$script:restored = [System.Collections.Generic.List[string]]::new()
+$script:childReused = $false
+$script:launcherPath = Join-Path $PSScriptRoot 'product/launcher.exe'
+$script:childPath = Join-Path $PSScriptRoot 'product/engine.exe'
+$script:old = [datetime]'2026-10-23T01:00:00.1234560Z'
+$script:new = [datetime]'2026-10-23T02:00:00.1234560Z'
+function New-Snapshot($id, $parent, $image, $created) {
+    [pscustomobject]@{ ProcessId=$id; ParentProcessId=$parent; ExecutablePath=$image; CommandLine=$image; CreationDate=$created }
+}
+function Assert-Administrator {}
+function Get-SharedDataSnapshot { return @{fixture='unchanged'} }
+function Start-NetworkAuditBoundary { return @{startRecordId=1} }
+function Add-WorkDirectoryOption { return 'original-config' }
+function Add-FirewallBoundary { param($Layout,$Token,$Rules); $Rules.Add('fixture-rule') }
+function Remove-FirewallBoundary { $script:restored.Add('firewall') }
+function Get-RemainingFirewallRules { return @() }
+function Restore-NetworkAuditBoundary { $script:restored.Add('audit') }
+function Restore-ConfigBytes { $script:restored.Add('config') }
+function Start-Sleep {}
+function Start-Process {
+    $p = [pscustomobject]@{Id=4242; HasExited=$false; ExitCode=17; StartTime=$script:old.AddTicks(6)}
+    if ($script:case -eq 'missing-launch-time') { $p.StartTime=$null }
+    $p | Add-Member ScriptMethod Refresh {
+        if ($script:case -eq 'failure-before-first-poll') { $script:phase='failed'; throw 'fixture startup failure' }
+        if ($script:case -like 'early-*') {
+            $script:phase='failed'; $this.HasExited=$true
+        }
+    }
+    return $p
+}
+$script:actualOwnedTree = ${function:Get-OwnedProcessTree}
+function Get-OwnedProcessTree {
+    param([int]$RootPid,[string]$ProductRoot,[object]$RootIdentity=$null,[switch]$IncludeSnapshots)
+    & $script:actualOwnedTree @PSBoundParameters
+    if ($script:phase -eq 'failed' -and $script:case -eq 'child-reused-before-stop') { $script:childReused=$true }
+}
+function Get-CimInstance {
+    $failed = $script:phase -eq 'failed'
+    $rootTime=$script:old; $childTime=$script:old.AddSeconds(1)
+    $rootImage=$script:launcherPath
+    if ($failed -and $script:case -in @('early-reused-root','reused-root')) {
+        $rootTime=$script:new; $rootImage=Join-Path $PSScriptRoot 'unrelated.exe'
+    }
+    if ($failed -and $script:case -eq 'adjacent-microsecond-root') { $rootTime=$script:old.AddTicks(10) }
+    if ($failed -and ($script:case -eq 'reused-child' -or $script:childReused)) {
+        $childTime=$script:new
+    }
+    if ($failed -and $script:case -eq 'missing-child-time') { $childTime=$null }
+    if ($script:case -eq 'early-exit-old-child') { $childTime=$script:old.AddSeconds(-1) }
+    if ($script:case -eq 'early-exit-unknown-child-time') { $childTime=$null }
+    if ($script:case -notlike 'early-exit*' -and -not ($failed -and $script:case -eq 'exited-root-known-child') -and -not $script:killed.Contains(4242)) {
+        New-Snapshot 4242 1 $rootImage $rootTime
+    }
+    if ($script:case -notin @('early-exit','missing-launch-time') -and -not $script:killed.Contains(4243)) {
+        $childImage=if ($script:case -in @('early-exit-external-child','early-exit-unrelated-process')) { Join-Path $PSScriptRoot 'external-runtime/helper.exe' } else { $script:childPath }
+        $childParent=if ($script:case -in @('early-exit-orphan-product-process','early-exit-unrelated-process')) { 9000 } else { 4242 }
+        New-Snapshot 4243 $childParent $childImage $childTime
+    }
+    if ($failed -and $script:case -in @('early-reused-root','reused-root') -and -not $script:killed.Contains(4244)) {
+        New-Snapshot 4244 4242 $script:childPath $script:new.AddSeconds(1)
+    }
+}
+function Get-Process {
+    if ($script:phase -eq 'starting') { $script:phase='failed'; throw 'fixture startup failure' }
+    return @()
+}
+function Stop-Process { param([int]$Id,[switch]$Force,$ErrorAction); $script:killed.Add($Id) }
+$prepared=[pscustomobject]@{
+    Candidate=[pscustomobject]@{Value=[pscustomobject]@{artifact=[pscustomobject]@{class='installer-product'}}}
+    Layout=[pscustomobject]@{Root=(Join-Path $PSScriptRoot 'product'); Launcher=$script:launcherPath; Config=(Join-Path $PSScriptRoot 'fixture.cfg'); Backend='none'; Engine=$null}
+}
+$script:EvidenceDir=$PSScriptRoot
+$script:CandidateJson=Join-Path $PSScriptRoot 'candidate.json'
+$script:KeepPreparedProduct=$true
+if ($script:entryPoint -ne 'prepared') {
+    $prepared.Candidate=[pscustomobject]@{Path=$script:CandidateJson; Hash=('b'*64); Value=[pscustomobject]@{
+        targetSha=('a'*40); releaseTag='next-fixture'; provenance=[pscustomobject]@{path='fixture-provenance'; sha256=('c'*64)}
+        artifact=[pscustomobject]@{class='installer-product'; key='windows-installer'; name='fixture.exe'; sha256=('d'*64)}
+    }}
+    $prepared | Add-Member NoteProperty PreparedPath (Join-Path $PSScriptRoot 'prepared.json')
+    $prepared | Add-Member NoteProperty Prepared ([pscustomobject]@{install=$null})
+    Write-JsonAtomic -Path $script:CandidateJson -Value $prepared.Candidate.Value
+}
+$script:fixturePrepared=$prepared
+function Read-PreparedIdentity { return $script:fixturePrepared }
+function Read-PreparedInstallerOwnership { return $null }
+function Set-ExpectedProductFromLayout {}
+function Test-IsAdministrator { return $true }
+function Get-WinEvent {}
+$failure=$null
+try {
+    if ($script:entryPoint -eq 'start') { $script:Scenario='live-session'; Invoke-Start }
+    elseif ($script:entryPoint -eq 'run') { $script:Scenario='variant-launch'; Invoke-Run }
+    else { Start-PreparedProduct -PreparedIdentity $prepared -OutputRunJson (Join-Path $PSScriptRoot 'run.json') -ScenarioId 'live-session' -Evidence $PSScriptRoot -Offline $true }
+}
+catch { $failure=$_ }
+if (-not $failure) { throw 'Expected controlled startup failure' }
+$cleanup=$failure.Exception.Data['StartupCleanup']
+if ($script:entryPoint -ne 'prepared') { $cleanup=Read-JsonFile -Path (Join-Path $PSScriptRoot 'startup-cleanup.json') -Label 'fixture cleanup' }
+[ordered]@{
+    message=$failure.Exception.Message
+    cleanup=$cleanup
+    acceptance=if ($script:entryPoint -eq 'run') { Read-JsonFile -Path (Join-Path $PSScriptRoot 'acceptance.json') -Label 'fixture acceptance' } else { $null }
+    killed=@($script:killed)
+    restored=@($script:restored)
+} | ConvertTo-Json -Depth 20
+''',
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [shutil.which("pwsh.exe") or shutil.which("pwsh"), "-NoProfile", "-File", str(driver)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+            )
+            self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+            value = json.loads(result.stdout)
+            self.assertCountEqual(["firewall", "config"] + ([] if entry_point == "start" else ["audit"]), value["restored"])
+            self.assertTrue(value["cleanup"]["auditPolicyRestored"])
+            self.assertTrue(value["cleanup"]["configRestored"])
+            self.assertTrue(value["cleanup"]["sharedDataUnchanged"])
+            self.assertEqual([], value["cleanup"]["remainingOwnedPids"])
+            if scenario.startswith("early-"):
+                self.assertIn("Packaged launcher exited before readiness with code 17", value["message"])
+            elif scenario != "missing-launch-time":
+                self.assertIn("fixture startup failure", value["message"])
+            return value
+
+    def test_early_exit_reused_launcher_does_not_adopt_foreign_children(self) -> None:
+        value = self.run_failure("early-reused-root")
+        self.assertEqual([], value["killed"])
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+
+    def test_reused_launcher_still_cleans_known_child_without_adopting_new_child(self) -> None:
+        value = self.run_failure("reused-root")
+        self.assertEqual([4243], value["killed"])
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+
+    def test_reused_child_is_not_adopted_again_during_cleanup(self) -> None:
+        value = self.run_failure("reused-child")
+        self.assertEqual([4242], value["killed"])
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+
+    def test_child_identity_is_rechecked_immediately_before_stop(self) -> None:
+        value = self.run_failure("child-reused-before-stop")
+        self.assertEqual([4242], value["killed"])
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+
+    def test_missing_child_creation_time_fails_closed_and_restores_resources(self) -> None:
+        value = self.run_failure("missing-child-time")
+        self.assertEqual([4242], value["killed"])
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+
+    def test_missing_original_launcher_time_never_claims_a_fresh_pid_snapshot(self) -> None:
+        value = self.run_failure("missing-launch-time")
+        self.assertEqual([], value["killed"])
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+
+    def test_normal_failure_cleans_bound_incarnations_and_preserves_error(self) -> None:
+        value = self.run_failure("normal-failure")
+        self.assertCountEqual([4242, 4243], value["killed"])
+        self.assertTrue(value["cleanup"]["complete"])
+        self.assertEqual([], value["cleanup"]["identityErrors"])
+
+    def test_original_submicrosecond_ticks_are_preserved_in_cleanup_evidence(self) -> None:
+        value = self.run_failure("normal-failure")
+        self.assertIn("processes", value["cleanup"])
+        root = next(item for item in value["cleanup"]["processes"] if item["pid"] == 4242)
+        self.assertEqual(6, root["startTimeUtcTicks"] % 10)
+        self.assertTrue(root["creationDate"].endswith(".1234560Z"))
+
+    def test_adjacent_microsecond_is_not_treated_as_original_launcher(self) -> None:
+        value = self.run_failure("adjacent-microsecond-root")
+        self.assertEqual([4243], value["killed"])
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+
+    def test_failure_before_first_poll_cleans_fresh_children_of_bound_launcher(self) -> None:
+        value = self.run_failure("failure-before-first-poll")
+        self.assertCountEqual([4242, 4243], value["killed"])
+        self.assertTrue(value["cleanup"]["complete"])
+
+    def test_exited_launcher_still_cleans_already_bound_child(self) -> None:
+        value = self.run_failure("exited-root-known-child")
+        self.assertEqual([4243], value["killed"])
+        self.assertTrue(value["cleanup"]["complete"])
+
+    def test_early_exit_without_survivors_preserves_successful_cleanup(self) -> None:
+        value = self.run_failure("early-exit")
+        self.assertEqual([], value["killed"])
+        self.assertTrue(value["cleanup"]["complete"])
+
+    def assert_unrecorded_child_is_unverified(self, value: dict) -> None:
+        self.assertEqual([], value["killed"], "unbound descendants must never be terminated")
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+        self.assertEqual([4243], [item["pid"] for item in value["cleanup"]["unverifiedProcesses"]])
+        self.assertEqual([4242], [item["pid"] for item in value["cleanup"]["processes"]])
+
+    def test_early_exit_with_unrecorded_child_reports_incomplete_cleanup(self) -> None:
+        self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-unrecorded-child"))
+
+    def test_early_exit_with_external_child_does_not_claim_ownership(self) -> None:
+        self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-external-child"))
+
+    def test_early_exit_with_orphan_product_process_keeps_cleanup_uncertain(self) -> None:
+        self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-orphan-product-process"))
+
+    def test_early_exit_ignores_unrelated_process_outside_product_root(self) -> None:
+        value = self.run_failure("early-exit-unrelated-process")
+        self.assertEqual([], value["killed"])
+        self.assertTrue(value["cleanup"]["complete"])
+        self.assertEqual([], value["cleanup"]["identityErrors"])
+        self.assertEqual([], value["cleanup"]["unverifiedProcesses"])
+
+    def test_early_exit_with_missing_child_time_keeps_cleanup_uncertain(self) -> None:
+        self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-unknown-child-time"))
+
+    def test_early_exit_ignores_child_predating_the_started_launcher(self) -> None:
+        value = self.run_failure("early-exit-old-child")
+        self.assertEqual([], value["killed"])
+        self.assertTrue(value["cleanup"]["complete"])
+        self.assertEqual([], value["cleanup"]["identityErrors"])
+
+    def test_start_wrapper_preserves_unrecorded_child_uncertainty(self) -> None:
+        value = self.run_failure("early-exit-unrecorded-child", "start")
+        self.assert_unrecorded_child_is_unverified(value)
+        self.assertIn("ownership", value["message"])
+
+    def test_run_wrapper_preserves_unrecorded_child_uncertainty(self) -> None:
+        value = self.run_failure("early-exit-unrecorded-child", "run")
+        self.assert_unrecorded_child_is_unverified(value)
+        self.assertFalse(value["acceptance"]["cleanup"]["complete"])
+        self.assertTrue(value["acceptance"]["cleanup"]["remainingOwnedResources"])
+        self.assertEqual("FAIL", value["acceptance"]["status"])
+
+    def test_start_wrapper_preserves_original_error_and_explains_uncertain_cleanup(self) -> None:
+        value = self.run_failure("reused-root", "start")
+        self.assertEqual([4243], value["killed"])
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertTrue(value["cleanup"]["identityErrors"])
+        self.assertIn("ownership", value["message"])
+
+    def test_run_wrapper_does_not_reclassify_uncertain_cleanup_as_complete(self) -> None:
+        value = self.run_failure("reused-root", "run")
+        self.assertEqual([4243], value["killed"])
+        self.assertFalse(value["cleanup"]["complete"])
+        self.assertFalse(value["acceptance"]["cleanup"]["complete"])
+        self.assertTrue(value["acceptance"]["cleanup"]["remainingOwnedResources"])
+        self.assertEqual("FAIL", value["acceptance"]["status"])
+
+
 @unittest.skipUnless(shutil.which("pwsh.exe") or shutil.which("pwsh"), "requires PowerShell 7")
 class StartupEngineIdentityTest(unittest.TestCase):
     def test_python_override_is_used_and_invalid_override_fails_closed(self) -> None:

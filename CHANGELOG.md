@@ -4,6 +4,11 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Windows final-package acceptance binds startup cleanup to the original launcher and child process identities instead of blindly trusting PIDs. Detected PID reuse or missing identity data prevents termination and remains visible in cleanup results while configuration and isolation resources are restored. Possible surviving descendants after an early launcher exit remain unverified, never silently counted as complete cleanup or terminated by ancestry alone.
+
+- Windows installation and release guidance now distinguishes the NVIDIA full package's bundled
+  runtime from optional downloads, and explains reinstalling the full package when runtime files are missing.
+
 - AI Coach discards late review notifications after a game is closed, preventing the old session from refreshing a detached or replacement interface.
 
 - On Windows, opening the system window menu with Alt+Space no longer stops a live-analysis AI Coach game. The ordinary Space shortcut keeps its existing behavior.
