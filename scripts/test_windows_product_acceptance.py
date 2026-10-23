@@ -67,6 +67,100 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def assert_exited_launcher_cleanup(
+    case: unittest.TestCase,
+    result: subprocess.CompletedProcess[str],
+    evidence: Path,
+    diagnostic_root: Path,
+) -> None:
+    """Keep this short-lived native launcher's evidence when an assertion fails."""
+    cleanup = None
+    try:
+        case.assertNotEqual(0, result.returncode)
+        case.assertRegex(result.stderr + result.stdout,
+                         r"Packaged launcher (exited|process tree disappeared) before readiness")
+        case.assertNotIn("empty array", result.stderr + result.stdout)
+        cleanup = json.loads((evidence / "startup-cleanup.json").read_text(encoding="utf-8"))
+        case.assertTrue(cleanup["complete"])
+        case.assertEqual([], cleanup["remainingOwnedPids"])
+        case.assertFalse((evidence / "run.json").exists())
+    except (AssertionError, OSError, ValueError) as failure:
+        details = {
+            "command": result.args,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "cleanup": cleanup,
+        }
+        diagnostic = json.dumps(details, ensure_ascii=False, indent=2)
+        failure.add_note(diagnostic)
+        try:
+            diagnostic_root.mkdir(parents=True, exist_ok=True)
+            retained = Path(tempfile.mkdtemp(prefix="exited-launcher-", dir=diagnostic_root))
+            (retained / "command-result.json").write_text(diagnostic + "\n", encoding="utf-8")
+            for name in ("startup-cleanup.json", "candidate.json", "prepared.json"):
+                source = evidence / name
+                if source.is_file():
+                    shutil.copy2(source, retained / name)
+            failure.add_note(f"Retained synthetic fixture evidence: {retained}")
+        except OSError as retention_failure:
+            failure.add_note(f"Could not retain fixture files: {retention_failure}")
+        raise
+
+
+class ExitedLauncherDiagnosticsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.evidence = self.root / "evidence"
+        self.evidence.mkdir()
+        self.diagnostics = self.root / "diagnostics"
+        self.cleanup = {"complete": True, "remainingOwnedPids": [], "identityErrors": [], "errors": []}
+        for name in ("candidate.json", "prepared.json"):
+            (self.evidence / name).write_text('{"synthetic": true}\n', encoding="utf-8")
+        self.result = subprocess.CompletedProcess(
+            ["synthetic-runner", "-Command", "Start"], 1,
+            "synthetic stdout", "Packaged launcher exited before readiness with code 0.",
+        )
+
+    def check_result(self) -> None:
+        (self.evidence / "startup-cleanup.json").write_text(
+            json.dumps(self.cleanup), encoding="utf-8")
+        assert_exited_launcher_cleanup(self, self.result, self.evidence, self.diagnostics)
+
+    def test_success_does_not_write_diagnostics(self) -> None:
+        self.check_result()
+        self.assertFalse(self.diagnostics.exists())
+
+    def test_incomplete_cleanup_retains_original_reason_and_command(self) -> None:
+        self.cleanup.update(complete=False, identityErrors=["unbound synthetic child"],
+                            errors=["Startup process ownership unverified"])
+        with self.assertRaises(AssertionError) as raised:
+            self.check_result()
+        notes = "\n".join(getattr(raised.exception, "__notes__", []))
+        self.assertIn("unbound synthetic child", notes)
+        self.assertIn(self.result.stdout, notes)
+        self.assertIn(self.result.stderr, notes)
+        retained, = self.diagnostics.iterdir()
+        for name in ("startup-cleanup.json", "candidate.json", "prepared.json"):
+            self.assertEqual((self.evidence / name).read_bytes(), (retained / name).read_bytes())
+        record = json.loads((retained / "command-result.json").read_text(encoding="utf-8"))
+        self.assertEqual(self.cleanup, record["cleanup"])
+        self.assertEqual(self.result.args, record["command"])
+        self.assertEqual(1, record["returncode"])
+
+    def test_remaining_process_assertion_still_fails(self) -> None:
+        self.cleanup["remainingOwnedPids"] = [42]
+        with self.assertRaises(AssertionError):
+            self.check_result()
+
+    def test_unexpected_run_record_assertion_still_fails(self) -> None:
+        (self.evidence / "run.json").write_text("{}", encoding="utf-8")
+        with self.assertRaises(AssertionError):
+            self.check_result()
+
+
 @unittest.skipUnless(WINDOWS_FIXTURES_AVAILABLE, "requires native Windows or WSL with Windows PowerShell")
 class WindowsProductAcceptanceFixtureTest(unittest.TestCase):
     @classmethod
@@ -553,14 +647,8 @@ namespace FixtureLauncher {
             "-Scenario", "live-session", "-EvidenceDir", windows_path(evidence),
             "-WaitSeconds", "5",
         )
-        self.assertNotEqual(0, result.returncode)
-        self.assertRegex(result.stderr + result.stdout,
-                         r"Packaged launcher (exited|process tree disappeared) before readiness")
-        self.assertNotIn("empty array", result.stderr + result.stdout)
-        cleanup = json.loads((evidence / "startup-cleanup.json").read_text(encoding="utf-8"))
-        self.assertTrue(cleanup["complete"])
-        self.assertEqual([], cleanup["remainingOwnedPids"])
-        self.assertFalse((evidence / "run.json").exists())
+        assert_exited_launcher_cleanup(
+            self, result, evidence, ROOT / "target/local-ci/windows-scripts/fixture-failures")
 
     def test_missing_readiness_times_out_and_cleans_owned_process(self) -> None:
         asset, manifest = self.create_portable(ready=False)
