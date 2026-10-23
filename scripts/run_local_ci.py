@@ -416,9 +416,11 @@ def is_windows_wsl_bash_launcher(path: str, *, windows: bool | None = None) -> b
     if not windows:
         return False
     normalized = path.replace("\\", "/").casefold()
-    return normalized.endswith("/windows/system32/bash.exe") or normalized.endswith(
-        "/windows/sysnative/bash.exe"
-    )
+    return normalized.endswith((
+        "/windows/system32/bash.exe",
+        "/windows/sysnative/bash.exe",
+        "/microsoft/windowsapps/bash.exe",
+    ))
 
 
 def resolve_powershell() -> str:

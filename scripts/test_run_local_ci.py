@@ -16,9 +16,10 @@ from scripts import run_local_ci
 class RunLocalCiTest(unittest.TestCase):
     def test_shell_wrapper_default_group_keeps_complete_all_profile_plan(self):
         repository = Path(__file__).resolve().parents[1]
-        bash = os.environ.get("LIZZIE_BASH") or shutil.which("bash")
-        if not bash:
-            self.skipTest("bash is required to exercise the POSIX local-CI wrapper")
+        try:
+            bash = run_local_ci.resolve_bash()
+        except RuntimeError as unavailable:
+            self.skipTest(str(unavailable))
         with tempfile.TemporaryDirectory() as temporary:
             temporary_path = Path(temporary)
             environment = os.environ.copy()
@@ -495,6 +496,12 @@ class RunLocalCiTest(unittest.TestCase):
                 r"C:\Windows\System32\bash.exe", windows=True
             )
         )
+        self.assertTrue(
+            run_local_ci.is_windows_wsl_bash_launcher(
+                r"C:\Users\Tester\AppData\Local\Microsoft\WindowsApps\bash.exe",
+                windows=True,
+            )
+        )
         self.assertFalse(
             run_local_ci.is_windows_wsl_bash_launcher(
                 r"C:\Program Files\Git\bin\bash.exe", windows=True
@@ -505,6 +512,18 @@ class RunLocalCiTest(unittest.TestCase):
                 "/usr/bin/bash", windows=False
             )
         )
+
+    def test_resolve_bash_rejects_windows_app_execution_alias(self):
+        alias = r"C:\Users\Tester\AppData\Local\Microsoft\WindowsApps\bash.exe"
+        with (
+            patch.dict(os.environ, {"LIZZIE_BASH": ""}),
+            patch.object(run_local_ci.os, "name", "nt"),
+            patch.object(run_local_ci, "Path") as path_type,
+            patch.object(run_local_ci.shutil, "which", return_value=alias),
+        ):
+            path_type.return_value.__truediv__.return_value.is_file.return_value = False
+            with self.assertRaisesRegex(RuntimeError, "Set LIZZIE_BASH or add Git Bash"):
+                run_local_ci.resolve_bash()
 
 
     def test_desktop_fails_closed_without_display_on_linux_and_dry_run_remains_planning(self):
