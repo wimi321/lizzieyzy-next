@@ -81,4 +81,43 @@ class SetupBackgroundActionTest {
     assertTrue(finished.await(5, TimeUnit.SECONDS));
     assertEquals(List.of("failure", "unlocked"), callbacks);
   }
+
+  @Test
+  void failedSuccessCallbackStillRunsWorkerCleanup() throws Exception {
+    RuntimeException expected = new RuntimeException("UI publication failed");
+    AtomicReference<Thread.UncaughtExceptionHandler> previous = new AtomicReference<>();
+    AtomicReference<Throwable> uncaught = new AtomicReference<>();
+    CountDownLatch finished = new CountDownLatch(1);
+    SwingUtilities.invokeAndWait(
+        () -> {
+          Thread eventThread = Thread.currentThread();
+          previous.set(eventThread.getUncaughtExceptionHandler());
+          eventThread.setUncaughtExceptionHandler((thread, failure) -> uncaught.set(failure));
+        });
+    try {
+      SwingUtilities.invokeAndWait(
+          () ->
+              SetupBackgroundAction.start(
+                  "test-publication-failure",
+                  () -> "imported",
+                  result -> {
+                    assertTrue(SwingUtilities.isEventDispatchThread());
+                    throw expected;
+                  },
+                  failure -> {
+                    throw new AssertionError(failure);
+                  },
+                  completed -> {
+                    assertTrue(SwingUtilities.isEventDispatchThread());
+                    finished.countDown();
+                  }));
+      assertTrue(finished.await(5, TimeUnit.SECONDS));
+      // Let the EDT finish exception dispatch before inspecting its uncaught handler's result.
+      SwingUtilities.invokeAndWait(() -> {});
+      assertSame(expected, uncaught.get());
+    } finally {
+      SwingUtilities.invokeAndWait(
+          () -> Thread.currentThread().setUncaughtExceptionHandler(previous.get()));
+    }
+  }
 }

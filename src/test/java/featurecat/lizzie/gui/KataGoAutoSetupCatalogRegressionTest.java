@@ -13,12 +13,14 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper.EngineValidationStatus;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import java.awt.Cursor;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JButton;
@@ -32,6 +34,9 @@ import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import sun.misc.Unsafe;
 
 class KataGoAutoSetupCatalogRegressionTest {
@@ -373,9 +378,8 @@ class KataGoAutoSetupCatalogRegressionTest {
             // The download already completed; its catalog scan answers after close. The success
             // callback is dropped by requestId, so only the worker's finally cleanup is delivered.
             finished.invoke(dialog, session, worker);
-            assertEquals(true, get(dialog, "controlsBusy"));
-            dialog.refreshState();
-            assertEquals(false, get(dialog, "controlsBusy"), "reopen owns a fresh refresh now");
+            assertEquals(false, get(dialog, "controlsBusy"), "completion owns a fresh refresh now");
+            assertEquals(9L, get(dialog, "stateRefreshRequestId"));
             assertTrue(((JPanel) get(dialog, "progressPanel")).isVisible());
             assertFalse(((JFontButton) get(dialog, "btnRefresh")).isEnabled());
           } catch (ReflectiveOperationException failure) {
@@ -389,6 +393,204 @@ class KataGoAutoSetupCatalogRegressionTest {
           }
         });
     SwingUtilities.invokeAndWait(() -> {});
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void reopeningBeforeLateTaskCompletionStartsAFreshRefresh(boolean download) throws Exception {
+    HeadlessRefreshDialog dialog = unconstructedDialog();
+    initializeRefreshControls(dialog);
+    var session = download ? new KataGoAutoSetupHelper.DownloadSession() : null;
+    Thread worker = new Thread(() -> {});
+    set(dialog, "activeDownloadSession", session);
+    set(dialog, "activeWorkerThread", worker);
+    set(dialog, "controlsBusy", true);
+    set(dialog, "stateRefreshRequestId", 7L);
+    Method close = KataGoAutoSetupDialog.class.getDeclaredMethod("closeOrCancelActiveTask");
+    Method finished =
+        KataGoAutoSetupDialog.class.getDeclaredMethod(
+            "clearActiveDownload", KataGoAutoSetupHelper.DownloadSession.class, Thread.class);
+    Method dispose = KataGoAutoSetupDialog.class.getDeclaredMethod("cancelOwnedSetupTasks");
+    close.setAccessible(true);
+    finished.setAccessible(true);
+    dispose.setAccessible(true);
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          try {
+            close.invoke(dialog);
+            dialog.refreshState(); // Reopen while a download or local import still owns its worker.
+            assertEquals(8L, get(dialog, "stateRefreshRequestId"));
+            assertEquals(true, get(dialog, "controlsBusy"));
+            // The old success publication is now stale. Its finally cleanup must refresh the
+            // reopened view without accepting the old snapshot or leaving all controls disabled.
+            finished.invoke(dialog, session, worker);
+          } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+          }
+        });
+    SwingUtilities.invokeAndWait(
+        () -> {
+          try {
+            assertEquals(
+                false, get(dialog, "controlsBusy"), "finished work cannot leave stale busy state");
+            assertEquals(
+                9L, get(dialog, "stateRefreshRequestId"), "a new snapshot owns the reopened view");
+          } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+          } finally {
+            try {
+              dispose.invoke(dialog);
+            } catch (ReflectiveOperationException failure) {
+              throw new AssertionError(failure);
+            }
+          }
+        });
+    SwingUtilities.invokeAndWait(() -> {});
+  }
+
+  @ParameterizedTest
+  @CsvSource({"true,false", "false,false", "true,true", "false,true"})
+  void localImportWorkerAlwaysFinishesAfterCloseAndEarlyReopen(boolean humanSl, boolean fail)
+      throws Exception {
+    HeadlessRefreshDialog dialog = unconstructedDialog();
+    initializeRefreshControls(dialog);
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    Method close = KataGoAutoSetupDialog.class.getDeclaredMethod("closeOrCancelActiveTask");
+    Method dispose = KataGoAutoSetupDialog.class.getDeclaredMethod("cancelOwnedSetupTasks");
+    close.setAccessible(true);
+    dispose.setAccessible(true);
+    SwingUtilities.invokeAndWait(
+        () ->
+            dialog.startWeightImport(
+                () -> {
+                  assertFalse(SwingUtilities.isEventDispatchThread());
+                  started.countDown();
+                  assertTrue(release.await(5, TimeUnit.SECONDS));
+                  if (fail) throw new IOException("late import failure");
+                  return new SetupWeightImport(root.resolve("must-not-publish.bin.gz"), null);
+                },
+                humanSl));
+    Thread worker = (Thread) get(dialog, "activeWorkerThread");
+    assertTrue(started.await(5, TimeUnit.SECONDS));
+    try {
+      SwingUtilities.invokeAndWait(
+          () -> {
+            try {
+              close.invoke(dialog);
+              dialog.refreshState();
+              assertSame(worker, get(dialog, "activeWorkerThread"));
+              assertEquals(true, get(dialog, "controlsBusy"));
+              assertEquals(2L, get(dialog, "stateRefreshRequestId"));
+            } catch (ReflectiveOperationException failure) {
+              throw new AssertionError(failure);
+            }
+          });
+    } finally {
+      release.countDown();
+    }
+    worker.join(5000L);
+    assertFalse(worker.isAlive());
+    SwingUtilities.invokeAndWait(
+        () -> {
+          try {
+            assertEquals(null, get(dialog, "activeWorkerThread"));
+            assertEquals(false, get(dialog, "controlsBusy"));
+            assertEquals(3L, get(dialog, "stateRefreshRequestId"));
+          } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+          } finally {
+            try {
+              dispose.invoke(dialog);
+            } catch (ReflectiveOperationException failure) {
+              throw new AssertionError(failure);
+            }
+          }
+        });
+    SwingUtilities.invokeAndWait(() -> {});
+  }
+
+  @Test
+  void lateCleanupCannotUnlockANewerWorkerOrPendingEngineSwitch() throws Exception {
+    HeadlessRefreshDialog dialog = unconstructedDialog();
+    initializeRefreshControls(dialog);
+    Thread current = new Thread(() -> {});
+    set(dialog, "activeWorkerThread", current);
+    set(dialog, "controlsBusy", true);
+    set(dialog, "stateRefreshRequestId", 7L);
+    Method finished =
+        KataGoAutoSetupDialog.class.getDeclaredMethod(
+            "clearActiveDownload", KataGoAutoSetupHelper.DownloadSession.class, Thread.class);
+    finished.setAccessible(true);
+    SwingUtilities.invokeAndWait(
+        () -> {
+          try {
+            finished.invoke(dialog, null, new Thread(() -> {}));
+            assertSame(current, get(dialog, "activeWorkerThread"));
+            assertEquals(true, get(dialog, "controlsBusy"));
+            assertEquals(7L, get(dialog, "stateRefreshRequestId"));
+            var pending = KataGoAutoSetupDialog.WeightSwitchDisplayState.active(null).begin(null);
+            set(dialog, "weightSwitchDisplayState", pending);
+            finished.invoke(dialog, null, current);
+            assertEquals(null, get(dialog, "activeWorkerThread"));
+            assertSame(pending, get(dialog, "weightSwitchDisplayState"));
+            assertEquals(true, get(dialog, "controlsBusy"));
+            assertEquals(7L, get(dialog, "stateRefreshRequestId"));
+          } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+          }
+        });
+    SwingUtilities.invokeAndWait(() -> {});
+  }
+
+  @Test
+  void workerCleanupRunsOnTheEventThreadAndCannotRefreshADisposedView() throws Exception {
+    HeadlessRefreshDialog dialog = unconstructedDialog();
+    initializeRefreshControls(dialog);
+    var session = new KataGoAutoSetupHelper.DownloadSession();
+    Thread owner = new Thread(() -> {});
+    set(dialog, "activeDownloadSession", session);
+    set(dialog, "activeWorkerThread", owner);
+    set(dialog, "controlsBusy", true);
+    set(dialog, "stateRefreshRequestId", 7L);
+    Method finished =
+        KataGoAutoSetupDialog.class.getDeclaredMethod(
+            "clearActiveDownload", KataGoAutoSetupHelper.DownloadSession.class, Thread.class);
+    finished.setAccessible(true);
+    SwingUtilities.invokeAndWait(
+        () -> {
+          Thread cleanup =
+              new Thread(
+                  () -> {
+                    try {
+                      finished.invoke(dialog, session, owner);
+                    } catch (ReflectiveOperationException failure) {
+                      throw new AssertionError(failure);
+                    }
+                  });
+          cleanup.start();
+          try {
+            cleanup.join(5000L);
+            assertFalse(cleanup.isAlive());
+            assertSame(session, get(dialog, "activeDownloadSession"));
+            assertSame(owner, get(dialog, "activeWorkerThread"));
+            set(dialog, "disposed", true); // The queued cleanup must not restart this closed owner.
+          } catch (InterruptedException | ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+          }
+        });
+    SwingUtilities.invokeAndWait(
+        () -> {
+          try {
+            assertEquals(null, get(dialog, "activeDownloadSession"));
+            assertEquals(null, get(dialog, "activeWorkerThread"));
+            assertEquals(null, get(dialog, "stateRefreshWorker"));
+            assertEquals(7L, get(dialog, "stateRefreshRequestId"));
+          } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+          }
+        });
   }
 
   private static void initializeRefreshControls(HeadlessRefreshDialog dialog) throws Exception {
@@ -585,7 +787,8 @@ class KataGoAutoSetupCatalogRegressionTest {
     return unconstructed(HeadlessRefreshDialog.class);
   }
 
-  private static void set(Object target, String name, Object value) throws Exception {
+  private static void set(Object target, String name, Object value)
+      throws ReflectiveOperationException {
     Field field = KataGoAutoSetupDialog.class.getDeclaredField(name);
     field.setAccessible(true);
     field.set(target, value);
