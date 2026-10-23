@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Windows final-package acceptance binds startup cleanup to the original launcher and child process identities instead of blindly trusting PIDs. Detected PID reuse or missing identity data prevents termination and remains visible in cleanup results while configuration and isolation resources are restored.
+
 - AI Coach scrolls its side panel on short windows so blunder decisions and game actions never overlap.
 
 - KataGo Auto Setup recovers when it is closed and reopened before a download or local model import finishes. Late results no longer leave the reopened window permanently busy, and stale import errors do not open dialogs after closing.
