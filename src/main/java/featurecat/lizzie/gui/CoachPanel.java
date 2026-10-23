@@ -8,13 +8,13 @@ import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
-import java.awt.Insets;
 import java.util.List;
 import java.util.MissingResourceException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import javax.swing.BorderFactory;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.Timer;
 
 /**
@@ -25,7 +25,6 @@ import javax.swing.Timer;
  */
 public final class CoachPanel extends JPanel {
   static final int WIDTH = 360;
-  private static final int GAP = 12;
 
   static final Color BACKGROUND = new Color(0x17, 0x19, 0x1a);
   static final Color SURFACE = new Color(0x20, 0x24, 0x26);
@@ -47,6 +46,8 @@ public final class CoachPanel extends JPanel {
       new CoachHistoryView(
           this::state, moveNumber -> withController(active -> active.reviewFrom(moveNumber)));
   private final JPanel actions;
+  private final CoachPanelContent content;
+  private final JScrollPane scroll;
   private final JPanel grid = new JPanel(new GridLayout(0, 2, 8, 8));
   private final CoachButton hintButton = CoachButton.accent();
   private final CoachButton takeBackButton = CoachButton.secondary();
@@ -75,10 +76,17 @@ public final class CoachPanel extends JPanel {
             BorderFactory.createEmptyBorder(18, 18, 18, 18)));
     setVisible(false);
     actions = buildActions();
-    add(summary);
-    add(moveCard);
-    add(history);
-    add(actions);
+    content = new CoachPanelContent(summary, moveCard, history, actions);
+    content.setBorder(getBorder());
+    setBorder(null);
+    scroll = new JScrollPane(content);
+    scroll.setBorder(null);
+    scroll.setFocusable(false);
+    scroll.getVerticalScrollBar().setFocusable(false);
+    scroll.getViewport().setBackground(BACKGROUND);
+    scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+    add(scroll);
   }
 
   public void attach(HumanSlGameController value) {
@@ -126,27 +134,13 @@ public final class CoachPanel extends JPanel {
     return all;
   }
 
-  /** Top to bottom: the summary, the move card, then the buttons at the bottom edge. */
+  /** Full-height content on roomy screens; a vertical scrollbar keeps short windows usable. */
   @Override
   public void doLayout() {
-    Insets insets = getInsets();
-    int x = insets.left;
-    int width = Math.max(0, getWidth() - insets.left - insets.right);
-    int y = insets.top;
-    summary.setBounds(x, y, width, 0);
-    summary.setSize(width, summary.heightFor());
-    y += summary.getHeight();
-    moveCard.setBounds(x, y + GAP, width, 0);
-    int cardHeight = moveCard.heightFor();
-    moveCard.setSize(width, cardHeight);
-    if (cardHeight > 0) {
-      y += GAP + cardHeight;
-    }
-    int actionsHeight = actions.getPreferredSize().height;
-    int actionsTop = getHeight() - insets.bottom - actionsHeight;
-    actions.setBounds(x, actionsTop, width, actionsHeight);
-    int historyTop = y + GAP;
-    history.setBounds(x, historyTop, width, Math.max(0, actionsTop - GAP - historyTop));
+    scroll.setBounds(0, 0, getWidth(), getHeight());
+    scroll.doLayout();
+    scroll.getViewport().doLayout();
+    content.doLayout();
   }
 
   private JPanel buildActions() {
@@ -231,7 +225,7 @@ public final class CoachPanel extends JPanel {
         frame.refresh();
       }
     }
-    revalidate();
+    content.revalidate();
     repaint();
   }
 

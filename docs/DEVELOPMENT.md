@@ -106,7 +106,7 @@ Maven `verify`、打包辅助脚本、换行和链接检查，并把准确的 JU
 Windows：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/run_local_ci.ps1 -Profile All
+powershell -ExecutionPolicy Bypass -File scripts/run_local_ci.ps1 -Profile Windows
 ```
 
 macOS / Linux：
@@ -118,7 +118,7 @@ bash scripts/run_local_ci.sh --profile portable
 推送前的干净工作树复核：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/run_local_ci.ps1 -Profile All -RequireClean
+powershell -ExecutionPolicy Bypass -File scripts/run_local_ci.ps1 -Profile Windows -RequireClean
 ```
 
 可用 profile 为 `Windows`、`Portable` 和 `All`；加 `-DryRun` / `--dry-run`
@@ -148,9 +148,15 @@ bash scripts/run_local_ci.sh --profile portable --group repository --summary-dir
 pwsh -File scripts/run_local_ci.ps1 -Profile Windows -Group Scripts -SummaryDir target/local-ci/windows-scripts
 ```
 
+需要在 Windows 额外执行 Portable 辅助检查时，可显式选择 `-Profile All`。
+它需要原生 Git Bash，以及创建符号链接的权限：归档安全测试会创建真实符号链接，
+无此权限的 Windows 会在 fixture 准备阶段报 `WinError 1314`，不能通过跳过该测试来验收。
+可改在 Linux / WSL 的独立 Linux 文件系统 checkout 中执行 `--profile portable --group scripts`；
+CI 的 Portable 脚本组也在 Ubuntu 执行。Windows profile 通过不代表 Portable 脚本组通过。
+
 `profile=all` 合并并去重两套检查，只执行一次 Windows 全量 verify 和凭据专项，
-不表示跨 OS 验收。不要在同一 checkout 并行运行两个写入 `target` 的 Maven 调用；
-需要并行时使用独立 worktree。
+不表示跨 OS 验收，也不替代 Windows 与 Ubuntu 的独立 CI 门禁。
+不要在同一 checkout 并行运行两个写入 `target` 的 Maven 调用；需要并行时使用独立 worktree。
 
 多次分组调用请使用不同 summary 目录；默认仍为 `target/local-ci/`。
 JSON/Markdown 摘要增加 `group`；非 Java 组不清理或读取既有 JUnit 报告，
