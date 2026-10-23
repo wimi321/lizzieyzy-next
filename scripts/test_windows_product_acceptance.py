@@ -170,6 +170,7 @@ class WindowsProductAcceptanceFixtureTest(unittest.TestCase):
         cls.jvm_host = cls.class_root / "fixture-jvm-host.exe"
         cls.sleepy_launcher = cls.class_root / "fixture-sleepy-launcher.exe"
         cls.java = cls.class_root / "fixture-java.exe"
+        cls.exiting_launcher = cls.class_root / "fixture-exiting-launcher.exe"
         cls.malicious_java = cls.class_root / "fixture-malicious-java.exe"
         cls.argv_recorder = cls.class_root / "fixture-argv-recorder.exe"
         cls.jvm = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32/version.dll" if os.name == "nt" else Path("/mnt/c/Windows/System32/version.dll")
@@ -246,6 +247,10 @@ namespace FixtureLauncher {
             "using System; namespace FixtureJava { public static class Program { "
             "public static void Main() { Console.Error.WriteLine(\"openjdk version 21 fixture 64-Bit x86_64\"); } } }"
         )
+        exiting_source = (
+            "namespace FixtureExitingLauncher { public static class Program { "
+            "[System.STAThread] public static void Main() {} } }"
+        )
         malicious_source = (
             "using System; using System.IO; namespace FixtureMaliciousJava { public static class Program { "
             "public static void Main() { File.WriteAllText(Path.Combine(AppContext.BaseDirectory, \"executed.marker\"), \"executed\"); } } }"
@@ -259,6 +264,7 @@ namespace FixtureLauncher {
             f"Add-Type -TypeDefinition @'\n{ready_source}\n'@ -ReferencedAssemblies System.Windows.Forms -OutputAssembly '{windows_path(cls.jvm_host)}' -OutputType WindowsApplication; "
             f"Add-Type -TypeDefinition @'\n{sleepy_source}\n'@ -OutputAssembly '{windows_path(cls.sleepy_launcher)}' -OutputType WindowsApplication; "
             f"Add-Type -TypeDefinition @'\n{java_source}\n'@ -OutputAssembly '{windows_path(cls.java)}' -OutputType ConsoleApplication; "
+            f"Add-Type -TypeDefinition @'\n{exiting_source}\n'@ -OutputAssembly '{windows_path(cls.exiting_launcher)}' -OutputType WindowsApplication; "
             f"Add-Type -TypeDefinition @'\n{malicious_source}\n'@ -OutputAssembly '{windows_path(cls.malicious_java)}' -OutputType ConsoleApplication; "
             f"Add-Type -TypeDefinition @'\n{argv_source}\n'@ -OutputAssembly '{windows_path(cls.argv_recorder)}' -OutputType ConsoleApplication"
         )
@@ -638,7 +644,18 @@ namespace FixtureLauncher {
         self.assertFalse((evidence / "run.json").exists())
 
     def test_exited_launcher_preserves_original_failure_and_cleanup_record(self) -> None:
-        asset, manifest = self.create_portable(launcher_override=self.java)
+        # Match the packaged GUI launcher, without the extra console-host lifecycle of a console app.
+        for image, expected_subsystem in ((self.java, 3), (self.launcher, 2), (self.exiting_launcher, 2)):
+            contents = image.read_bytes()
+            self.assertEqual(b"MZ", contents[:2], str(image))
+            pe_offset = int.from_bytes(contents[0x3C:0x40], "little")
+            self.assertEqual(b"PE\0\0", contents[pe_offset:pe_offset + 4], str(image))
+            subsystem_offset = pe_offset + 24 + 68
+            self.assertGreaterEqual(len(contents), subsystem_offset + 2, str(image))
+            self.assertEqual(expected_subsystem,
+                             int.from_bytes(contents[subsystem_offset:subsystem_offset + 2], "little"),
+                             str(image))
+        asset, manifest = self.create_portable(launcher_override=self.exiting_launcher)
         evidence, prepared = self.prepare(asset, manifest, "exited launcher evidence")
         self.assertEqual(0, prepared.returncode, prepared.stderr or prepared.stdout)
         result = self.run_script(
@@ -1248,11 +1265,13 @@ function Get-CimInstance {
     if ($failed -and $script:case -eq 'missing-child-time') { $childTime=$null }
     if ($script:case -eq 'early-exit-old-child') { $childTime=$script:old.AddSeconds(-1) }
     if ($script:case -eq 'early-exit-unknown-child-time') { $childTime=$null }
+    if ($script:case -eq 'early-exit-unbound-conhost') { $childTime=$script:old.AddTicks(50530) }
     if ($script:case -notlike 'early-exit*' -and -not ($failed -and $script:case -eq 'exited-root-known-child') -and -not $script:killed.Contains(4242)) {
         New-Snapshot 4242 1 $rootImage $rootTime
     }
     if ($script:case -notin @('early-exit','missing-launch-time') -and -not $script:killed.Contains(4243)) {
         $childImage=if ($script:case -in @('early-exit-external-child','early-exit-unrelated-process')) { Join-Path $PSScriptRoot 'external-runtime/helper.exe' } else { $script:childPath }
+        if ($script:case -eq 'early-exit-unbound-conhost') { $childImage='C:\Windows\System32\conhost.exe' }
         $childParent=if ($script:case -in @('early-exit-orphan-product-process','early-exit-unrelated-process')) { 9000 } else { 4242 }
         New-Snapshot 4243 $childParent $childImage $childTime
     }
@@ -1406,6 +1425,19 @@ if ($script:entryPoint -ne 'prepared') { $cleanup=Read-JsonFile -Path (Join-Path
 
     def test_early_exit_with_external_child_does_not_claim_ownership(self) -> None:
         self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-external-child"))
+
+    def test_early_exit_with_unbound_conhost_remains_incomplete_and_never_kills_it(self) -> None:
+        for entry_point in ("prepared", "start", "run"):
+            with self.subTest(entry_point=entry_point):
+                value = self.run_failure("early-exit-unbound-conhost", entry_point)
+                self.assert_unrecorded_child_is_unverified(value)
+                process, = value["cleanup"]["unverifiedProcesses"]
+                self.assertEqual(r"C:\Windows\System32\conhost.exe", process["image"])
+                self.assertEqual(4242, process["parentPid"])
+                if entry_point == "run":
+                    self.assertFalse(value["acceptance"]["cleanup"]["complete"])
+                    self.assertTrue(value["acceptance"]["cleanup"]["remainingOwnedResources"])
+                    self.assertEqual("FAIL", value["acceptance"]["status"])
 
     def test_early_exit_with_orphan_product_process_keeps_cleanup_uncertain(self) -> None:
         self.assert_unrecorded_child_is_unverified(self.run_failure("early-exit-orphan-product-process"))
