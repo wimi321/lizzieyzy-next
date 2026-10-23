@@ -18,11 +18,13 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -621,67 +623,57 @@ class KataGoAutoSetupCatalogRegressionTest {
     }
   }
 
-  @Test
-  void anEarlierWeightListThatAnswersLateIsDropped() throws Exception {
-    ListRecordingDialog dialog = unconstructed(ListRecordingDialog.class);
-    set(dialog, "remoteWeightInfos", List.of(listed("cached")));
-    CountDownLatch release = new CountDownLatch(1);
-    AtomicInteger calls = new AtomicInteger();
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void anEarlierWeightListThatAnswersLateIsDropped(boolean latestFetchStartsFirst)
+      throws Exception {
     List<KataGoAutoSetupHelper.RemoteWeightInfo> latest = List.of(listed("latest"));
     List<KataGoAutoSetupHelper.RemoteWeightInfo> earlier = List.of(listed("earlier"));
-    set(
-        dialog,
-        "remoteWeightSource",
-        (KataGoAutoSetupDialog.RemoteWeightSource)
-            () -> {
-              if (calls.incrementAndGet() == 1) {
-                try {
-                  release.await();
-                } catch (InterruptedException e) {
-                  Thread.currentThread().interrupt();
-                }
-                return earlier;
-              }
-              return latest;
-            });
-
-    SwingUtilities.invokeAndWait(dialog::loadRemoteWeightInfo);
-    SwingUtilities.invokeAndWait(dialog::loadRemoteWeightInfo);
-    joinWeightListThreads(() -> calls.get() == 2 && dialog.shown != null);
-    release.countDown();
-    joinWeightListThreads(() -> true);
-    SwingUtilities.invokeAndWait(() -> {});
-
-    assertEquals(List.of(latest), dialog.shown, "the earlier answer arrived last and was dropped");
+    try (WeightListFixture fixture = new WeightListFixture()) {
+      WeightListRequest older = fixture.request(earlier);
+      WeightListRequest newer = fixture.request(latest);
+      // Request identity is independent of the order in which workers reach the source.
+      (latestFetchStartsFirst ? newer : older).enterFetch();
+      (latestFetchStartsFirst ? older : newer).enterFetch();
+      newer.answerAndDrain();
+      onEventThread(
+          () -> {
+            assertEquals(List.of(latest), fixture.dialog.shown);
+            assertEquals(false, get(fixture.dialog, "remoteWeightsLoading"));
+            return null;
+          });
+      older.answerAndDrain();
+      onEventThread(
+          () -> {
+            assertEquals(
+                List.of(latest),
+                fixture.dialog.shown,
+                "the earlier answer arrived last and was dropped");
+            return null;
+          });
+    }
   }
 
   @Test
   void theListSaysItIsLoadingUntilTheAnswerArrivesNotThatItFailed() throws Exception {
-    ListRecordingDialog dialog = unconstructed(ListRecordingDialog.class);
-    set(dialog, "remoteWeightInfos", List.of(listed("cached")));
-    CountDownLatch release = new CountDownLatch(1);
     List<KataGoAutoSetupHelper.RemoteWeightInfo> answer = List.of(listed("answer"));
-    set(
-        dialog,
-        "remoteWeightSource",
-        (KataGoAutoSetupDialog.RemoteWeightSource)
-            () -> {
-              try {
-                release.await();
-              } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-              }
-              return answer;
-            });
-
-    SwingUtilities.invokeAndWait(dialog::loadRemoteWeightInfo);
-    // The empty list and the detail bar read "正在加载…" and nothing, not "暂时无法获取…".
-    assertEquals(true, get(dialog, "remoteWeightsLoading"));
-    release.countDown();
-    joinWeightListThreads(() -> dialog.shown != null);
-
-    assertEquals(false, get(dialog, "remoteWeightsLoading"));
-    assertEquals(List.of(answer), dialog.shown);
+    try (WeightListFixture fixture = new WeightListFixture()) {
+      WeightListRequest request = fixture.request(answer);
+      request.enterFetch();
+      onEventThread(
+          () -> {
+            // The list is loading until its answer arrives, not temporarily unavailable.
+            assertEquals(true, get(fixture.dialog, "remoteWeightsLoading"));
+            return null;
+          });
+      request.answerAndDrain();
+      onEventThread(
+          () -> {
+            assertEquals(false, get(fixture.dialog, "remoteWeightsLoading"));
+            assertEquals(List.of(answer), fixture.dialog.shown);
+            return null;
+          });
+    }
   }
 
   private static KataGoAutoSetupHelper.RemoteWeightInfo listed(String name) throws Exception {
@@ -705,23 +697,135 @@ class KataGoAutoSetupCatalogRegressionTest {
         false);
   }
 
-  /** Waits for the weight-list threads to finish, or for {@code done}, flushing the event queue. */
-  private static void joinWeightListThreads(java.util.function.BooleanSupplier done)
-      throws Exception {
-    for (int round = 0; round < 200 && !done.getAsBoolean(); round++) {
-      SwingUtilities.invokeAndWait(() -> {});
-      for (Thread thread : Thread.getAllStackTraces().keySet()) {
-        if ("katago-remote-weight-info".equals(thread.getName())) {
-          thread.join(25);
+  @Test
+  void aFailedWeightListAssertionReleasesItsOwnWorkersAndDrainsTheirCallbacks() throws Exception {
+    List<KataGoAutoSetupHelper.RemoteWeightInfo> latest = List.of(listed("latest"));
+    WeightListFixture fixture = new WeightListFixture();
+    AssertionError original =
+        new AssertionError("controlled failure before either source proceeds");
+    AssertionError observed =
+        assertThrows(
+            AssertionError.class,
+            () -> {
+              try (fixture) {
+                fixture.request(List.of(listed("earlier")));
+                fixture.request(latest);
+                throw original;
+              }
+            });
+    assertSame(original, observed);
+    assertEquals(0, observed.getSuppressed().length);
+    for (WeightListRequest request : fixture.requests) {
+      assertFalse(request.worker.isAlive());
+    }
+    onEventThread(
+        () -> {
+          assertEquals(List.of(latest), fixture.dialog.shown);
+          assertEquals(false, get(fixture.dialog, "remoteWeightsLoading"));
+          return null;
+        });
+  }
+
+  private static <T> T onEventThread(Callable<T> action) throws Exception {
+    FutureTask<T> task = new FutureTask<>(action);
+    SwingUtilities.invokeAndWait(task);
+    return task.get();
+  }
+
+  private static final class WeightListFixture implements AutoCloseable {
+    private final ListRecordingDialog dialog;
+    private final List<WeightListRequest> requests = new ArrayList<>();
+
+    private WeightListFixture() throws Exception {
+      dialog =
+          onEventThread(
+              () -> {
+                ListRecordingDialog created = unconstructed(ListRecordingDialog.class);
+                set(created, "remoteWeightInfos", List.of(listed("cached")));
+                return created;
+              });
+    }
+
+    private WeightListRequest request(List<KataGoAutoSetupHelper.RemoteWeightInfo> answer)
+        throws Exception {
+      WeightListRequest request = new WeightListRequest(answer);
+      requests.add(request);
+      onEventThread(
+          () -> {
+            dialog.remoteWeightSource = request;
+            dialog.loadRemoteWeightInfo();
+            return null;
+          });
+      return request;
+    }
+
+    @Override
+    public void close() throws Exception {
+      // Release all gates before joining, including when an assertion fails before an answer.
+      for (WeightListRequest request : requests) {
+        request.allowFetch.countDown();
+        request.allowAnswer.countDown();
+      }
+      AssertionError cleanupFailure = null;
+      for (WeightListRequest request : requests) {
+        try {
+          request.joinWorker();
+        } catch (Exception | AssertionError failure) {
+          if (cleanupFailure == null) {
+            cleanupFailure = new AssertionError("Weight-list worker cleanup failed");
+          }
+          cleanupFailure.addSuppressed(failure);
         }
       }
+      SwingUtilities.invokeAndWait(() -> {});
+      if (cleanupFailure != null) throw cleanupFailure;
     }
-    for (Thread thread : Thread.getAllStackTraces().keySet()) {
-      if ("katago-remote-weight-info".equals(thread.getName())) {
-        thread.join(5000);
+  }
+
+  private static final class WeightListRequest implements KataGoAutoSetupDialog.RemoteWeightSource {
+    private final List<KataGoAutoSetupHelper.RemoteWeightInfo> answer;
+    private final CountDownLatch started = new CountDownLatch(1);
+    private final CountDownLatch allowFetch = new CountDownLatch(1);
+    private final CountDownLatch enteredFetch = new CountDownLatch(1);
+    private final CountDownLatch allowAnswer = new CountDownLatch(1);
+    private Thread worker;
+
+    private WeightListRequest(List<KataGoAutoSetupHelper.RemoteWeightInfo> answer) {
+      this.answer = answer;
+    }
+
+    @Override
+    public List<KataGoAutoSetupHelper.RemoteWeightInfo> fetch() throws IOException {
+      worker = Thread.currentThread();
+      started.countDown();
+      try {
+        allowFetch.await();
+        enteredFetch.countDown();
+        allowAnswer.await();
+        return answer;
+      } catch (InterruptedException failure) {
+        Thread.currentThread().interrupt();
+        throw new IOException("Controlled weight-list request interrupted", failure);
       }
     }
-    SwingUtilities.invokeAndWait(() -> {});
+
+    private void enterFetch() throws InterruptedException {
+      allowFetch.countDown();
+      assertTrue(
+          enteredFetch.await(5, TimeUnit.SECONDS), "the selected request entered its source");
+    }
+
+    private void joinWorker() throws InterruptedException {
+      assertTrue(started.await(5, TimeUnit.SECONDS), "the owned weight-list worker started");
+      worker.join(5000L);
+      assertFalse(worker.isAlive(), "the owned weight-list worker exited");
+    }
+
+    private void answerAndDrain() throws Exception {
+      allowAnswer.countDown();
+      joinWorker();
+      SwingUtilities.invokeAndWait(() -> {});
+    }
   }
 
   private static <T extends KataGoAutoSetupDialog> T unconstructed(Class<T> type) throws Exception {
@@ -752,6 +856,7 @@ class KataGoAutoSetupCatalogRegressionTest {
 
     @Override
     void showRemoteWeightInfo(List<KataGoAutoSetupHelper.RemoteWeightInfo> infos) {
+      assertTrue(SwingUtilities.isEventDispatchThread());
       if (shown == null) {
         shown = new java.util.ArrayList<>();
       }

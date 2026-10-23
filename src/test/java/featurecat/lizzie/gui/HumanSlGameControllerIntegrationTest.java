@@ -50,9 +50,94 @@ import java.util.function.BooleanSupplier;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class HumanSlGameControllerIntegrationTest {
   private static final int BOARD_SIZE = 3;
+
+  @Test
+  void fixtureEngineCanReleaseModeReservationsWithoutStartingAProcess() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      Leelaz engine = Lizzie.leelaz;
+      java.lang.reflect.Field process = Leelaz.class.getDeclaredField("process");
+      process.setAccessible(true);
+      assertNull(process.get(engine));
+      assertFalse(engine.isStarted());
+
+      SwingUtilities.invokeAndWait(
+          () -> {
+            Leelaz.EngineModeReservation reservation = engine.beginEngineModeReservation();
+            assertNotNull(reservation);
+            assertDoesNotThrow(reservation::close);
+          });
+
+      assertNull(process.get(engine));
+      assertFalse(engine.isStarted());
+    }
+  }
+
+  @Test
+  void fixtureCleanupWaitsForItsMoveListRefreshBeforeRestoringGlobals() throws Exception {
+    CoachEnvironment env = CoachEnvironment.open();
+    CoachBoard board = (CoachBoard) Lizzie.board;
+    Config installedConfig = Lizzie.config;
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    AtomicReference<Config> configAtUpdateExit = new AtomicReference<>();
+    AtomicReference<Throwable> cleanupFailure = new AtomicReference<>();
+    board.beforeMovelistUpdate =
+        () -> {
+          entered.countDown();
+          try {
+            assertTrue(release.await(5, TimeUnit.SECONDS), "test must release its refresh");
+            configAtUpdateExit.set(Lizzie.config);
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(ex);
+          }
+        };
+    Thread cleanup =
+        new Thread(
+            () -> {
+              try {
+                env.close();
+              } catch (Throwable error) {
+                cleanupFailure.set(error);
+              }
+            },
+            "coach-fixture-cleanup-probe");
+    try {
+      board.setMovelistAll();
+      assertTrue(entered.await(2, TimeUnit.SECONDS));
+      cleanup.start();
+      assertTrue(
+          awaitCondition(
+              () ->
+                  !cleanup.isAlive()
+                      || java.util.Arrays.stream(cleanup.getStackTrace())
+                          .anyMatch(frame -> frame.getMethodName().equals("awaitMovelistRefresh")),
+              Duration.ofSeconds(2)));
+
+      assertTrue(cleanup.isAlive(), "cleanup must wait while its refresh owns fixture globals");
+      assertSame(installedConfig, Lizzie.config);
+      release.countDown();
+      cleanup.join(2000);
+
+      assertFalse(cleanup.isAlive());
+      assertNull(cleanupFailure.get());
+      assertSame(installedConfig, configAtUpdateExit.get());
+      assertTrue(board.movelistWorkers.stream().noneMatch(Thread::isAlive));
+    } finally {
+      release.countDown();
+      cleanup.join(2000);
+      for (Thread worker : board.movelistWorkers) {
+        worker.join(2000);
+        assertFalse(worker.isAlive(), "regression probe must not leak its refresh");
+      }
+      env.close();
+    }
+  }
 
   @Test
   void passShortcutUsesCoachControllerAndSchedulesTheAiTurn() throws Exception {
@@ -266,6 +351,52 @@ class HumanSlGameControllerIntegrationTest {
       assertFalse(engine.isPondering());
       assertSame(controller, Lizzie.frame.humanSlGame);
       assertFalse(controller.isFinished());
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      ints = {
+        KeyEvent.ALT_DOWN_MASK,
+        KeyEvent.ALT_GRAPH_DOWN_MASK,
+        KeyEvent.ALT_DOWN_MASK | KeyEvent.CTRL_DOWN_MASK,
+        KeyEvent.ALT_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK
+      })
+  void altSpaceDoesNotStopLiveAnalysisCoach(int modifiers) throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      HumanSlGameController controller =
+          env.startCoach(new BlockingHumanSlRunner(), TrainingMode.LIVE_ANALYSIS);
+      BoardHistoryNode position = Lizzie.board.getHistory().getCurrentHistoryNode();
+      SwingUtilities.invokeAndWait(
+          () -> {
+            KeyEvent key =
+                new KeyEvent(
+                    new JPanel(), KeyEvent.KEY_PRESSED, 0L, modifiers, KeyEvent.VK_SPACE, ' ');
+            new Input().keyPressed(key);
+            assertFalse(key.isConsumed(), "the window system/input method still owns Alt+Space");
+            assertFalse(controller.isStopRequested());
+            assertSame(controller, Lizzie.frame.humanSlGame);
+            assertSame(position, Lizzie.board.getHistory().getCurrentHistoryNode());
+          });
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {0, KeyEvent.CTRL_DOWN_MASK, KeyEvent.SHIFT_DOWN_MASK})
+  void nonAltSpaceKeepsExistingLiveCoachStopAction(int modifiers) throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      HumanSlGameController controller =
+          env.startCoach(new BlockingHumanSlRunner(), TrainingMode.LIVE_ANALYSIS);
+      SwingUtilities.invokeAndWait(
+          () -> {
+            new Input()
+                .keyPressed(
+                    new KeyEvent(
+                        new JPanel(), KeyEvent.KEY_PRESSED, 0L, modifiers, KeyEvent.VK_SPACE, ' '));
+            assertTrue(controller.isStopRequested());
+            assertTrue(controller.isFinished());
+            assertNull(Lizzie.frame.humanSlGame);
+          });
     }
   }
 
@@ -1643,9 +1774,7 @@ class HumanSlGameControllerIntegrationTest {
             () -> events.add("ui-complete"));
         controller.start(pause.transferRestoreResponsibility());
         // Avoid opening an error dialog in the failure-injection harness.
-        Lizzie.frame = null;
-
-        assertDoesNotThrow(controller::abort);
+        assertDoesNotThrow(() -> withoutFrameOnEdt(controller::abort));
 
         assertTrue(controller.isExitRecoveryPending(), failingPhase);
         assertFalse(events.contains("ui-complete"), events.toString());
@@ -1717,9 +1846,7 @@ class HumanSlGameControllerIntegrationTest {
           },
           () -> events.add("ui-complete"));
       controller.start(pause.transferRestoreResponsibility());
-      Lizzie.frame = null;
-
-      assertDoesNotThrow(controller::abort);
+      assertDoesNotThrow(() -> withoutFrameOnEdt(controller::abort));
 
       assertTrue(controller.isExitRecoveryPending());
       assertEquals(1, preparations.get());
@@ -1839,9 +1966,7 @@ class HumanSlGameControllerIntegrationTest {
           () -> events.add("ui-complete"));
       controller.start(pause.transferRestoreResponsibility());
       // Avoid opening an error dialog for the deliberately rejected first dispatch.
-      Lizzie.frame = null;
-
-      assertDoesNotThrow(controller::abort);
+      assertDoesNotThrow(() -> withoutFrameOnEdt(controller::abort));
 
       assertTrue(controller.isExitRecoveryPending());
       assertFalse(admissionActive.get(), "a rejected worker must not acquire replay admission");
@@ -1900,10 +2025,10 @@ class HumanSlGameControllerIntegrationTest {
           },
           () -> events.add("ui-complete"));
       controller.start(pause.transferRestoreResponsibility());
-      Lizzie.frame = null;
       AtomicBoolean continuationRan = new AtomicBoolean();
 
-      assertDoesNotThrow(() -> controller.abortAndThen(() -> continuationRan.set(true)));
+      assertDoesNotThrow(
+          () -> withoutFrameOnEdt(() -> controller.abortAndThen(() -> continuationRan.set(true))));
 
       assertTrue(controller.isExitRecoveryPending());
       assertFalse(controller.isFinished(), "a stop request must not publish teardown completion");
@@ -2034,8 +2159,7 @@ class HumanSlGameControllerIntegrationTest {
 
       // Suppress the deliberately injected first-retry error dialog while retaining the frame
       // instance that owns the deferred load continuation.
-      Lizzie.frame = null;
-      SwingUtilities.invokeAndWait(
+      withoutFrameOnEdt(
           () ->
               accepted.set(
                   frame.loadDownloadedSgfString(
@@ -2046,8 +2170,11 @@ class HumanSlGameControllerIntegrationTest {
       assertTrue(completions.isEmpty());
       assertEquals(1, preparations.get());
 
-      Lizzie.frame = frame;
-      SwingUtilities.invokeAndWait(controller::abort);
+      SwingUtilities.invokeAndWait(
+          () -> {
+            Lizzie.frame = frame;
+            controller.abort();
+          });
 
       assertEquals(2, preparations.get());
       assertEquals(List.of(true), completions);
@@ -2158,6 +2285,15 @@ class HumanSlGameControllerIntegrationTest {
         .fromCurrentPosition(true)
         .moveTimeSeconds(2)
         .build();
+  }
+
+  /** Removing the fixture frame and closing its reviewer must be one event-owner transition. */
+  private static void withoutFrameOnEdt(Runnable action) throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          Lizzie.frame = null;
+          action.run();
+        });
   }
 
   private static KeyEvent keyPressed(JPanel source, int keyCode) {
@@ -2524,8 +2660,51 @@ class HumanSlGameControllerIntegrationTest {
   }
 
   private static final class CoachBoard extends Board {
+    private List<Thread> movelistWorkers;
+    private CountDownLatch movelistComplete;
+    private Runnable beforeMovelistUpdate;
+
     @Override
     public void clearAfterMove() {}
+
+    @Override
+    public void setMovelistAll() {
+      CountDownLatch complete = new CountDownLatch(1);
+      movelistComplete = complete;
+      super.setMovelistAll(complete::countDown);
+    }
+
+    @Override
+    public void updateMovelist(BoardHistoryNode node) {
+      Thread worker = Thread.currentThread();
+      // The same method also runs synchronously during navigation; those callers are not owned
+      // refresh tasks and must never be joined by fixture cleanup.
+      if (worker.getName().equals("lizzie-movelist-refresh")) {
+        if (!movelistWorkers.contains(worker)) {
+          movelistWorkers.add(worker);
+        }
+        if (beforeMovelistUpdate != null) {
+          beforeMovelistUpdate.run();
+        }
+      }
+      super.updateMovelist(node);
+    }
+
+    private void awaitMovelistRefresh() throws InterruptedException {
+      // Take-back starts real background refreshes. The latest completion supersedes earlier
+      // generations; also join workers already inside updateMovelist before restoring globals.
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      if (movelistComplete != null) {
+        assertTrue(movelistComplete.await(2, TimeUnit.SECONDS), "move-list refresh must complete");
+      }
+      for (Thread worker : movelistWorkers) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining > 0) {
+          TimeUnit.NANOSECONDS.timedJoin(worker, remaining);
+        }
+        assertFalse(worker.isAlive(), "fixture refresh did not finish: " + worker.getName());
+      }
+    }
   }
 
   private static final class TrackingLeelaz extends Leelaz {
@@ -2757,6 +2936,7 @@ class HumanSlGameControllerIntegrationTest {
   }
 
   private static final class CoachEnvironment implements AutoCloseable {
+    private CoachBoard board;
     private final int previousBoardWidth;
     private final int previousBoardHeight;
     private final Config previousConfig;
@@ -2837,7 +3017,9 @@ class HumanSlGameControllerIntegrationTest {
       config.newMoveNumberInBranch = false;
       Lizzie.config = config;
       Lizzie.frame = allocate(CoachFrame.class);
-      Lizzie.leelaz = allocate(Leelaz.class);
+      // Mode reservations release through real Leelaz code, which needs its initialized queues
+      // and ThreadLocals. An empty command constructs the owner without starting a process.
+      Lizzie.leelaz = new Leelaz("");
       LizzieFrame.toolbar = allocate(SilentBottomToolbar.class);
       LizzieFrame.menu = allocate(SilentMenu.class);
       LizzieFrame.winrateGraph = allocate(WinrateGraph.class);
@@ -2845,7 +3027,9 @@ class HumanSlGameControllerIntegrationTest {
       LizzieFrame.boardRenderer2 = null;
       LizzieFrame.urlSgf = false;
       LizzieFrame.onlineDialog = null;
-      Board board = allocate(CoachBoard.class);
+      CoachBoard board = allocate(CoachBoard.class);
+      board.movelistWorkers = new CopyOnWriteArrayList<>();
+      environment.board = board;
       board.movelistwr = new ArrayList<>();
       board.startStonelist = new ArrayList<>();
       board.tempmovelist = new ArrayList<>();
@@ -2899,9 +3083,10 @@ class HumanSlGameControllerIntegrationTest {
         if (active != null && !active.isFinished()) {
           active.abort();
         }
-        // Every default exit dispatcher in this fixture is synchronous. Drain the one deliberately
-        // asynchronous boundary (the EDT continuation) before replacing Lizzie's global objects.
+        // Exit continuations run on the EDT, while take-back move-list rebuilds use real workers.
+        // Both must leave the fixture before replacing Lizzie's global objects.
         SwingUtilities.invokeAndWait(() -> {});
+        board.awaitMovelistRefresh();
       } finally {
         Board.boardWidth = previousBoardWidth;
         Board.boardHeight = previousBoardHeight;

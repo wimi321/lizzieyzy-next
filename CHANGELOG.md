@@ -6,6 +6,15 @@ All notable maintenance updates to this fork are documented here.
 
 - Windows final-package acceptance binds startup cleanup to the original launcher and child process identities instead of blindly trusting PIDs. Detected PID reuse or missing identity data prevents termination and remains visible in cleanup results while configuration and isolation resources are restored. Possible surviving descendants after an early launcher exit remain unverified, never silently counted as complete cleanup or terminated by ancestry alone.
 
+- Windows installation and release guidance now distinguishes the NVIDIA full package's bundled
+  runtime from optional downloads, and explains reinstalling the full package when runtime files are missing.
+
+- AI Coach discards late review notifications after a game is closed, preventing the old session from refreshing a detached or replacement interface.
+
+- On Windows, opening the system window menu with Alt+Space no longer stops a live-analysis AI Coach game. The ordinary Space shortcut keeps its existing behavior.
+
+- AI Coach keeps localized win-chance and points-lost text inside its decision card. Long text wraps, and decision buttons stack when their translated labels do not fit side by side.
+
 - AI Coach scrolls its side panel on short windows so blunder decisions and game actions never overlap.
 
 - KataGo Auto Setup recovers when it is closed and reopened before a download or local model import finishes. Late results no longer leave the reopened window permanently busy, and stale import errors do not open dialogs after closing.

@@ -20,7 +20,7 @@
 - 抓野狐棋谱时直接输入“野狐昵称”，程序会自动找到账号并抓最近公开棋谱
 - 主推荐整合包已内置 KataGo，第一次启动会优先自动完成配置
 - Windows 普通整合包也支持“智能优化”，测速后会自动保存更合适的线程设置
-- Windows NVIDIA 整合包会在第一次需要时自动准备官方运行库
+- Windows NVIDIA 完整包已内置所需官方 NVIDIA 运行库；仍需兼容的显卡和驱动。TensorRT 等可选组件在软件内按需安装
 
 ## 为什么这一版值得先看
 
@@ -29,7 +29,7 @@
 | 下载以后能不能直接打开 | Windows 主推荐 `portable.zip`，macOS 主推荐 `.dmg`，Linux 提供整合包 |
 | 野狐棋谱还能不能抓 | 已恢复这条链路，并继续维护 |
 | 到底该输入什么 | 现在直接输入“野狐昵称”，程序自动找到账号 |
-| 第一次打开会不会卡在设置上 | 会优先把分析环境准备好，普通 Windows 包还有智能优化，NVIDIA 包会自动准备运行库 |
+| 第一次打开会不会卡在设置上 | 会优先配置内置分析环境，普通 Windows 包还有智能优化；NVIDIA 完整包自带运行库，仍需兼容的显卡和驱动 |
 
 ## 先下载哪个
 
@@ -85,7 +85,7 @@
 - nickname-based workflow for normal users
 - bundled KataGo packages try to auto-finish the first setup
 - the regular Windows bundle also supports Smart Optimize for a better saved thread setting
-- the Windows NVIDIA bundle can auto-prepare the official runtime on first use
+- the full Windows NVIDIA package includes the required official NVIDIA runtime files; a compatible GPU and driver are still required. Optional components such as TensorRT are installed on demand in the app
 - recommended full packages now bundle the stronger official B11 flagship Transformer; it can search more slowly than B10, which remains available on demand
 - one CUDA 12.8 package now covers RTX 20/30/40/50; TensorRT is optional for RTX 30 series and earlier
 - Windows release now recommends the portable bundle first
@@ -99,7 +99,7 @@
 - NVIDIA GPU 向けには CUDA 版の専用パッケージも提供
 - 通常の Windows 同梱版でも Smart Optimize により推奨スレッド数を保存しやすくした
 - 初回起動ではそのまま使えるように分析まわりの自動準備を優先
-- NVIDIA 同梱版では必要時に公式ランタイムの自動準備も行う
+- Windows NVIDIA 完全版には必要な公式ランタイムを同梱。対応 GPU とドライバーは必要で、TensorRT などの追加コンポーネントはアプリ内で必要に応じてインストール
 - UI と文書はニックネーム入力を前提に案内
 
 # 한국어
@@ -110,5 +110,5 @@
 - NVIDIA 그래픽카드용 CUDA 전용 패키지도 함께 제공
 - 일반 Windows 통합판도 Smart Optimize 로 더 알맞은 스레드 값을 저장하기 쉽게 했다
 - 첫 실행에서는 바로 쓸 수 있도록 분석 환경 자동 준비를 우선 시도
-- NVIDIA 통합판은 필요할 때 공식 런타임 자동 준비도 시도한다
+- Windows NVIDIA 전체 패키지에는 필요한 공식 런타임이 포함된다. 호환 GPU와 드라이버는 필요하며, TensorRT 같은 선택 구성 요소는 앱에서 필요할 때 설치한다
 - UI 와 문서는 닉네임 입력 기준으로 안내

@@ -54,7 +54,10 @@ import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.SwingUtilities;
 import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
@@ -140,6 +143,8 @@ class EngineGameModuleContractTest {
   void restoreFixture() throws Exception {
     Lizzie.engineGame.replaceChromeForTest(null);
     EngineManager.resetEngineGameTransactionStateForTest();
+    manager.awaitOwnedWorkers();
+    SwingUtilities.invokeAndWait(() -> {});
     Lizzie.engineManager = previousManager;
     EngineManager.isEmpty = previousEmpty;
     EngineManager.currentEngineNo = previousEngineNo;
@@ -152,7 +157,40 @@ class EngineGameModuleContractTest {
     Lizzie.board = previousBoard;
     LizzieFrame.winrateGraph = previousWinrateGraph;
     Lizzie.gtpConsole = previousGtpConsole;
-    SwingUtilities.invokeAndWait(() -> {});
+  }
+
+  @Test
+  void fixtureCleanupFinishesItsWorkerBeforeRestoringGlobalState() throws Exception {
+    Config installedConfig = Lizzie.config;
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    AtomicReference<Config> configAtWorkerExit = new AtomicReference<>();
+    Thread worker =
+        manager.createEngineGameWorker(
+            () -> {
+              entered.countDown();
+              try {
+                release.await();
+              } catch (InterruptedException expectedDuringCleanup) {
+                Thread.currentThread().interrupt();
+              } finally {
+                configAtWorkerExit.set(Lizzie.config);
+              }
+            },
+            "fixture-owned-worker");
+    worker.start();
+    try {
+      assertTrue(entered.await(2, TimeUnit.SECONDS));
+
+      restoreFixture();
+
+      assertFalse(worker.isAlive(), "fixture cleanup must join its own worker");
+      assertSame(installedConfig, configAtWorkerExit.get(), "globals outlive the owned task");
+    } finally {
+      release.countDown();
+      worker.join(2000);
+      assertFalse(worker.isAlive(), "regression probe must not leak its own worker");
+    }
   }
 
   @Test
@@ -1276,6 +1314,7 @@ class EngineGameModuleContractTest {
   }
 
   private static final class CountingLeaseEngineManager extends EngineManager {
+    private final List<Thread> ownedWorkers = new CopyOnWriteArrayList<>();
     private int leaseConflictCount;
     private boolean runWorkersInline;
     private boolean manualActivation;
@@ -1314,15 +1353,38 @@ class EngineGameModuleContractTest {
 
     @Override
     protected Thread createEngineGameWorker(Runnable task, String name) {
+      Thread worker;
       if (!runWorkersInline || isEngineGameDeadlineWatcher(name)) {
-        return super.createEngineGameWorker(task, name);
+        worker = super.createEngineGameWorker(task, name);
+      } else {
+        worker =
+            new Thread(task, name) {
+              @Override
+              public synchronized void start() {
+                run();
+              }
+            };
       }
-      return new Thread(task, name) {
-        @Override
-        public synchronized void start() {
-          run();
+      ownedWorkers.add(worker);
+      return worker;
+    }
+
+    private void awaitOwnedWorkers() throws InterruptedException {
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      // Reset invalidates the transaction but does not join its real startup/deadline workers.
+      // Keep the fixture globals installed until those exact workers have left their finally
+      // blocks.
+      for (int index = 0; index < ownedWorkers.size(); index++) {
+        for (Thread worker : ownedWorkers) {
+          worker.interrupt();
         }
-      };
+        Thread worker = ownedWorkers.get(index);
+        long remaining = deadline - System.nanoTime();
+        if (remaining > 0) {
+          TimeUnit.NANOSECONDS.timedJoin(worker, remaining);
+        }
+        assertFalse(worker.isAlive(), "fixture worker did not finish: " + worker.getName());
+      }
     }
 
     @Override

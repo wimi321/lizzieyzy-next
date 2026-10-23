@@ -102,7 +102,8 @@ If your PC has an NVIDIA GPU and you want higher analysis speed:
 1. Download `windows64.nvidia.portable.zip`.
 2. Extract it.
 3. Run `LizzieYzy Next NVIDIA.exe`.
-4. On first launch, the app automatically prepares the required official NVIDIA runtime files in your user folder.
+4. The full NVIDIA package includes the required official NVIDIA runtime files; normal first launch does not download CUDA / cuDNN. A compatible GPU and driver are still required.
+5. If bundled runtime files are missing, reinstall the full NVIDIA package instead of waiting for an automatic download. Optional components such as TensorRT are installed on demand through `KataGo Auto Setup`.
 
 If you prefer the installer flow:
 
@@ -110,7 +111,7 @@ If you prefer the installer flow:
 2. Double-click the installer.
 3. Finish setup and launch `LizzieYzy Next NVIDIA`.
 
-This bundle ships with the official KataGo CUDA Windows build. If you want to tune speed further, open `KataGo Auto Setup` once and run `Smart Optimize` to apply a benchmark-based thread setting automatically. If you are not sure whether your PC has an NVIDIA GPU, use the regular `windows64.opencl.portable.zip` instead.
+This bundle ships with a KataGo CUDA Windows build. If you want to tune speed further, open `KataGo Auto Setup` once and run `Smart Optimize` to apply a benchmark-based thread setting automatically. If you are not sure whether your PC has an NVIDIA GPU, use the regular `windows64.opencl.portable.zip` instead.
 
 ### Unified NVIDIA CUDA and optional TensorRT
 
