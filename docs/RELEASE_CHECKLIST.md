@@ -61,7 +61,7 @@ Windows 构建、依赖审计、启动与升级测试通过后，将同一批成
 - `with-katago` 包尽量开箱即用
 - 野狐棋谱同步仍然可用，而且明确写成“野狐昵称”
 - 普通 Windows 包支持“智能优化”的信息要写清楚
-- NVIDIA Windows 包“首次自动准备官方运行库”的信息要写清楚
+- Windows NVIDIA 完整包已内置所需官方 NVIDIA 运行库、仍需兼容显卡和驱动的信息要写清楚
 - RTX 20/30/40/50 用户要能明确看到统一 CUDA 12.8 包；RTX 40/50 默认推荐 CUDA，TensorRT 是 RTX 30 系及以下的可选项，离线分卷不是默认推荐
 - B11 默认权重的棋力优势与搜索速度取舍必须在六语发布说明中显著可见，B10 切换入口要写清楚
 - README、安装文档、发布页文案、真实资产名保持一致
@@ -175,7 +175,7 @@ GitHub Actions：
 - Linux 必须同时核对 `linux64.with-katago.zip`、`linux64.opencl.zip` 和 `linux64.nvidia.zip`
 - 界面里仍然写的是 `野狐棋谱（输入野狐昵称获取）`
 - 发布页最上面的中文说明里，要明确写“普通 Windows 包也支持智能优化”
-- 发布页最上面的中文说明里，要明确写“NVIDIA 包首次会自动准备官方运行库”
+- 发布页最上面的中文说明里，要明确写“NVIDIA 完整包自带官方运行库，仍需兼容的显卡和驱动；可选组件按需安装”
 - `src/main/resources/assets/logo.png`、`packaging/icons/app-icon.ico`、`packaging/icons/app-icon.icns` 代表的是同一套当前图标
 - `weights/default.bin.gz` 存在
 - `engines/katago/` 下目标平台文件完整
@@ -297,7 +297,7 @@ gh workflow run update-release-notes.yml \
 2. 现在输入野狐昵称即可获取最新公开棋谱，程序会自动找到账号
 3. Windows 64 位优先下载 `portable.zip`，macOS 下载 `.dmg`，Linux 下载 `with-katago.zip`
 4. 普通 Windows 包也支持智能优化
-5. NVIDIA Windows 包首次需要时会自动准备官方运行库
+5. Windows NVIDIA 完整包自带官方运行库，仍需兼容的显卡和驱动；TensorRT 等可选组件按需安装
 
 推荐顺序：
 
@@ -357,7 +357,7 @@ R2 只保留当前正式版且设有 `9,000,000,000` 字节硬门禁。完整配
 - 中文说明是不是在最前面，而且信息足够醒目
 - “野狐昵称”和“首启自动配置”有没有被写清楚
 - “普通 Windows 包也支持智能优化”有没有写清楚
-- “NVIDIA 包首启自动准备官方运行库”有没有写清楚
+- “NVIDIA 完整包自带官方运行库，仍需兼容显卡和驱动”与可选组件按需安装的区别有没有写清楚
 - 下载后的应用图标、安装器图标、主窗口图标是不是同一套
 - 正式版公开入口是否为 `https://goagent.top/download/`，下载后台连接失败时软件是否自动续传到 GitHub
 - GitHub Downloads 徽章只代表 GitHub，不得写成包含 R2 的项目总下载量
@@ -369,5 +369,6 @@ R2 只保留当前正式版且设有 `9,000,000,000` 字节硬门禁。完整配
 - 普通 `with-katago.installer.exe` 首次打开后，不应该再弹出 `Cannot run program "java"` 这类错误
 - 普通 `with-katago` 包里应能看到“智能优化 / Smart Optimize”入口
 - 做完一次智能优化后，推荐线程数要能写回配置，并在重启后继续保留
-- NVIDIA 包首次需要运行库时，应提示正在准备官方运行库，而不是让用户自己研究 CUDA / cuDNN
-- NVIDIA 运行库准备完成后，用户目录下应能看到 `runtime/nvidia-runtime/manifest.txt`
+- NVIDIA 完整包内应包含 CUDA / cuDNN DLL、对应 NVRTC 编译器及 builtins；检查 `app/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt` 与实际文件一致
+- 在兼容显卡和驱动上，以隔离用户目录验证 NVIDIA 完整包正常首启分析不需要下载运行库；若文件缺失，应明确提示重新安装 NVIDIA 完整包，不能记为正常首启准备
+- 普通包的按需加装、TensorRT 等可选组件的下载另行验收，不能替代 NVIDIA 完整包的自包含验证

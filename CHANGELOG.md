@@ -4,6 +4,9 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Windows installation and release guidance now distinguishes the NVIDIA full package's bundled
+  runtime from optional downloads, and explains reinstalling the full package when runtime files are missing.
+
 - KataGo Auto Setup recovers when it is closed and reopened before a download or local model import finishes. Late results no longer leave the reopened window permanently busy, and stale import errors do not open dialogs after closing.
 
 - Top menus keep shortcut hints clear of help buttons, preserve user-defined Quick Links names,

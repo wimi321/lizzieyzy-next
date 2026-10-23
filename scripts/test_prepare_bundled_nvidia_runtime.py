@@ -23,6 +23,39 @@ SPEC.loader.exec_module(NVIDIA_RUNTIME)
 
 
 class PrepareBundledNvidiaRuntimeTest(unittest.TestCase):
+    def test_current_docs_distinguish_bundled_runtime_from_optional_downloads(self) -> None:
+        root = Path(__file__).parents[1]
+        expectations = {
+            "docs/INSTALL.md": ("已内置所需官方 NVIDIA 运行库", "重新安装 NVIDIA 完整包"),
+            "docs/INSTALL_EN.md": (
+                "includes the required official NVIDIA runtime files",
+                "reinstall the full NVIDIA package",
+            ),
+            "docs/RELEASE_NOTES_TEMPLATE.md": (
+                "已内置所需官方 NVIDIA 运行库", "TensorRT",
+            ),
+            "docs/RELEASE_CHECKLIST.md": (
+                "已内置所需官方 NVIDIA 运行库",
+                "app/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt",
+            ),
+        }
+        forbidden = (
+            "首次自动准备官方运行库", "首次会自动准备官方运行库",
+            "首次需要时会自动准备官方运行库", "第一次需要时自动准备官方运行库",
+            "自动把需要的官方 NVIDIA 运行库准备到你的用户目录",
+            "automatically prepares the required official NVIDIA runtime files in your user folder",
+            "auto-prepare the official runtime on first use",
+            "公式ランタイムの自動準備", "공식 런타임 자동 준비",
+            "runtime/nvidia-runtime/manifest.txt",
+        )
+        for relative_path, required_phrases in expectations.items():
+            with self.subTest(document=relative_path):
+                text = (root / relative_path).read_text(encoding="utf-8")
+                for phrase in required_phrases:
+                    self.assertTrue(phrase in text, f"{relative_path}: missing {phrase!r}")
+                for phrase in forbidden:
+                    self.assertFalse(phrase in text, f"{relative_path}: stale {phrase!r}")
+
     def test_every_cuda_profile_includes_nvrtc(self) -> None:
         for profile_name, profile in NVIDIA_RUNTIME.RUNTIME_PROFILES.items():
             package_keys = {spec[2] for spec in profile["manifest_specs"]}
