@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- AI Coach scrolls its side panel on short windows so blunder decisions and game actions never overlap.
+
 - KataGo Auto Setup keeps its existing interface while handling background work more reliably.
   - Runtime inspection and cache sizing run off the UI thread. Progress and cancellation remain available, and late results from a closed window are discarded.
   - Saving engine settings preserves concurrent profile changes and the selected default engine.

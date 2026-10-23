@@ -59,12 +59,16 @@ final class CoachMoveCard extends JPanel {
 
   /** 0 when there is nothing to show. Also places the prompt's buttons. */
   int heightFor() {
+    return heightFor(getWidth());
+  }
+
+  int heightFor(int width) {
     CoachPanelState s = state.get();
     syncButtons(
         s.prompt() != null
             ? s.prompt().choices()
             : s.summary() != null ? s.summary().choices() : List.of());
-    return layout(null, getWidth());
+    return layout(null, width);
   }
 
   @Override
