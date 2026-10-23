@@ -4,6 +4,14 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- AI Coach discards late review notifications after a game is closed, preventing the old session from refreshing a detached or replacement interface.
+
+- On Windows, opening the system window menu with Alt+Space no longer stops a live-analysis AI Coach game. The ordinary Space shortcut keeps its existing behavior.
+
+- AI Coach keeps localized win-chance and points-lost text inside its decision card. Long text wraps, and decision buttons stack when their translated labels do not fit side by side.
+
+- AI Coach scrolls its side panel on short windows so blunder decisions and game actions never overlap.
+
 - KataGo Auto Setup recovers when it is closed and reopened before a download or local model import finishes. Late results no longer leave the reopened window permanently busy, and stale import errors do not open dialogs after closing.
 
 - Top menus keep shortcut hints clear of help buttons, preserve user-defined Quick Links names,

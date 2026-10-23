@@ -107,8 +107,9 @@ class CoachPanelTest {
   @Test
   void hiddenButtonsLeaveNoEmptyRowAboveEndGame() {
     CoachPanel panel = new CoachPanel(null, () -> null);
+    java.awt.Container content = (java.awt.Container) componentOf(panel, CoachPanelContent.class);
     java.awt.Container actions =
-        (java.awt.Container) panel.getComponent(panel.getComponentCount() - 1);
+        (java.awt.Container) content.getComponent(content.getComponentCount() - 1);
     java.awt.Container grid = (java.awt.Container) actions.getComponent(0);
 
     assertEquals(3, grid.getComponentCount(), "take back, pass and resign; no hint or retry yet");
@@ -175,20 +176,25 @@ class CoachPanelTest {
     panel.doLayout();
     java.awt.Component summary = componentOf(panel, CoachSummaryView.class);
     java.awt.Component history = componentOf(panel, CoachHistoryView.class);
-    java.awt.Component actions = panel.getComponent(panel.getComponentCount() - 1);
+    java.awt.Container content = (java.awt.Container) componentOf(panel, CoachPanelContent.class);
+    java.awt.Component actions = content.getComponent(content.getComponentCount() - 1);
 
     assertEquals(900 - 18, actions.getY() + actions.getHeight());
     assertTrue(history.getY() >= summary.getY() + summary.getHeight());
     assertEquals(actions.getY() - 12, history.getY() + history.getHeight());
   }
 
-  private static java.awt.Component componentOf(CoachPanel panel, Class<?> type) {
+  private static java.awt.Component componentOf(java.awt.Container panel, Class<?> type) {
     for (java.awt.Component component : panel.getComponents()) {
       if (type.isInstance(component)) {
         return component;
       }
+      if (component instanceof java.awt.Container nested) {
+        java.awt.Component found = componentOf(nested, type);
+        if (found != null) return found;
+      }
     }
-    throw new AssertionError(type.getSimpleName());
+    return null;
   }
 
   @Test

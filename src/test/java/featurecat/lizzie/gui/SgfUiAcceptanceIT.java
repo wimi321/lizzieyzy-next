@@ -338,7 +338,7 @@ public final class SgfUiAcceptanceIT {
     System.setProperty("lizzie.work.dir", work.toString());
     Robot robot = robot();
     startApplication(result);
-    openSelectedFile(robot, input);
+    openSelectedFile(robot, input, result);
     Board board = Lizzie.board;
     BoardHistoryNode root = board.getHistory().getStart();
     BoardHistoryNode setup = root.next().orElseThrow();
@@ -414,13 +414,7 @@ public final class SgfUiAcceptanceIT {
     for (int round = 0; round < 2; round++) {
       BoardHistoryList before = board.getHistory();
       Path saved = work.resolve("saved-" + round + ".sgf");
-      JFileChooser chooser = openSaveChooser(robot);
-      edt(
-          () -> {
-            chooser.setSelectedFile(saved.toFile());
-            chooser.approveSelection();
-            return null;
-          });
+      saveAsViaChooser(robot, saved, result);
       await(() -> Files.isRegularFile(saved), Deadline.after(Duration.ofSeconds(15)), "edit save");
       await(
           () -> visibleChooser() == null,
@@ -438,7 +432,7 @@ public final class SgfUiAcceptanceIT {
           Deadline.after(Duration.ofSeconds(15)),
           "save dialog handback");
       robot.waitForIdle();
-      openSelectedFile(robot, saved);
+      openSelectedFile(robot, saved, result);
       assertNodeSemanticsEqual(before.getStart(), board.getHistory().getStart());
       edt(
           () -> {
@@ -509,7 +503,7 @@ public final class SgfUiAcceptanceIT {
     String sourceHash = sha256(input);
     Robot robot = robot();
     startApplication(result);
-    openSelectedFile(robot, input);
+    openSelectedFile(robot, input, result);
     await(
         () -> Board.boardWidth == 19 && Lizzie.board.getHistory().getStart().numberOfChildren() > 0,
         Deadline.after(Duration.ofSeconds(15)),
@@ -588,16 +582,10 @@ public final class SgfUiAcceptanceIT {
       assertTrue(setup == history.getCurrentHistoryNode());
     }
     Path saved = result.getParent().resolve("unedited.sgf");
-    JFileChooser save = openSaveChooser(robot);
-    edt(
-        () -> {
-          save.setSelectedFile(saved.toFile());
-          save.approveSelection();
-          return null;
-        });
+    saveAsViaChooser(robot, saved, result);
     await(
         () -> Files.isRegularFile(saved), Deadline.after(Duration.ofSeconds(15)), "saved original");
-    openSelectedFile(robot, saved);
+    openSelectedFile(robot, saved, result);
     await(
         () -> Lizzie.board.getHistory() != history,
         Deadline.after(Duration.ofSeconds(15)),
@@ -627,17 +615,9 @@ public final class SgfUiAcceptanceIT {
     clickMenuAction(robot, "menu.exit", Duration.ofSeconds(10));
   }
 
-  private static void openSelectedFile(Robot robot, Path file) throws Exception {
+  private static void openSelectedFile(Robot robot, Path file, Path result) throws Exception {
     BoardHistoryList previous = Lizzie.board.getHistory();
-    clickMenuAction(robot, "files.open", Duration.ofSeconds(15));
-    await(() -> visibleChooser() != null, Deadline.after(Duration.ofSeconds(15)), "open chooser");
-    JFileChooser chooser = visibleChooser();
-    edt(
-        () -> {
-          chooser.setSelectedFile(file.toFile());
-          chooser.approveSelection();
-          return null;
-        });
+    openViaChooser(robot, file, result);
     await(
         () -> Lizzie.board.getHistory() != previous,
         Deadline.after(Duration.ofSeconds(15)),
