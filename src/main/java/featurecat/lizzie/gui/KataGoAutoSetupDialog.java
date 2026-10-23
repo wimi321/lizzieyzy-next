@@ -3851,101 +3851,60 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void importCustomWeight() {
-    if (rejectOverlappingBackgroundTask()) return;
-    JFileChooser chooser = new JFileChooser();
-    chooser.setDialogTitle(text("AutoSetup.importWeightTitle"));
-    chooser.setFileFilter(new FileNameExtensionFilter(text("AutoSetup.importWeightFilter"), "gz"));
-    if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
-      return;
-    }
-    final Path source = chooser.getSelectedFile().toPath();
-    if (!isSupportedWeightFileName(source)) {
-      Utils.showMsg(text("AutoSetup.importWeightInvalid"), this);
-      return;
-    }
-    setBusy(true, text("AutoSetup.importingWeight"), 0, -1);
-    cancelStateRefresh();
-    final long requestId = ++stateRefreshRequestId;
-    Thread worker =
-        new Thread(
-            () -> {
-              try {
-                Path importedWeight = KataGoAutoSetupHelper.importWeight(source);
-                SetupSnapshot refreshed =
-                    KataGoAutoSetupHelper.inspectLocalSetup().scanWeightCatalog();
-                SwingUtilities.invokeLater(
-                    () -> {
-                      activeWorkerThread = null;
-                      if (requestId != stateRefreshRequestId) return;
-                      setBusy(false, text("AutoSetup.importWeightDone"), 0, 0);
-                      snapshot = refreshed;
-                      renderSnapshot();
-                      selectLocalWeight(importedWeight);
-                      updateSelectedLocalWeightInfo();
-                      lblStatus.setText(text("AutoSetup.importReadyToUse"));
-                      lblStatus.setToolTipText(
-                          importedWeight.toAbsolutePath().normalize().toString());
-                      lblStatus.setForeground(OK_COLOR());
-                    });
-              } catch (IOException e) {
-                SwingUtilities.invokeLater(
-                    () -> {
-                      activeWorkerThread = null;
-                      onBackgroundError(e);
-                    });
-              }
-            },
-            "katago-import-weight");
-    activeWorkerThread = worker;
-    worker.start();
+    importWeight(false);
   }
 
   private void importHumanSlModel() {
+    importWeight(true);
+  }
+
+  private void importWeight(boolean humanSl) {
     if (rejectOverlappingBackgroundTask()) return;
+    String kind = humanSl ? "HumanSlModel" : "Weight";
     JFileChooser chooser = new JFileChooser();
-    chooser.setDialogTitle(text("AutoSetup.importHumanSlModelTitle"));
+    chooser.setDialogTitle(text("AutoSetup.import" + kind + "Title"));
     chooser.setFileFilter(
-        new FileNameExtensionFilter(text("AutoSetup.importHumanSlModelFilter"), "gz"));
+        new FileNameExtensionFilter(text("AutoSetup.import" + kind + "Filter"), "gz"));
     if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
       return;
     }
     final Path source = chooser.getSelectedFile().toPath();
     if (!isSupportedWeightFileName(source)) {
-      Utils.showMsg(text("AutoSetup.importHumanSlModelInvalid"), this);
+      Utils.showMsg(text("AutoSetup.import" + kind + "Invalid"), this);
       return;
     }
-    setBusy(true, text("AutoSetup.importingHumanSlModel"), 0, -1);
+    startWeightImport(() -> SetupWeightImport.read(source, humanSl), humanSl);
+  }
+
+  void startWeightImport(Callable<SetupWeightImport> action, boolean humanSl) {
+    String kind = humanSl ? "HumanSlModel" : "Weight";
+    setBusy(true, text("AutoSetup.importing" + kind), 0, -1);
     cancelStateRefresh();
     final long requestId = ++stateRefreshRequestId;
-    Thread worker =
-        new Thread(
-            () -> {
-              try {
-                Path importedModel = KataGoAutoSetupHelper.importHumanSlModel(source);
-                SetupSnapshot refreshed =
-                    KataGoAutoSetupHelper.inspectLocalSetup().scanWeightCatalog();
-                SwingUtilities.invokeLater(
-                    () -> {
-                      activeWorkerThread = null;
-                      if (requestId != stateRefreshRequestId) return;
-                      setBusy(false, text("AutoSetup.importHumanSlModelDone"), 0, 0);
-                      snapshot = refreshed;
-                      renderSnapshot();
-                      Utils.showMsg(
-                          text("AutoSetup.importHumanSlModelDoneMessage") + "\n" + importedModel,
-                          this);
-                    });
-              } catch (IOException e) {
-                SwingUtilities.invokeLater(
-                    () -> {
-                      activeWorkerThread = null;
-                      onBackgroundError(e);
-                    });
+    activeWorkerThread =
+        SetupBackgroundAction.start(
+            humanSl ? "katago-import-humansl-model" : "katago-import-weight",
+            action,
+            imported -> {
+              if (disposed || requestId != stateRefreshRequestId) return;
+              setBusy(false, text("AutoSetup.import" + kind + "Done"), 0, 0);
+              snapshot = imported.snapshot();
+              renderSnapshot();
+              if (humanSl) {
+                Utils.showMsg(
+                    text("AutoSetup.importHumanSlModelDoneMessage") + "\n" + imported.path(), this);
+              } else {
+                selectLocalWeight(imported.path());
+                updateSelectedLocalWeightInfo();
+                lblStatus.setText(text("AutoSetup.importReadyToUse"));
+                lblStatus.setToolTipText(imported.path().toAbsolutePath().normalize().toString());
+                lblStatus.setForeground(OK_COLOR());
               }
             },
-            "katago-import-humansl-model");
-    activeWorkerThread = worker;
-    worker.start();
+            failure -> {
+              if (requestId == stateRefreshRequestId) onBackgroundError(failure);
+            },
+            worker -> clearActiveDownload(null, worker));
   }
 
   private void startHumanSlModelDownload() {
@@ -6144,22 +6103,25 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void clearActiveDownload(DownloadSession session, Thread workerThread) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> clearActiveDownload(session, workerThread));
+      return;
+    }
     boolean stateChanged = false;
-    if (activeDownloadSession == session) {
+    if (session != null && activeDownloadSession == session) {
       activeDownloadSession = null;
       stateChanged = true;
     }
-    if (activeWorkerThread == workerThread) {
+    if (workerThread != null && activeWorkerThread == workerThread) {
       activeWorkerThread = null;
       stateChanged = true;
     }
-    if (stateChanged) {
-      SwingUtilities.invokeLater(
-          () -> {
-            if (runtimeStateCache != null) runtimeStateCache.invalidate();
-            refreshIdleControls();
-          });
-    }
+    if (!stateChanged || disposed) return;
+    if (runtimeStateCache != null) runtimeStateCache.invalidate();
+    // A close can invalidate publication before a reopened view sees completion. Read fresh state
+    // after the old owner finishes; never publish its old snapshot or unlock a newer operation.
+    if (controlsBusy && !hasActiveBackgroundTask()) refreshState();
+    else refreshIdleControls();
   }
 
   private void refreshIdleControls() {
