@@ -205,6 +205,8 @@ PY_COMPILE_FILES = (
     "scripts/prepare_bundled_jcef.py",
     "scripts/prepare_bundled_nvidia_runtime.py",
     "scripts/publish_release_request.py",
+    "scripts/prefer_ubuntu_apt_mirror.py",
+    "scripts/test_prefer_ubuntu_apt_mirror.py",
     "scripts/r2_release.py",
     "scripts/release_asset_provenance.py",
     "scripts/release_asset_topology.py",
@@ -282,6 +284,7 @@ DIRECT_PYTHON_TESTS = (
 )
 
 UNITTEST_MODULES = (
+    "scripts.test_prefer_ubuntu_apt_mirror",
     "scripts.test_publish_release_request",
     "scripts.test_release_asset_provenance",
     "scripts.test_release_asset_topology",
