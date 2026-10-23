@@ -17,6 +17,33 @@ import org.junit.jupiter.api.Test;
 
 class CoachPanelSmallWindowTest {
   @Test
+  void clearingTheDecisionClampsBottomScrollWithoutGrowingTheWindow() throws Exception {
+    SwingUtilities.invokeAndWait(
+        () -> {
+          for (int width : new int[] {260, 360}) {
+            CoachPanel panel = new CoachPanel(null, () -> null);
+            panel.setVisible(true);
+            panel.setSize(width, 400);
+            setState(panel, blunderState());
+            layoutTree(panel);
+            JScrollPane scroll = field(panel, "scroll", JScrollPane.class);
+            assertTrue(scroll.getVerticalScrollBar().isVisible());
+            scroll.getVerticalScrollBar().setValue(scroll.getVerticalScrollBar().getMaximum());
+            assertTrue(
+                scroll.getViewport().getViewPosition().y > 0, "start scrolled to the bottom");
+
+            setState(panel, CoachPanelState.EMPTY);
+            layoutTree(panel);
+
+            assertFalse(
+                scroll.getVerticalScrollBar().isVisible(), "no resize needed after collapse");
+            assertTrue(scroll.getViewport().getViewPosition().y == 0);
+            assertTrue(panel.getHeight() == 400, "the window must remain short throughout");
+          }
+        });
+  }
+
+  @Test
   void scrollingEndsWhenTheWindowOrDecisionNoLongerNeedsIt() throws Exception {
     SwingUtilities.invokeAndWait(
         () -> {
