@@ -63,6 +63,7 @@ final class MoveReviewer {
   private BoardHistoryNode turn;
   private PositionReview turnReview;
   private BoardHistoryNode judging;
+  private boolean closed;
 
   /**
    * @param inGame whether a position is still part of the game, so that feedback on a move taken
@@ -104,7 +105,7 @@ final class MoveReviewer {
           Optional<PositionReview> review = reviewOf(position, TURN_VISITS, TURN_TIME);
           eventThread.accept(
               () -> {
-                if (turn == position) {
+                if (!closed && turn == position) {
                   turnReview = review.orElse(null);
                   changed.run();
                 }
@@ -154,6 +155,7 @@ final class MoveReviewer {
   }
 
   private void record(BoardHistoryNode after, Optional<MoveFeedback> feedback) {
+    if (closed) return;
     if (judging == after) {
       judging = null;
     }
@@ -257,6 +259,9 @@ final class MoveReviewer {
   }
 
   void close() {
+    // The event-thread owner also rejects results already queued before worker interruption.
+    closed = true;
+    judging = null;
     worker.shutdownNow();
   }
 

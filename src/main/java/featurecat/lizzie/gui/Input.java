@@ -441,6 +441,8 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
         }
         break;
       case VK_SPACE:
+        // Alt+Space belongs to the window system (or AltGr input), not analysis/game controls.
+        if (e.isAltDown() || e.isAltGraphDown()) return;
         if (activeCoachGame() != null && !activeCoachGame().isLiveAnalysisMode()) {
           activeCoachGame().showAnalysisHiddenHint();
         } else {

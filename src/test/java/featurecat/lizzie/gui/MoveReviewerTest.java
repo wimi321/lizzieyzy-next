@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.rules.BoardData;
@@ -169,6 +170,91 @@ class MoveReviewerTest {
     assertTrue(reviewer.judge(node(10), node(11), "D4").get().isEmpty());
     assertTrue(engine.calls.isEmpty());
     assertFalse(reviewer.isJudging());
+  }
+
+  @Test
+  void closingDropsATurnReviewAlreadyQueuedForTheEventThread() {
+    BoardHistoryNode turn = node(10);
+    engine.reviews.put(turn, TURN);
+    List<Runnable> queued = new ArrayList<>();
+    MoveReviewer delayed =
+        new MoveReviewer(
+            engine, ignored -> true, () -> changes.add("changed"), queued::add, worker);
+    delayed.playerToMove(turn);
+    assertEquals(1, queued.size());
+    assertNull(delayed.currentReview(turn), "the event owner has not accepted the result yet");
+
+    delayed.close();
+    queued.forEach(Runnable::run);
+
+    assertTrue(changes.isEmpty(), "a closed coach must not notify a detached or replacement UI");
+    assertNull(delayed.currentReview(turn));
+    assertArrayEquals(new double[0], delayed.winChances());
+  }
+
+  @Test
+  void closingDropsAJudgementAlreadyQueuedForTheEventThread() throws Exception {
+    BoardHistoryNode turn = node(10);
+    engine.reviews.put(turn, TURN);
+    List<Runnable> queued = new ArrayList<>();
+    MoveReviewer delayed =
+        new MoveReviewer(
+            engine, ignored -> true, () -> changes.add("changed"), queued::add, worker);
+    var completed = delayed.judge(turn, node(11), "D4");
+    assertTrue(completed.get().isPresent(), "the worker result still completes independently");
+    assertEquals(1, queued.size());
+    assertTrue(delayed.isJudging());
+
+    delayed.close();
+    queued.forEach(Runnable::run);
+
+    assertTrue(changes.isEmpty(), "late judgement cannot republish closed-session state");
+    assertTrue(delayed.feedback().isEmpty());
+    assertFalse(delayed.isJudging());
+  }
+
+  @Test
+  void queuedReviewsStillPublishWhileTheReviewerIsOpen() {
+    BoardHistoryNode turn = node(10);
+    engine.reviews.put(turn, TURN);
+    List<Runnable> queued = new ArrayList<>();
+    MoveReviewer delayed =
+        new MoveReviewer(
+            engine, ignored -> true, () -> changes.add("changed"), queued::add, worker);
+    try {
+      delayed.playerToMove(turn);
+      assertTrue(changes.isEmpty());
+      queued.forEach(Runnable::run);
+      assertEquals(List.of("changed"), changes);
+      assertEquals(TURN, delayed.currentReview(turn));
+    } finally {
+      delayed.close();
+    }
+  }
+
+  @Test
+  void closingKeepsFeedbackThatWasAlreadyPublished() throws Exception {
+    BoardHistoryNode turn = node(10);
+    engine.reviews.put(turn, TURN);
+    MoveFeedback feedback = reviewer.judge(turn, node(11), "D4").get().orElseThrow();
+
+    reviewer.close();
+
+    assertEquals(List.of(feedback), reviewer.feedback());
+    assertEquals(Optional.of(feedback), reviewer.latest());
+  }
+
+  @Test
+  void closingKeepsTheTurnReviewThatWasAlreadyPublished() {
+    BoardHistoryNode turn = node(10);
+    engine.reviews.put(turn, TURN);
+    reviewer.playerToMove(turn);
+    double[] chances = reviewer.winChances();
+
+    reviewer.close();
+
+    assertEquals(TURN, reviewer.currentReview(turn));
+    assertArrayEquals(chances, reviewer.winChances());
   }
 
   private static final class ScriptedEngine implements MoveReviewer.Engine {
