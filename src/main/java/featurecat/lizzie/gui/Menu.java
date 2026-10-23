@@ -5092,7 +5092,6 @@ public class Menu extends JMenuBar {
     quickLinks = new JFontMenu(resourceBundle.getString("Menu.quickLinks")); // ("快速启动");
     quickLinks.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     quickLinks.setFont(baseMenuFont);
-    // quickLinks.setFont(headFont);
     this.add(quickLinks);
     updateFastLinks();
 
@@ -10710,7 +10709,7 @@ public class Menu extends JMenuBar {
     ArrayList<ProgramData> programData = getProgramData();
     quickLinks.removeAll();
     for (int i = 0; i < programData.size(); i++) {
-      JFontMenuItem program = new JFontMenuItem(programData.get(i).name);
+      JFontMenuItem program = TopMenuStyle.userContent(programData.get(i).name);
       int index = i;
       program.addActionListener(
           new ActionListener() {
@@ -11000,6 +10999,7 @@ public class Menu extends JMenuBar {
     InfoMenuItem(String text, Runnable infoAction) {
       super(text);
       this.infoAction = infoAction;
+      putClientProperty(TopMenuStyle.TRAILING_SPACE_PROPERTY, INFO_EXTRA_WIDTH);
     }
 
     @Override
