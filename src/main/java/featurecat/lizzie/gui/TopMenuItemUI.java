@@ -81,7 +81,10 @@ final class TopMenuItemUI extends BasicMenuItemUI {
   record Row(String label, String hint, int markColumn, boolean chevronColumn, int reservedRight) {
     static Row of(JMenuItem item) {
       String hint = (String) item.getClientProperty(TopMenuStyle.HINT_PROPERTY);
-      MenuShortcutHint.Split split = MenuShortcutHint.split(item.getText());
+      MenuShortcutHint.Split split =
+          Boolean.TRUE.equals(item.getClientProperty(TopMenuStyle.USER_TEXT_PROPERTY))
+              ? new MenuShortcutHint.Split(item.getText(), null)
+              : MenuShortcutHint.split(item.getText());
       if (hint == null) hint = split.hint();
       if (hint == null) hint = MenuShortcutHint.format(item.getAccelerator());
       boolean mark = needsMark(item);
@@ -99,6 +102,9 @@ final class TopMenuItemUI extends BasicMenuItemUI {
           item.getLayout() instanceof TopMenuStyle.CompositeRow composite
               ? composite.reservedRight()
               : 0;
+      if (item.getClientProperty(TopMenuStyle.TRAILING_SPACE_PROPERTY) instanceof Integer extra) {
+        reserved += extra;
+      }
       return new Row(split.label(), hint, mark ? MARK : 0, chevron, reserved);
     }
 

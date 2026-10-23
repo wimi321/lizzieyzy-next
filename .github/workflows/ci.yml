@@ -169,6 +169,8 @@ jobs:
           cache: maven
       - name: Install display and font dependencies
         run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH python3 scripts/prefer_ubuntu_apt_mirror.py
+          apt-config dump Acquire::Retries Acquire::http::Timeout Acquire::https::Timeout
           sudo apt-get update
           sudo apt-get install -y xvfb xauth openbox x11-utils fonts-dejavu-core fonts-noto-cjk fonts-noto-core
       - name: Run Linux desktop smoke verification
@@ -251,6 +253,8 @@ jobs:
       - name: Install Linux display dependencies
         if: ${{ runner.os == 'Linux' }}
         run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH python3 scripts/prefer_ubuntu_apt_mirror.py
+          apt-config dump Acquire::Retries Acquire::http::Timeout Acquire::https::Timeout
           sudo apt-get update
           sudo apt-get install -y xvfb xauth fonts-dejavu-core fonts-noto-cjk
       - name: Run Linux engine process verification

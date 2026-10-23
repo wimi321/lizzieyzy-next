@@ -24,7 +24,11 @@ final class CoachSummaryView extends JComponent {
   }
 
   int heightFor() {
-    return layout(null, getWidth());
+    return heightFor(getWidth());
+  }
+
+  int heightFor(int width) {
+    return layout(null, width);
   }
 
   @Override
