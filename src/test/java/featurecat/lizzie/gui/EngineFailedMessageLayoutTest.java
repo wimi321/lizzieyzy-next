@@ -532,44 +532,51 @@ class EngineFailedMessageLayoutTest {
   }
 
   @Test
-  void boundAttemptDisplaysSummaryAndDetailsWithIsolation() {
+  void boundAttemptDisplaysSummaryAndDetailsWithIsolation() throws Exception {
     assumeTrue(Lizzie.config != null);
     assumeTrue(!GraphicsEnvironment.isHeadless());
-    try (EngineStartupDiagnostics diagnostics =
-        new EngineStartupDiagnostics(EngineStartupDiagnostics.Policy.production(), null)) {
-      EngineStartupDiagnostics.Attempt attempt1 =
-          diagnostics.begin("engine-test-1", "play", List.of("katago.exe", "gtp"), true);
-      attempt1.fail("startup", "process failed to start");
+    SwingUtilities.invokeAndWait(
+        () -> {
+          try (EngineStartupDiagnostics diagnostics =
+              new EngineStartupDiagnostics(EngineStartupDiagnostics.Policy.production(), null)) {
+            EngineStartupDiagnostics.Attempt attempt1 =
+                diagnostics.begin("engine-test-1", "play", List.of("katago.exe", "gtp"), true);
+            attempt1.fail("startup", "process failed to start");
 
-      EngineFailedMessage dialog =
-          new EngineFailedMessage(
-              List.of("katago.exe"), "katago.exe gtp", "failure", true, true, false);
-      dialog.bindStartupDiagnostic(attempt1);
+            EngineFailedMessage dialog =
+                new EngineFailedMessage(
+                    List.of("katago.exe"), "katago.exe gtp", "failure", true, true, false);
+            try {
+              dialog.bindStartupDiagnostic(attempt1);
 
-      JTextArea summaryArea =
-          findComponentByName(dialog, "EngineFailedMessage.diagnosticSummary", JTextArea.class);
-      JTextArea detailsArea =
-          findComponentByName(dialog, "EngineFailedMessage.detailsArea", JTextArea.class);
+              JTextArea summaryArea =
+                  findComponentByName(
+                      dialog, "EngineFailedMessage.diagnosticSummary", JTextArea.class);
+              JTextArea detailsArea =
+                  findComponentByName(dialog, "EngineFailedMessage.detailsArea", JTextArea.class);
 
-      assertNotNull(summaryArea);
-      assertNotNull(detailsArea);
-      assertTrue(summaryArea.getText().contains("engine-test-1"));
-      assertTrue(summaryArea.getText().contains(attempt1.id()));
-      assertTrue(detailsArea.getText().contains("engine-test-1"));
-      assertTrue(detailsArea.getText().contains(attempt1.id()));
+              assertNotNull(summaryArea);
+              assertNotNull(detailsArea);
+              assertTrue(summaryArea.getText().contains("engine-test-1"));
+              assertTrue(summaryArea.getText().contains(attempt1.id()));
+              assertTrue(detailsArea.getText().contains("engine-test-1"));
+              assertTrue(detailsArea.getText().contains(attempt1.id()));
 
-      // Attempt 2 fails independently
-      EngineStartupDiagnostics.Attempt attempt2 =
-          diagnostics.begin("engine-test-2", "play", List.of("leelaz.exe"), true);
-      attempt2.fail("startup", "different failure");
+              // Attempt 2 fails independently
+              EngineStartupDiagnostics.Attempt attempt2 =
+                  diagnostics.begin("engine-test-2", "play", List.of("leelaz.exe"), true);
+              attempt2.fail("startup", "different failure");
 
-      // Dialog remains isolated to attempt 1
-      assertTrue(summaryArea.getText().contains("engine-test-1"));
-      assertFalse(summaryArea.getText().contains("engine-test-2"));
-      assertTrue(detailsArea.getText().contains("engine-test-1"));
-      assertFalse(detailsArea.getText().contains("engine-test-2"));
-      dialog.dispose();
-    }
+              // Dialog remains isolated to attempt 1
+              assertTrue(summaryArea.getText().contains("engine-test-1"));
+              assertFalse(summaryArea.getText().contains("engine-test-2"));
+              assertTrue(detailsArea.getText().contains("engine-test-1"));
+              assertFalse(detailsArea.getText().contains("engine-test-2"));
+            } finally {
+              dialog.dispose();
+            }
+          }
+        });
   }
 
   @Test
