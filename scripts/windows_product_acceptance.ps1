@@ -752,41 +752,142 @@ function Get-ProcessSnapshot {
     )
 }
 
-function Get-OwnedProcessTree {
-    param([int]$RootPid, [string]$ProductRoot, [object]$RootIdentity = $null, [switch]$IncludeSnapshots)
-    $all = @(Get-CimInstance Win32_Process -ErrorAction Stop)
-    if ($RootIdentity) {
-        # Validate and bind descendants from the same observation, not a later PID lookup.
-        $roots = @($all | Where-Object { [int]$_.ProcessId -eq $RootPid })
-        Require-Value -Condition ($roots.Count -eq 1 -and (Test-ProcessSnapshotMatch -Expected $RootIdentity -Actual (ConvertTo-ProcessSnapshot -Process $roots[0]))) -Message "Packaged launcher process tree disappeared before readiness or its incarnation changed."
-    }
+function Get-PossibleProcessBranchIds {
+    param([object[]]$Processes, [int[]]$RootIds)
+    # Ancestry identifies uncertainty only, never authority to bind or terminate.
     $ids = New-Object 'System.Collections.Generic.HashSet[int]'
-    [void]$ids.Add($RootPid)
-    $changed = $true
-    while ($changed) {
+    foreach ($processId in $RootIds) { [void]$ids.Add($processId) }
+    do {
         $changed = $false
-        foreach ($process in $all) {
-            if ($ids.Contains([int]$process.ParentProcessId) -and -not $ids.Contains([int]$process.ProcessId)) {
-                if ($RootIdentity) {
+        foreach ($process in $Processes) {
+            if ($ids.Contains([int]$process.ParentProcessId) -and $ids.Add([int]$process.ProcessId)) { $changed = $true }
+        }
+    } while ($changed)
+    return ,$ids
+}
+
+function Get-VerifiedStartupProcessTree {
+    param([int]$RootPid, [object]$RootIdentity)
+    $anchors = @{}
+    $pending = @{}
+    $attempts = New-Object System.Collections.Generic.List[object]
+    $failureRecord = $null
+    $record = [ordered]@{ schemaVersion = 1; rootIdentity = $RootIdentity; outcome = 'failed'; failure = $null; observations = $attempts; resolutions = @() }
+    try {
+        # A fixed observation budget, not retry-until-green. Each pass uses a whole
+        # CIM snapshot; fields from different incarnations are never stitched together.
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            if ($attempt -gt 1) { Start-Sleep -Milliseconds 50 }
+            $observation = [ordered]@{ number = $attempt; capturedAt = Get-UtcTimestamp; processes = @(); queryError = $null }
+            $attempts.Add($observation)
+            try { $all = @(Get-CimInstance Win32_Process -ErrorAction Stop) }
+            catch { $observation.queryError = $_.Exception.Message; throw }
+            $related = Get-PossibleProcessBranchIds -Processes $all -RootIds @($RootPid; $pending.Keys; $anchors.Keys)
+            $observation.processes = @($all | Where-Object { $related.Contains([int]$_.ProcessId) } | ForEach-Object {
+                $snapshot = ConvertTo-ProcessSnapshot -Process $_
+                # Preserve relevant identity evidence, not unrelated process command lines.
+                [ordered]@{ pid = $snapshot.pid; parentPid = $snapshot.parentPid; image = $snapshot.image; creationDate = $snapshot.creationDate }
+            })
+            $roots = @($all | Where-Object { [int]$_.ProcessId -eq $RootPid })
+            Require-Value -Condition ($roots.Count -eq 1 -and (Test-ProcessSnapshotMatch -Expected $RootIdentity -Actual (ConvertTo-ProcessSnapshot -Process $roots[0]))) -Message "Packaged launcher process tree disappeared before readiness or its incarnation changed."
+            foreach ($processId in @($anchors.Keys)) {
+                $current = @($all | Where-Object { [int]$_.ProcessId -eq $processId })
+                Require-Value -Condition ($current.Count -eq 1 -and (Test-ProcessSnapshotMatch -Expected $anchors[$processId] -Actual (ConvertTo-ProcessSnapshot -Process $current[0])) -and [int]$current[0].ParentProcessId -eq [int]$anchors[$processId].parentPid) -Message "Startup parent/ancestor PID $processId changed or disappeared during identity observation."
+            }
+            $resolutions = New-Object System.Collections.Generic.List[object]
+            foreach ($processId in @($pending.Keys)) {
+                $candidate = $pending[$processId]
+                $current = @($all | Where-Object { [int]$_.ProcessId -eq $processId })
+                if ($current.Count -eq 0) {
+                    $possible = Get-PossibleProcessBranchIds -Processes $all -RootIds @($candidate.branchIds)
+                    $live = @($all | Where-Object { $possible.Contains([int]$_.ProcessId) })
+                    Require-Value -Condition ($live.Count -eq 0) -Message "Missing startup PID $processId disappeared but its possible descendants remain unverified."
+                    $resolutions.Add([ordered]@{ pid = $processId; state = 'gone' })
+                    continue
+                }
+                Require-Value -Condition ($current.Count -eq 1) -Message "Startup PID $processId is ambiguous."
+                $expected = $candidate.snapshot
+                $actual = ConvertTo-ProcessSnapshot -Process $current[0]
+                $expectedCreation = Get-ProcessCreationIdentity -Value $expected.creationDate
+                $actualCreation = Get-ProcessCreationIdentity -Value $actual.creationDate
+                Require-Value -Condition ($null -ne $expectedCreation -and ($null -eq $actualCreation -or $actualCreation -eq $expectedCreation) -and [int]$expected.parentPid -eq [int]$actual.parentPid) -Message "Startup PID $processId cannot be tied to its original creation and parent."
+                Require-Value -Condition (-not $expected.image -or -not $actual.image -or [System.IO.Path]::GetFullPath($expected.image) -ieq [System.IO.Path]::GetFullPath($actual.image)) -Message "Startup PID $processId image changed during identity observation."
+                if ($null -ne $actualCreation -and $actual.image) { $resolutions.Add([ordered]@{ pid = $processId; state = 'identity-complete' }) }
+                else { $resolutions.Add([ordered]@{ pid = $processId; state = 'unverified' }) }
+            }
+            $record.resolutions = $resolutions.ToArray()
+            $ids = New-Object 'System.Collections.Generic.HashSet[int]'
+            [void]$ids.Add($RootPid)
+            $missing = New-Object 'System.Collections.Generic.HashSet[int]'
+            do {
+                $changed = $false
+                foreach ($process in $all) {
+                    $processId = [int]$process.ProcessId
+                    if (-not $ids.Contains([int]$process.ParentProcessId) -or $ids.Contains($processId)) { continue }
+                    $duplicates = @($all | Where-Object { [int]$_.ProcessId -eq $processId })
+                    Require-Value -Condition ($duplicates.Count -eq 1) -Message "Startup PID $processId is ambiguous."
                     $parent = @($all | Where-Object { [int]$_.ProcessId -eq [int]$process.ParentProcessId })[0]
                     $parentCreation = Get-ProcessCreationIdentity -Value $parent.CreationDate
                     $childCreation = Get-ProcessCreationIdentity -Value $process.CreationDate
-                    Require-Value -Condition ($null -ne $childCreation -and [bool]$process.ExecutablePath) -Message "Cannot bind descendant PID $($process.ProcessId): creation time or image is unavailable."
+                    if ($null -eq $childCreation -or -not $process.ExecutablePath) {
+                        [void]$missing.Add($processId)
+                        if (-not $pending.ContainsKey($processId)) {
+                            $pending[$processId] = @{ snapshot = (ConvertTo-ProcessSnapshot -Process $process); branchIds = @(Get-PossibleProcessBranchIds -Processes $all -RootIds @($processId) | ForEach-Object { $_ }) }
+                        }
+                        continue
+                    }
                     # ParentProcessId can refer to an older, already exited incarnation.
                     if ($childCreation -lt $parentCreation) { continue }
+                    [void]$ids.Add($processId)
+                    $changed = $true
                 }
-                [void]$ids.Add([int]$process.ProcessId)
-                $changed = $true
+            } while ($changed)
+            foreach ($resolution in $record.resolutions) {
+                if ($resolution.state -eq 'identity-complete') {
+                    $resolution.state = if ($ids.Contains([int]$resolution.pid)) { 'bound' } else { 'not-bound' }
+                }
+            }
+            if ($missing.Count -eq 0) {
+                $record.outcome = 'resolved'
+                return @($all | Where-Object { $ids.Contains([int]$_.ProcessId) })
+            }
+            foreach ($process in @($all | Where-Object { $ids.Contains([int]$_.ProcessId) })) {
+                if (-not $anchors.ContainsKey([int]$process.ProcessId)) { $anchors[[int]$process.ProcessId] = ConvertTo-ProcessSnapshot -Process $process }
+            }
+            Require-Value -Condition ($attempt -lt 3) -Message "Cannot bind startup descendants after 3 observations: creation time or image is unavailable."
+        }
+    }
+    catch {
+        $failureRecord = $_
+        $record.failure = $_.Exception.Message
+        $_.Exception.Data['StartupProcessObservation'] = $record
+        throw
+    }
+    finally {
+        if ($pending.Count -gt 0 -and $EvidenceDir) {
+            try { Write-JsonAtomic -Path (Join-Path $EvidenceDir ("startup-process-observation-{0}.json" -f [guid]::NewGuid().ToString('N'))) -Value $record }
+            catch {
+                if (-not $failureRecord) { throw }
+                # Evidence I/O must not replace the original startup/CIM failure.
+                $failureRecord.Exception.Data['StartupProcessObservationWriteError'] = $_.Exception.Message
             }
         }
+    }
+}
+
+function Get-OwnedProcessTree {
+    param([int]$RootPid, [string]$ProductRoot, [object]$RootIdentity = $null, [switch]$IncludeSnapshots)
+    if ($RootIdentity) { $all = @(Get-VerifiedStartupProcessTree -RootPid $RootPid -RootIdentity $RootIdentity) }
+    else {
+        $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+        $ids = Get-PossibleProcessBranchIds -Processes $snapshot -RootIds @($RootPid)
+        $all = @($snapshot | Where-Object { $ids.Contains([int]$_.ProcessId) })
     }
     $prefix = [System.IO.Path]::GetFullPath($ProductRoot).TrimEnd('\') + '\'
     return @(
         $all | Where-Object {
-            $ids.Contains([int]$_.ProcessId) -and (
-                [int]$_.ProcessId -eq $RootPid -or
-                ($_.ExecutablePath -and [System.IO.Path]::GetFullPath([string]$_.ExecutablePath).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase))
-            )
+            [int]$_.ProcessId -eq $RootPid -or
+            ($_.ExecutablePath -and [System.IO.Path]::GetFullPath([string]$_.ExecutablePath).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase))
         } | ForEach-Object { if ($IncludeSnapshots) { ConvertTo-ProcessSnapshot -Process $_ } else { [int]$_.ProcessId } }
     )
 }

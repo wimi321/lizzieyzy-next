@@ -1203,6 +1203,177 @@ if (-not $script:rolledBack -or $script:fixtureEntry) {{ throw 'owned installer 
 
 
 @unittest.skipUnless(os.name == "nt" and shutil.which("pwsh.exe"), "requires native Windows and PowerShell 7")
+class StartupProcessObservationTest(unittest.TestCase):
+    """Script complete CIM observations; never query or stop a real process."""
+
+    def observe(self, case: str) -> dict:
+        with tempfile.TemporaryDirectory(prefix="lizzie-observation-") as directory:
+            driver = Path(directory) / "observation.ps1"
+            script = str(SCRIPT.resolve()).replace("'", "''")
+            driver.write_text(f". '{script}' -Command Prepare\n$script:case='{case}'\n" + r'''
+$script:EvidenceDir=$PSScriptRoot
+$script:reads=0; $script:waits=0; $script:kills=0
+$script:created=[datetime]'2026-10-24T00:00:00.1234560Z'
+$script:root=Join-Path $PSScriptRoot 'product'
+if ($script:case -in @('query-and-write-error','resolved-write-error')) {
+    function Write-JsonAtomic { throw 'fixture evidence write error' }
+}
+function Row($id,$parent,$image,$created) {
+    [pscustomobject]@{ProcessId=$id;ParentProcessId=$parent;ExecutablePath=$image;CreationDate=$created;CommandLine='fixture'}
+}
+function Start-Sleep { $script:waits++ }
+function Stop-Process { $script:kills++; throw 'Must not stop any process' }
+function Get-CimInstance {
+    $script:reads++
+    $later=$script:reads -gt 1
+    if ($later -and $script:case -in @('query-error','query-and-write-error')) { throw 'fixture CIM error' }
+    $rootTime=if ($later -and $script:case -eq 'root-reused') { $script:created.AddTicks(10) } else { $script:created }
+    Row 4242 1 (Join-Path $script:root 'launcher.exe') $rootTime
+    $parentTime=if ($later -and $script:case -eq 'parent-reused') { $script:created.AddSeconds(2) } else { $script:created.AddSeconds(1) }
+    $parentImage=if ($later -and $script:case -eq 'parent-image-changed') { Join-Path $script:root 'other.exe' } else { Join-Path $script:root 'runtime.exe' }
+    if (-not ($later -and $script:case -eq 'parent-gone')) { Row 4243 4242 $parentImage $parentTime }
+    $gone=$later -and $script:case -in @('gone','time-missing-gone','orphan','new-orphan','old-grandchild')
+    $image=if ($script:case -eq 'complete' -or ($later -and $script:case -ne 'persistent')) { Join-Path $script:root 'probe.exe' } else { $null }
+    if ($script:case -eq 'late-recovered' -and $script:reads -lt 3) { $image=$null }
+    if ($script:case -eq 'external-recovered' -and $later) { $image='C:\Windows\System32\nvidia-smi.exe' }
+    $time=if (-not $later -and $script:case -in @('time-missing','time-missing-gone')) { $null } else { $script:created.AddSeconds(3) }
+    if ($script:case -eq 'creation-restored' -and $script:reads -eq 2) { $time=$null }
+    if ($script:case -eq 'older-child') { $time=$script:created.AddMilliseconds(500) }
+    if ($later -and $script:case -eq 'child-reused') { $time=$time.AddTicks(10) }
+    $parent=if ($later -and $script:case -eq 'child-parent-changed') { 4242 } else { 4243 }
+    if ($script:case -eq 'unrelated') { $parent=9000; $image=$null }
+    if (-not $gone) { Row 4244 $parent $image $time }
+    if ($script:case -eq 'duplicate') { Row 4244 4243 $image $time }
+    if ($script:case -eq 'orphan' -or ($later -and $script:case -eq 'new-orphan')) { Row 4245 4244 'C:\external\helper.exe' $script:created.AddSeconds(4) }
+    if ($script:case -eq 'old-grandchild') {
+        if (-not $later) { Row 4245 4244 'C:\external\helper.exe' $script:created.AddSeconds(4) }
+        Row 4246 4245 'C:\external\grandchild.exe' $script:created.AddSeconds(5)
+    }
+    if ($script:case -eq 'multiple-missing' -and $later) { Row 4247 4243 $null $script:created.AddSeconds(6) }
+}
+$identity=@{pid=4242;image=(Join-Path $script:root 'launcher.exe');creationDate=$script:created}
+$message=$null; $writeError=$null; $result=@()
+try {
+    if ($script:case -eq 'legacy') { $result=@(Get-OwnedProcessTree -RootPid 4242 -ProductRoot $script:root -IncludeSnapshots) }
+    else { $result=@(Get-OwnedProcessTree -RootPid 4242 -ProductRoot $script:root -RootIdentity $identity -IncludeSnapshots) }
+}
+catch { $message=$_.Exception.Message; $writeError=$_.Exception.Data['StartupProcessObservationWriteError'] }
+$evidence=@(Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'startup-process-observation-*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json })
+@{message=$message;writeError=$writeError;ids=@($result | ForEach-Object {$_.pid});reads=$script:reads;waits=$script:waits;kills=$script:kills;evidence=$evidence} | ConvertTo-Json -Depth 30
+''', encoding="utf-8")
+            result = subprocess.run([shutil.which("pwsh.exe"), "-NoProfile", "-File", str(driver)],
+                                    capture_output=True, text=True, encoding="utf-8", timeout=20)
+            self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+            value = json.loads(result.stdout)
+            self.assertEqual(0, value["kills"])
+            return value
+
+    def test_gone_probe_is_not_bound_and_observation_is_preserved(self) -> None:
+        value = self.observe("gone")
+        self.assertIsNone(value["message"])
+        self.assertEqual([4242, 4243], value["ids"])
+        self.assertEqual(2, value["reads"])
+        self.assertEqual("resolved", value["evidence"][0]["outcome"])
+        self.assertEqual("gone", value["evidence"][0]["resolutions"][0]["state"])
+        first = value["evidence"][0]["observations"][0]["processes"]
+        probe = next(item for item in first if item["pid"] == 4244)
+        self.assertFalse(probe["image"])
+        self.assertRegex(probe["creationDate"], r"^2026-10-24T00:00:03\.1234560?Z$")
+        self.assertNotIn("commandLine", probe)
+
+    def test_recovered_image_binds_only_original_creation(self) -> None:
+        value = self.observe("recovered")
+        self.assertIsNone(value["message"])
+        self.assertEqual([4242, 4243, 4244], value["ids"])
+        self.assertEqual(2, value["reads"])
+        self.assertEqual("bound", value["evidence"][0]["resolutions"][0]["state"])
+
+    def test_persistent_missing_image_has_fixed_budget_and_fails_closed(self) -> None:
+        value = self.observe("persistent")
+        self.assertIsNotNone(value["message"])
+        self.assertEqual(3, value["reads"])
+        self.assertEqual(2, value["waits"])
+        self.assertEqual("failed", value["evidence"][0]["outcome"])
+
+    def test_final_observation_can_restore_same_identity_without_resetting_budget(self) -> None:
+        for case in ("late-recovered", "creation-restored"):
+            with self.subTest(case=case):
+                value = self.observe(case)
+                self.assertIsNone(value["message"])
+                self.assertEqual([4242, 4243, 4244], value["ids"])
+                self.assertEqual(3, value["reads"])
+                self.assertEqual(2, value["waits"])
+
+    def test_new_missing_candidate_does_not_receive_an_extra_budget(self) -> None:
+        value = self.observe("multiple-missing")
+        self.assertIsNotNone(value["message"])
+        self.assertEqual(3, value["reads"])
+        self.assertEqual([], value["ids"])
+
+    def test_complete_external_image_is_observed_but_not_in_termination_set(self) -> None:
+        value = self.observe("external-recovered")
+        self.assertIsNone(value["message"])
+        self.assertEqual([4242, 4243], value["ids"])
+        self.assertEqual(2, value["reads"])
+
+    def test_failed_requery_preserves_original_query_error_and_observation(self) -> None:
+        value = self.observe("query-error")
+        self.assertEqual("fixture CIM error", value["message"])
+        self.assertEqual(2, value["reads"])
+        evidence, = value["evidence"]
+        self.assertEqual("failed", evidence["outcome"])
+        self.assertEqual("fixture CIM error", evidence["observations"][1]["queryError"])
+        self.assertEqual("fixture CIM error", evidence["failure"])
+
+    def test_evidence_write_failure_preserves_existing_error_but_blocks_success(self) -> None:
+        value = self.observe("query-and-write-error")
+        self.assertEqual("fixture CIM error", value["message"])
+        self.assertEqual("fixture evidence write error", value["writeError"])
+        self.assertEqual([], value["ids"])
+        value = self.observe("resolved-write-error")
+        self.assertEqual("fixture evidence write error", value["message"])
+        self.assertEqual([], value["ids"])
+
+    def test_recovered_process_older_than_parent_is_not_reported_as_bound(self) -> None:
+        value = self.observe("older-child")
+        self.assertIsNone(value["message"])
+        self.assertEqual([4242, 4243], value["ids"])
+        self.assertEqual("not-bound", value["evidence"][0]["resolutions"][0]["state"])
+
+    def test_identity_changes_and_query_failure_never_adopt_candidate(self) -> None:
+        for case in ("child-reused", "child-parent-changed", "root-reused", "parent-reused",
+                     "parent-image-changed", "parent-gone", "query-error", "time-missing", "duplicate"):
+            with self.subTest(case=case):
+                value = self.observe(case)
+                self.assertIsNotNone(value["message"])
+                self.assertEqual([], value["ids"])
+                self.assertLessEqual(value["reads"], 3)
+
+    def test_missing_time_can_only_resolve_as_gone_not_as_new_identity(self) -> None:
+        value = self.observe("time-missing-gone")
+        self.assertIsNone(value["message"])
+        self.assertEqual([4242, 4243], value["ids"])
+        self.assertEqual(2, value["reads"])
+
+    def test_gone_candidate_does_not_hide_old_or_new_live_descendants(self) -> None:
+        for case in ("orphan", "new-orphan", "old-grandchild"):
+            with self.subTest(case=case):
+                value = self.observe(case)
+                self.assertIsNotNone(value["message"])
+                self.assertEqual([], value["ids"])
+                self.assertEqual(2, value["reads"])
+
+    def test_complete_or_unrelated_snapshot_needs_no_retry_or_evidence(self) -> None:
+        for case, ids in (("complete", [4242, 4243, 4244]), ("unrelated", [4242, 4243]), ("legacy", [4242, 4243])):
+            with self.subTest(case=case):
+                value = self.observe(case)
+                self.assertIsNone(value["message"])
+                self.assertEqual(ids, value["ids"])
+                self.assertEqual(1, value["reads"])
+                self.assertEqual([], value["evidence"])
+
+
+@unittest.skipUnless(os.name == "nt" and shutil.which("pwsh.exe"), "requires native Windows and PowerShell 7")
 class StartupCleanupIdentityTest(unittest.TestCase):
     """Exercise startup failure with fake processes; never terminate a real PID."""
 
