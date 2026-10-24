@@ -31,6 +31,9 @@ final class EngineOutputDiagnostic {
   private static final Pattern SUCCESS_WORDS =
       Pattern.compile("(?i)\\b(?:success|succeeded|successfully|successful)\\b");
 
+  private static final Pattern WINDOWS_PATH_LENGTH_ERROR =
+      Pattern.compile("\\berror\\s+code\\s*[:=]?\\s*206\\b");
+
   private record Rule(Pattern pattern, String fixedOutcome) {}
 
   private static final List<Rule> RULES = new ArrayList<>();
@@ -313,6 +316,11 @@ final class EngineOutputDiagnostic {
 
   private static String resolveLoadFailureOutcome(String clause) {
     String text = clause.toLowerCase(Locale.ROOT);
+
+    // Diagnose the explicit loader error, never a path-length threshold or unrelated number.
+    if (WINDOWS_PATH_LENGTH_ERROR.matcher(text).find()) {
+      return "path-too-long";
+    }
 
     // Check for Entrypoint Not Found (error 127)
     if (hasErrorCode(text, 127)

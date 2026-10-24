@@ -9,6 +9,55 @@ import org.junit.jupiter.api.Test;
 
 class EngineOutputDiagnosticTest {
   @Test
+  void explicitWindowsError206KeepsTheDllAndOriginalEvidence() {
+    String text = "Could not load library cudnn_engines_precompiled64_9.dll. Error code 206";
+    var findings = EngineOutputDiagnostic.parse("stderr", text, Instant.EPOCH);
+
+    assertEquals(1, findings.size());
+    var finding = findings.get(0);
+    assertEquals("path-too-long", finding.outcome());
+    assertEquals("cudnn_engines_precompiled64_9.dll", finding.dll());
+    assertEquals("engine-stderr", finding.evidence());
+    assertEquals(text, finding.detail());
+    assertEquals(Instant.EPOCH, finding.checkedAt());
+  }
+
+  @Test
+  void explicitPathErrorDoesNotBorrowAnotherClausesCode() {
+    var findings =
+        EngineOutputDiagnostic.parse(
+            "stderr",
+            "Could not load library missing.dll. Error code 126; "
+                + "Could not load library long.dll. Error code 206",
+            Instant.EPOCH);
+
+    assertEquals(2, findings.size());
+    assertEquals("dll-not-found", findings.get(0).outcome());
+    assertEquals("missing.dll", findings.get(0).dll());
+    assertEquals("path-too-long", findings.get(1).outcome());
+    assertEquals("long.dll", findings.get(1).dll());
+  }
+
+  @Test
+  void pathLengthAndUnrelated206NumbersDoNotDiagnoseAWindowsPathError() {
+    for (String text :
+        List.of(
+            "Could not load library foo.dll. Error code 2060",
+            "Could not load library foo.dll. After 206 attempts",
+            "Could not load library foo.dll: 206",
+            "Could not load library foo.dll. Model code 206",
+            "Could not load library \"C:/" + "nested/".repeat(50) + "foo.dll\"")) {
+      var findings = EngineOutputDiagnostic.parse("stderr", text, Instant.EPOCH);
+      assertEquals(1, findings.size(), text);
+      assertEquals("dll-load-failed", findings.get(0).outcome(), text);
+    }
+    assertTrue(
+        EngineOutputDiagnostic.parse(
+                "stderr", "Successfully loaded foo.dll. Error code 206", Instant.EPOCH)
+            .isEmpty());
+  }
+
+  @Test
   void independentFailureClausesKeepTheirOwnErrorCategory() {
     var findings =
         EngineOutputDiagnostic.parse(
