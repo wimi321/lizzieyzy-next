@@ -6,8 +6,10 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.ExactSnapshotRestoreProtocolFixture;
+import featurecat.lizzie.analysis.ForegroundRestoreResult;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.SessionRulesSynchronizer;
 import featurecat.lizzie.rules.Board;
@@ -27,6 +29,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -77,6 +80,39 @@ class KifuSnapshotFailureTest {
       assertEquals(1, f.frame.failures);
       assertEquals(0, f.resumes);
       assertTrue(f.output.toString().isEmpty());
+    }
+  }
+
+  @Test
+  void rulesOverrideTransfersResumeBeforeItsDelayedPostLoadAction() throws Exception {
+    try (Fixture f = new Fixture(true)) {
+      f.install(f.engine, f.output, List.of("katago.exe", "gtp"));
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      FlashAnalysisAfterSync request = new FlashAnalysisAfterSync(f.frame, f.engine, true, false);
+      CallbackWorker worker = allocate(CallbackWorker.class);
+      f.frame.analysisEngine = worker;
+      set(f.frame, "manualAutoAnalysisStarting", true);
+      set(f.frame, "pendingManualAutoAnalysisReady", request);
+      request.bind(worker);
+      try (var transport =
+          ExactSnapshotRestoreProtocolFixture.installAsync(
+              f.engine, command -> ExactSnapshotRestoreProtocolFixture.Response.success())) {
+        f.submit(true);
+        f.runPending();
+        transport.awaitResponses();
+        assertNull(field(f.frame, "pendingKifuEngineSyncRoot"));
+        assertEquals(1, f.frame.scheduledResumes);
+        assertEquals(0, f.resumes, "post-load action deliberately remains queued");
+        assertEquals(0, ((ResumeTrackingLeelaz) f.engine).ponderCount);
+        set(f.frame, "manualAutoAnalysisStarting", false);
+        Field callbackField = AnalysisEngine.class.getDeclaredField("completionCallback");
+        callbackField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Consumer<ForegroundRestoreResult> callback =
+            (Consumer<ForegroundRestoreResult>) callbackField.get(worker);
+        SwingUtilities.invokeAndWait(() -> callback.accept(ForegroundRestoreResult.SUCCEEDED));
+        assertEquals(1, ((ResumeTrackingLeelaz) f.engine).ponderCount);
+      }
     }
   }
 
@@ -231,6 +267,10 @@ class KifuSnapshotFailureTest {
     int resumes;
 
     Fixture() throws Exception {
+      this(false);
+    }
+
+    Fixture(boolean trackResume) throws Exception {
       Lizzie.config = ConfigTestHelper.createForTests(directory);
       Lizzie.frame = null;
       Lizzie.engineManager = null;
@@ -245,7 +285,7 @@ class KifuSnapshotFailureTest {
       board.setHistory(SGFParser.parseSgf("(;SZ[19]KM[7.5]AB[aa]AW[ba]PL[W])", true));
       root = board.getHistory().getStart();
       board.requireEngineAlignment();
-      engine = new Leelaz("");
+      engine = trackResume ? new ResumeTrackingLeelaz() : new Leelaz("");
       install(engine, output, List.of("helper.bat", "cuda", "gtp", "Elo"));
       engine.started = true;
       engine.isLoaded = true;
@@ -327,6 +367,40 @@ class KifuSnapshotFailureTest {
       Zobrist.init();
       EngineManager.isEmpty = oldEmpty;
       LizzieFrame.canGoAfterload = oldCanGo;
+    }
+  }
+
+  private static final class ResumeTrackingLeelaz extends Leelaz {
+    int ponderCount;
+
+    ResumeTrackingLeelaz() throws java.io.IOException {
+      super("");
+    }
+
+    @Override
+    public void ponder() {
+      ponderCount++;
+    }
+  }
+
+  private static final class CallbackWorker extends AnalysisEngine {
+    CallbackWorker() throws java.io.IOException {
+      super(false);
+    }
+
+    @Override
+    public boolean isRunning() {
+      return true;
+    }
+
+    @Override
+    public boolean hasRequestLifecycleInProgress() {
+      return false;
+    }
+
+    @Override
+    public boolean usesSharedForegroundEngine() {
+      return true;
     }
   }
 

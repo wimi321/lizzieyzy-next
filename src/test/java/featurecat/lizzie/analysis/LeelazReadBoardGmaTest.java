@@ -2404,6 +2404,14 @@ class LeelazReadBoardGmaTest {
       restoreThread.join(1000L);
       assertFalse(restoreThread.isAlive());
       assertEquals(null, failure.get());
+      assertTrue(
+          engine.hasPendingPositionSynchronization(),
+          "the fixture confirmed loadsgf but has not acknowledged the preceding clear_board");
+      invokeProcessCommandResponseLine(
+          engine, numberedResponseFor(restoreTransport.rawCommands(), "clear_board"));
+      assertFalse(
+          engine.hasPendingPositionSynchronization(),
+          "the exact restore must have no outstanding position response after its preclear ACK");
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
           engine.previewForegroundAnalysisLeaseAvailability());

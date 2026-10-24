@@ -74,6 +74,9 @@ public class PersistenceSanitizer {
       Pattern.compile("(?i)(?<![A-Za-z0-9_-])(bearer\\s+)[^\\s,;\\\"'<>}\\]]+");
   private static final Pattern STANDALONE_BASIC =
       Pattern.compile("(?i)(?<![A-Za-z0-9_-])(basic\\s+)[A-Za-z0-9+/=_-]+");
+  // Zhizi startup diagnostics embed the account identifier in this provider-specific field.
+  private static final Pattern ZHIZI_DIAGNOSTIC_ACCOUNT =
+      Pattern.compile("(?i)((?<![A-Za-z0-9_-])User\\s*:\\s*\\[)zz-[^\\]\\r\\n]*");
 
   public String sanitize(String text) {
     if (text == null || text.isEmpty()) {
@@ -108,7 +111,8 @@ public class PersistenceSanitizer {
     safe = URL_SECRET.matcher(safe).replaceAll("$1<redacted>");
     safe = URI_USERINFO.matcher(safe).replaceAll("$1<redacted>@");
     safe = STANDALONE_BEARER.matcher(safe).replaceAll("$1<redacted>");
-    return STANDALONE_BASIC.matcher(safe).replaceAll("$1<redacted>");
+    safe = STANDALONE_BASIC.matcher(safe).replaceAll("$1<redacted>");
+    return ZHIZI_DIAGNOSTIC_ACCOUNT.matcher(safe).replaceAll("$1<redacted>");
   }
 
   private static String redactPercentEncodedCredentials(String text) {

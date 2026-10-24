@@ -86,6 +86,8 @@ public final class WholeGameAnalysisSession {
   private boolean remoteBackend;
   private String analysisModeKey = "WholeGameAnalysis.mode.local";
   private boolean resumeForegroundAnalysis;
+  private Leelaz importedResumePrimary;
+  private long importedResumeGeneration;
   private int baselineCompleted;
   private int deepCompleted;
   private int stageInitialCompleted;
@@ -191,19 +193,36 @@ public final class WholeGameAnalysisSession {
   }
 
   private boolean awaitForegroundLeaseHandoff(int generation) throws InterruptedException {
+    Config config = Lizzie.config;
+    Leelaz foreground = Lizzie.leelaz;
+    if (!QuickAnalysisPrimaryReuse.shouldReuseForManualAnalysis(config, foreground)
+        || foreground == null) {
+      return isEngineStartCurrent(generation);
+    }
+    long foregroundGeneration = Lizzie.capturePrimaryEngineGeneration(foreground);
     while (isEngineStartCurrent(generation)) {
-      Config config = Lizzie.config;
-      Leelaz foreground = Lizzie.leelaz;
-      if (config == null || !config.analysisReuseCurrentEngine || foreground == null) {
-        break;
+      if (!currentGameMatches()) {
+        fail("WholeGameAnalysis.error.gameChanged");
+        return false;
       }
       boolean exclusiveWork = foreground.hasExclusiveGtpWorkInProgress();
+      boolean positionSync = foreground.hasPendingPositionSynchronization();
       Leelaz.ExclusiveGtpLeaseAvailability availability =
-          exclusiveWork ? foreground.previewForegroundAnalysisLeaseAvailability() : null;
-      if (foreground != Lizzie.leelaz) {
-        continue;
+          exclusiveWork || positionSync
+              ? foreground.previewForegroundAnalysisLeaseAvailability()
+              : null;
+      if (foregroundGeneration < 0L
+          || Lizzie.capturePrimaryEngineGeneration(foreground) != foregroundGeneration
+          || (positionSync
+              && (!foreground.isLoaded()
+                  || !foreground.isStarted()
+                  || availability
+                      == Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED))) {
+        fail("WholeGameAnalysis.error.engine");
+        return false;
       }
-      if (!exclusiveWork || availability == Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE) {
+      if (!positionSync
+          && (!exclusiveWork || availability == Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE)) {
         break;
       }
       Thread.sleep(50L);
@@ -237,6 +256,13 @@ public final class WholeGameAnalysisSession {
 
   public boolean matchesCurrentGame() {
     return currentGameMatches();
+  }
+
+  public synchronized void requestImportedPositionResume(Leelaz primary) {
+    if (!terminal && importedResumePrimary == null && primary != null && currentGameMatches()) {
+      importedResumePrimary = primary;
+      importedResumeGeneration = Lizzie.capturePrimaryEngineGeneration(primary);
+    }
   }
 
   public void cancel() {
@@ -544,7 +570,21 @@ public final class WholeGameAnalysisSession {
     }
     publish(detailKey, completedForSnapshot, lastTargetVisits, 0L);
     SwingUtilities.invokeLater(
-        () -> frame.onWholeGameAnalysisFinished(this, engineToClose, shouldResume));
+        () -> {
+          frame.onWholeGameAnalysisFinished(this, engineToClose, shouldResume);
+          if (terminalState == State.COMPLETE
+              && engineToClose != null
+              && engineToClose.usesSharedForegroundEngine()
+              && importedResumePrimary != null
+              && importedResumeGeneration >= 0L
+              && currentGameMatches()
+              && !frame.isWholeGameAnalysisStartingOrRunning()
+              && (frame.analysisEngine == null || frame.analysisEngine == engineToClose)
+              && Lizzie.capturePrimaryEngineGeneration(importedResumePrimary)
+                  == importedResumeGeneration) {
+            importedResumePrimary.resumePonderAfterForegroundLeaseIfAllowed();
+          }
+        });
   }
 
   private void closeEngine(AnalysisEngine engineToClose) {

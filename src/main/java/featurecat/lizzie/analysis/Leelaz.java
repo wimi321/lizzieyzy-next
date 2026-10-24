@@ -8634,13 +8634,13 @@ public class Leelaz {
   }
 
   private void nofityDiffAna(AnalysisInfoSnapshot acceptedInfo) {
-    // TODO Auto-generated method stub
+    Config config = Lizzie.config;
     List<MoveData> acceptedMoves = acceptedInfo == null ? List.of() : acceptedInfo.moves;
     int acceptedPlayouts = acceptedInfo == null ? 0 : acceptedInfo.totalPlayouts;
-    if (this != Lizzie.leelaz) return;
-    if (Lizzie.config.autoAnaDiffFirstPlayouts > 0) {
+    if (this != Lizzie.leelaz || !config.isAutoAna) return;
+    if (config.autoAnaDiffFirstPlayouts > 0) {
       if (!acceptedMoves.isEmpty()
-          && acceptedMoves.get(0).playouts >= Lizzie.config.autoAnaDiffFirstPlayouts) {
+          && acceptedMoves.get(0).playouts >= config.autoAnaDiffFirstPlayouts) {
         Lizzie.board.getHistory().getCurrentHistoryNode().diffAnalyzed = true;
         return;
       }
@@ -8649,16 +8649,16 @@ public class Leelaz {
       Lizzie.board.getHistory().getCurrentHistoryNode().diffAnalyzed = true;
       return;
     }
-    if (Lizzie.config.autoAnaDiffPlayouts > 0) {
-      if (acceptedPlayouts >= Lizzie.config.autoAnaDiffPlayouts) {
+    if (config.autoAnaDiffPlayouts > 0) {
+      if (acceptedPlayouts >= config.autoAnaDiffPlayouts) {
         Lizzie.board.getHistory().getCurrentHistoryNode().diffAnalyzed = true;
         return;
       }
     }
 
-    if (Lizzie.config.autoAnaDiffTime > 0) {
+    if (config.autoAnaDiffTime > 0) {
       long curTime = System.currentTimeMillis();
-      if (curTime - startPonderTime >= Lizzie.config.autoAnaDiffTime * 1000) {
+      if (curTime - startPonderTime >= config.autoAnaDiffTime * 1000) {
         Lizzie.board.getHistory().getCurrentHistoryNode().diffAnalyzed = true;
         return;
       }
@@ -8670,20 +8670,21 @@ public class Leelaz {
   }
 
   private void notifyAutoAnaAllBranch(AnalysisInfoSnapshot acceptedInfo) {
+    Config config = Lizzie.config;
     List<MoveData> acceptedMoves = acceptedInfo == null ? List.of() : acceptedInfo.moves;
     int acceptedPlayouts = acceptedInfo == null ? 0 : acceptedInfo.totalPlayouts;
-    if (this != Lizzie.leelaz) return;
-    if (Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.anaBlack) {
+    if (this != Lizzie.leelaz || !config.isAutoAna) return;
+    if (Lizzie.board.getHistory().isBlacksTurn() && !config.anaBlack) {
       Lizzie.board.getHistory().getCurrentHistoryNode().analyzed = true;
       return;
     }
-    if (!Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.anaWhite) {
+    if (!Lizzie.board.getHistory().isBlacksTurn() && !config.anaWhite) {
       Lizzie.board.getHistory().getCurrentHistoryNode().analyzed = true;
       return;
     }
-    if (Lizzie.config.autoAnaFirstPlayouts > 0) {
+    if (config.autoAnaFirstPlayouts > 0) {
       if (!acceptedMoves.isEmpty()
-          && acceptedMoves.get(0).playouts >= Lizzie.config.autoAnaFirstPlayouts) {
+          && acceptedMoves.get(0).playouts >= config.autoAnaFirstPlayouts) {
         Lizzie.board.getHistory().getCurrentHistoryNode().analyzed = true;
         autoAnalysed = true;
         return;
@@ -8694,17 +8695,16 @@ public class Leelaz {
       autoAnalysed = true;
       return;
     }
-    if (Lizzie.config.autoAnaPlayouts > 0) {
-      if (acceptedPlayouts >= Lizzie.config.autoAnaPlayouts) {
+    if (config.autoAnaPlayouts > 0) {
+      if (acceptedPlayouts >= config.autoAnaPlayouts) {
         Lizzie.board.getHistory().getCurrentHistoryNode().analyzed = true;
         autoAnalysed = true;
         return;
       }
     }
-
-    if (Lizzie.config.autoAnaTime > 0) {
+    if (config.autoAnaTime > 0) {
       long curTime = System.currentTimeMillis();
-      if (curTime - startPonderTime >= Lizzie.config.autoAnaTime) {
+      if (curTime - startPonderTime >= config.autoAnaTime) {
         Lizzie.board.getHistory().getCurrentHistoryNode().analyzed = true;
         autoAnalysed = true;
         return;
@@ -8717,27 +8717,28 @@ public class Leelaz {
   }
 
   private void notifyAutoAna(AnalysisInfoSnapshot acceptedInfo) {
+    Config config = Lizzie.config;
     List<MoveData> acceptedMoves = acceptedInfo == null ? List.of() : acceptedInfo.moves;
     int acceptedPlayouts = acceptedInfo == null ? 0 : acceptedInfo.totalPlayouts;
-    if (this != Lizzie.leelaz) return;
-    if (Lizzie.config.autoAnaEndMove != -1) {
-      if (Lizzie.config.autoAnaEndMove < Lizzie.board.getHistory().getData().moveNumber) {
+    if (this != Lizzie.leelaz || !config.isAutoAna) return;
+    if (config.autoAnaEndMove != -1) {
+      if (config.autoAnaEndMove < Lizzie.board.getHistory().getData().moveNumber) {
         LizzieFrame.toolbar.stopAutoAna(true, false);
         return;
       }
     }
     boolean isLastMove = !Lizzie.board.getHistory().getNext().isPresent();
-    if (Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.anaBlack) {
+    if (Lizzie.board.getHistory().isBlacksTurn() && !config.anaBlack) {
       analyzeNextMove(isLastMove);
       return;
     }
-    if (!Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.anaWhite) {
+    if (!Lizzie.board.getHistory().isBlacksTurn() && !config.anaWhite) {
       analyzeNextMove(isLastMove);
       return;
     }
-    if (Lizzie.config.autoAnaFirstPlayouts > 0) {
+    if (config.autoAnaFirstPlayouts > 0) {
       if (!acceptedMoves.isEmpty()
-          && acceptedMoves.get(0).playouts >= Lizzie.config.autoAnaFirstPlayouts) {
+          && acceptedMoves.get(0).playouts >= config.autoAnaFirstPlayouts) {
         analyzeNextMove(isLastMove);
         return;
       }
@@ -8746,16 +8747,15 @@ public class Leelaz {
       analyzeNextMove(isLastMove);
       return;
     }
-    if (Lizzie.config.autoAnaPlayouts > 0) {
-      if (acceptedPlayouts >= Lizzie.config.autoAnaPlayouts) {
+    if (config.autoAnaPlayouts > 0) {
+      if (acceptedPlayouts >= config.autoAnaPlayouts) {
         analyzeNextMove(isLastMove);
         return;
       }
     }
-
-    if (Lizzie.config.autoAnaTime > 0) {
+    if (config.autoAnaTime > 0) {
       long curTime = System.currentTimeMillis();
-      if (curTime - startPonderTime >= Lizzie.config.autoAnaTime) {
+      if (curTime - startPonderTime >= config.autoAnaTime) {
         analyzeNextMove(isLastMove);
         return;
       }
@@ -14219,32 +14219,7 @@ public class Leelaz {
   }
 
   private int parseResponseCommandId(String line) {
-    if (line == null || line.length() < 2) {
-      return NO_RESPONSE_COMMAND_ID;
-    }
-    char prefix = line.charAt(0);
-    if (prefix != '=' && prefix != '?') {
-      return NO_RESPONSE_COMMAND_ID;
-    }
-    if (!isAsciiDigit(line.charAt(1))) {
-      return NO_RESPONSE_COMMAND_ID;
-    }
-    int end = 1;
-    while (end < line.length() && isAsciiDigit(line.charAt(end))) {
-      end++;
-    }
-    if (end < line.length() && !Character.isWhitespace(line.charAt(end))) {
-      return NO_RESPONSE_COMMAND_ID;
-    }
-    try {
-      return Integer.parseInt(line.substring(1, end));
-    } catch (NumberFormatException ex) {
-      return NO_RESPONSE_COMMAND_ID;
-    }
-  }
-
-  private boolean isAsciiDigit(char value) {
-    return value >= '0' && value <= '9';
+    return featurecat.lizzie.analysis.gtp.GtpResponseHeader.commandId(line, NO_RESPONSE_COMMAND_ID);
   }
 
   private PendingResponseHandler pollPendingResponseHandler(String line) {
@@ -14688,9 +14663,6 @@ public class Leelaz {
         if (availability != ExclusiveGtpLeaseAvailability.AVAILABLE) {
           return availability;
         }
-        if (exclusiveGtpSession != null) {
-          return ExclusiveGtpLeaseAvailability.EXISTING_LEASE;
-        }
         if (normalCommandSendInProgress || !commandQueue().isEmpty() || lineConsumer == null) {
           return ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY;
         }
@@ -14822,7 +14794,18 @@ public class Leelaz {
     if (exclusiveGtpSession != null) {
       return ExclusiveGtpLeaseAvailability.EXISTING_LEASE;
     }
+    if (hasPendingPositionSynchronization()) return ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY;
     return ExclusiveGtpLeaseAvailability.AVAILABLE;
+  }
+
+  /** A drained write queue does not settle a snapshot owner's outstanding state ACKs or fence. */
+  public boolean hasPendingPositionSynchronization() {
+    synchronized (engineArbitrationLock()) {
+      synchronized (commandQueue()) {
+        AnalysisStateLineage lineage = captureCurrentRestoreDependencyLocked().lineage;
+        return lineage.pendingRestoreOwners.get() > 0 || lineage.hasPendingResponses();
+      }
+    }
   }
 
   /**
@@ -16506,7 +16489,7 @@ public class Leelaz {
                     || !Lizzie.frame.readBoard.isReadBoardGmaEngineBusy())));
   }
 
-  private boolean resumePonderAfterForegroundLeaseIfAllowed() {
+  public boolean resumePonderAfterForegroundLeaseIfAllowed() {
     synchronized (analysisControlPonderLock()) {
       if (Lizzie.leelaz != this || !canResumePonderAfterForegroundLease()) {
         return false;
@@ -17357,6 +17340,15 @@ public class Leelaz {
 
     public boolean setRestoreRules(String rules) {
       return engine.setForegroundAnalysisLeaseRestoreRules(this, rules);
+    }
+
+    void markAnalysisProgressAccepted(long visits) {
+      synchronized (engine.engineArbitrationLock()) {
+        if (visits > 0 && isActiveBuiltInZhizi()) {
+          engine.exclusiveGtpSession.readerBinding.remoteTransport.markAnalysisProgressAccepted(
+              visits);
+        }
+      }
     }
 
     boolean sendFiniteSearch(String command, Runnable onPhysicalWrite) {
@@ -22696,23 +22688,7 @@ public class Leelaz {
   }
 
   private String parseKataGetParamValue(String line) {
-    if (line == null) {
-      return "";
-    }
-    String trimmed = line.trim();
-    if (!trimmed.startsWith("=")) {
-      return "";
-    }
-    String value = trimmed.substring(1).trim();
-    int separator = value.indexOf(' ');
-    if (separator > 0
-        && value
-            .substring(0, separator)
-            .chars()
-            .allMatch(character -> character >= '0' && character <= '9')) {
-      return value.substring(separator + 1).trim();
-    }
-    return value;
+    return featurecat.lizzie.analysis.gtp.GtpResponseHeader.parameterValue(line);
   }
 
   private void clearReadBoardGmaSearchLimitSnapshots() {

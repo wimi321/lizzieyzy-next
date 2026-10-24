@@ -8,6 +8,44 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class PersistenceSanitizerTest {
+  @Test
+  void zhiziStartupAccountIdentityIsRemovedBeforePersistenceAndExport() {
+    PersistenceSanitizer sanitizer = new PersistenceSanitizer();
+    for (String account : List.of("13800000000", "synthetic@example.invalid", "CANARY_ACCOUNT")) {
+      String input = "DEBUG Platform: [all] User: [zz-" + account + "] Backend: [TENSORRT]";
+      String expected = "DEBUG Platform: [all] User: [<redacted>] Backend: [TENSORRT]";
+      assertEquals(expected, sanitizer.sanitize(input));
+      assertEquals(expected, new ExportSanitizer().sanitizeText(input));
+      String json = new org.json.JSONObject().put("diagnostic", input).toString();
+      assertFalse(sanitizer.sanitize(json).contains(account));
+      assertEquals(
+          "User: [<redacted>\nnext", sanitizer.sanitize("User: [zz-" + account + "\nnext"));
+    }
+    String unrelated = "User: [guest] Platform: [all] userVisits=500";
+    assertEquals(unrelated, sanitizer.sanitize(unrelated));
+  }
+
+  @Test
+  void persistedEncoderRemovesZhiziAccountFromProviderStderr() {
+    SanitizingEncoder encoder = new SanitizingEncoder();
+    ch.qos.logback.classic.LoggerContext context = new ch.qos.logback.classic.LoggerContext();
+    encoder.setContext(context);
+    encoder.setPattern("%msg%n");
+    encoder.start();
+    try {
+      var event = new ch.qos.logback.classic.spi.LoggingEvent();
+      event.setLoggerName(LogCategories.APP);
+      event.setLevel(ch.qos.logback.classic.Level.DEBUG);
+      event.setMessage("DEBUG Platform: [all] User: [zz-CANARY_ACCOUNT]");
+      String persisted = new String(encoder.encode(event), java.nio.charset.StandardCharsets.UTF_8);
+      assertFalse(persisted.contains("CANARY_ACCOUNT"));
+      assertTrue(persisted.contains("Platform: [all] User: [<redacted>]"));
+    } finally {
+      encoder.stop();
+      context.stop();
+    }
+  }
+
   private static final List<String> CANARIES =
       List.of(
           "CANARY_BARE_BEARER_01",

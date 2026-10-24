@@ -7,7 +7,9 @@ import featurecat.lizzie.rules.Zobrist;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Immutable main-line work plan for the two-stage whole-game analysis workflow. */
 public final class WholeGameAnalysisPlan {
@@ -105,6 +107,23 @@ public final class WholeGameAnalysisPlan {
 
   public List<BoardHistoryNode> positionsBelow(int targetVisits) {
     return positionsMissingAnalysis(targetVisits, false);
+  }
+
+  static List<BoardHistoryNode> collectRequestNodes(
+      List<BoardHistoryNode> requestedNodes, int targetVisits, boolean ownershipRequested) {
+    int normalizedTargetVisits = Math.max(1, targetVisits);
+    Set<BoardHistoryNode> uniqueNodes = new LinkedHashSet<BoardHistoryNode>();
+    if (requestedNodes != null) {
+      for (BoardHistoryNode node : requestedNodes) {
+        if (node != null
+            && node.getData() != null
+            && !node.getData()
+                .hasCompletePrimaryAnalysis(normalizedTargetVisits, ownershipRequested)) {
+          uniqueNodes.add(node);
+        }
+      }
+    }
+    return new ArrayList<BoardHistoryNode>(uniqueNodes);
   }
 
   public List<BoardHistoryNode> positionsMissingAnalysis(

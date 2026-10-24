@@ -1118,6 +1118,275 @@ class LizzieFrameRegressionTest {
     }
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void flashWaitsForImportedPositionAndCoalescesRepeatedClicks(boolean batch) throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      PolicyFrame frame = allocate(PolicyFrame.class);
+      Lizzie.frame = frame;
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.reusable = true;
+      engine.shared = true;
+      engine.waitFrame = allocate(WaitForAnalysis.class);
+      frame.analysisEngine = engine;
+      setField(frame, "pendingKifuEngineSyncRoot", Lizzie.board.getHistory().getStart());
+
+      try {
+        SwingUtilities.invokeAndWait(
+            () -> {
+              if (batch) {
+                frame.isBatchAna = true;
+                frame.flashAnalyzeGameBatch(1, 2, false);
+              } else frame.flashAnalyzeGame(true, false);
+            });
+        assertTrue(
+            frame.isManualAutoAnalysisStarting(), "flash must retain the pending user action");
+        javax.swing.Timer timer =
+            (javax.swing.Timer) getField(frame, "manualAutoAnalysisEngineReadyTimer");
+        assertNotNull(timer);
+        SwingUtilities.invokeAndWait(() -> frame.flashAnalyzeGame(!batch, false));
+        assertSame(timer, getField(frame, "manualAutoAnalysisEngineReadyTimer"));
+        assertFalse(engine.isAnalysisInProgress());
+
+        SwingUtilities.invokeAndWait(
+            () -> {
+              try {
+                setField(frame, "pendingKifuEngineSyncRoot", null);
+              } catch (Exception failure) {
+                throw new AssertionError(failure);
+              }
+              timer.getActionListeners()[0].actionPerformed(null);
+              timer.getActionListeners()[0].actionPerformed(null);
+            });
+        assertTrue(engine.awaitManualRequestStarted());
+        assertFalse(frame.isManualAutoAnalysisStarting());
+        assertNull(getField(frame, "manualAutoAnalysisEngineReadyTimer"));
+        assertEquals(batch, frame.isBatchAnalysisMode);
+      } finally {
+        SwingUtilities.invokeAndWait(frame::cancelPendingManualAutoAnalysisStart);
+      }
+    }
+  }
+
+  @Test
+  void pendingFlashSupersedesOrdinaryAutoWaitingForTheSameImport() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      PolicyFrame frame = allocate(PolicyFrame.class);
+      Lizzie.frame = frame;
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.reusable = true;
+      engine.shared = true;
+      engine.waitFrame = allocate(WaitForAnalysis.class);
+      frame.analysisEngine = engine;
+      setField(frame, "pendingKifuEngineSyncRoot", Lizzie.board.getHistory().getStart());
+      AtomicInteger ordinaryStarts = new AtomicInteger();
+      AtomicReference<LizzieFrame.ManualAutoAnalysisStartFailure> failure = new AtomicReference<>();
+      try {
+        SwingUtilities.invokeAndWait(
+            () ->
+                frame.requestManualAutoAnalysisStart(
+                    ordinaryStarts::incrementAndGet, failure::set));
+        assertTrue(frame.isManualAutoAnalysisStarting());
+        SwingUtilities.invokeAndWait(() -> frame.flashAnalyzeGame(true, false));
+        assertEquals(LizzieFrame.ManualAutoAnalysisStartFailure.CANCELLED, failure.get());
+        assertTrue(frame.isManualAutoAnalysisStarting());
+        javax.swing.Timer timer =
+            (javax.swing.Timer) getField(frame, "manualAutoAnalysisEngineReadyTimer");
+        setField(frame, "pendingKifuEngineSyncRoot", null);
+        SwingUtilities.invokeAndWait(() -> timer.getActionListeners()[0].actionPerformed(null));
+        assertTrue(engine.awaitManualRequestStarted());
+        assertEquals(0, ordinaryStarts.get());
+      } finally {
+        SwingUtilities.invokeAndWait(frame::cancelPendingManualAutoAnalysisStart);
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"cancel", "game", "engine", "failed", "dedicated-settings"})
+  void deferredFlashNeverStartsAfterItsContextIsInvalidated(String change) throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      PolicyFrame frame = allocate(PolicyFrame.class);
+      Lizzie.frame = frame;
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.reusable = true;
+      engine.shared = true;
+      engine.waitFrame = allocate(WaitForAnalysis.class);
+      frame.analysisEngine = engine;
+      setField(frame, "pendingKifuEngineSyncRoot", Lizzie.board.getHistory().getStart());
+      try {
+        SwingUtilities.invokeAndWait(() -> frame.flashAnalyzeGame(true, false));
+        assertTrue(frame.isManualAutoAnalysisStarting());
+        javax.swing.Timer timer =
+            (javax.swing.Timer) getField(frame, "manualAutoAnalysisEngineReadyTimer");
+        TrackingLeelaz replacement = allocate(TrackingLeelaz.class);
+        SwingUtilities.invokeAndWait(
+            () -> {
+              if ("cancel".equals(change)) frame.cancelPendingManualAutoAnalysisStart();
+              if ("game".equals(change)) Lizzie.board.setHistory(historyWithUnanalyzedMove());
+              if ("engine".equals(change)) Lizzie.leelaz = replacement;
+              if ("dedicated-settings".equals(change)) {
+                Lizzie.config.analysisReuseCurrentEngine = false;
+                Lizzie.config.analysisEngineCommandCustomized = true;
+              }
+              try {
+                if ("failed".equals(change))
+                  setField(frame, "failedKifuPositionRetry", (Runnable) () -> {});
+                if ("dedicated-settings".equals(change))
+                  assertFalse(
+                      ((FlashAnalysisAfterSync) getField(frame, "pendingManualAutoAnalysisReady"))
+                          .isCurrent(),
+                      "the original shared request must not silently become a dedicated request");
+                setField(frame, "pendingKifuEngineSyncRoot", null);
+              } catch (Exception failure) {
+                throw new AssertionError(failure);
+              }
+              timer.getActionListeners()[0].actionPerformed(null);
+            });
+        assertFalse(frame.isManualAutoAnalysisStarting());
+        assertFalse(engine.isAnalysisInProgress());
+        assertNull(getField(frame, "manualAutoAnalysisEngineReadyTimer"));
+      } finally {
+        SwingUtilities.invokeAndWait(frame::cancelPendingManualAutoAnalysisStart);
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void dedicatedFlashDoesNotAcquireTheImportedForegroundWait(boolean ssh) throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.config.analysisReuseCurrentEngine = false;
+      Lizzie.config.analysisEngineCommandCustomized = !ssh;
+      Lizzie.config.leelazConfig =
+          new JSONObject().put("analysis-engine-ssh-info", new JSONObject().put("useJavaSSH", ssh));
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      TrackingLeelaz primary = allocate(TrackingLeelaz.class);
+      primary.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+      Lizzie.leelaz = primary;
+      PolicyFrame frame = allocate(PolicyFrame.class);
+      Lizzie.frame = frame;
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.reusable = true;
+      engine.waitFrame = allocate(WaitForAnalysis.class);
+      frame.analysisEngine = engine;
+      setField(frame, "pendingKifuEngineSyncRoot", Lizzie.board.getHistory().getStart());
+      try {
+        SwingUtilities.invokeAndWait(() -> frame.flashAnalyzeGame(true, false));
+        assertFalse(
+            frame.isManualAutoAnalysisStarting(), "dedicated analysis does not borrow the primary");
+        assertTrue(engine.awaitManualRequestStarted());
+        assertNull(getField(frame, "manualAutoAnalysisEngineReadyTimer"));
+      } finally {
+        SwingUtilities.invokeAndWait(frame::cancelPendingManualAutoAnalysisStart);
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "success",
+        "paused",
+        "cancel",
+        "game",
+        "engine",
+        "failed",
+        "no-intent",
+        "reused-worker",
+        "replaced-worker",
+        "quit-worker"
+      })
+  void importedResumeIntentWaitsForSuccessfulFlashHandback(String outcome) throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      TrackingLeelaz primary = allocate(TrackingLeelaz.class);
+      TrackingLeelaz replacement = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = primary;
+      PolicyFrame frame = allocate(PolicyFrame.class);
+      Lizzie.frame = frame;
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      ResourceTrackingAnalysisEngine replacementWorker =
+          allocate(ResourceTrackingAnalysisEngine.class);
+      engine.reusable = true;
+      engine.shared = true;
+      engine.waitFrame = allocate(WaitForAnalysis.class);
+      frame.analysisEngine = engine;
+      setField(frame, "pendingKifuEngineSyncRoot", Lizzie.board.getHistory().getStart());
+      Method confirmedResume =
+          LizzieFrame.class.getDeclaredMethod(
+              "resumeForegroundAnalysisForCurrentPosition", boolean.class);
+      confirmedResume.setAccessible(true);
+      try {
+        SwingUtilities.invokeAndWait(() -> frame.flashAnalyzeGame(true, false));
+        assertTrue(frame.isManualAutoAnalysisStarting());
+        SwingUtilities.invokeAndWait(
+            () -> {
+              try {
+                if (!"no-intent".equals(outcome))
+                  assertFalse((boolean) confirmedResume.invoke(frame, true));
+                setField(frame, "pendingKifuEngineSyncRoot", null);
+              } catch (Exception failure) {
+                throw new AssertionError(failure);
+              }
+            });
+        javax.swing.Timer timer =
+            (javax.swing.Timer) getField(frame, "manualAutoAnalysisEngineReadyTimer");
+        SwingUtilities.invokeAndWait(() -> timer.getActionListeners()[0].actionPerformed(null));
+        assertTrue(engine.awaitManualRequestStarted());
+        assertEquals(0, primary.ponderCount, "must not start ordinary analysis before borrowing");
+        Consumer<ForegroundRestoreResult> completed = engine.completionCallback;
+        Consumer<ForegroundRestoreResult> cancelled = engine.failureCallback;
+        assertNotNull(completed, "the deferred request must retain completion ownership");
+        assertNotNull(cancelled, "cancellation must not fall back to the success callback");
+        SwingUtilities.invokeAndWait(
+            () -> {
+              try {
+                if ("paused".equals(outcome)) setField(frame, "userAnalysisPaused", true);
+                if ("game".equals(outcome)) Lizzie.board.setHistory(historyWithUnanalyzedMove());
+                if ("engine".equals(outcome)) Lizzie.leelaz = replacement;
+                engine.analysisInProgress = false;
+                engine.clearRequestCallbacks();
+                if ("reused-worker".equals(outcome)) engine.requestLifecycleInProgress = true;
+                if ("replaced-worker".equals(outcome)) frame.analysisEngine = replacementWorker;
+                if ("quit-worker".equals(outcome)) {
+                  engine.normalQuit();
+                  engine.reusable = false;
+                }
+                if ("cancel".equals(outcome)) cancelled.accept(ForegroundRestoreResult.SUCCEEDED);
+                completed.accept(
+                    "failed".equals(outcome)
+                        ? ForegroundRestoreResult.FAILED
+                        : ForegroundRestoreResult.SUCCEEDED);
+                completed.accept(ForegroundRestoreResult.SUCCEEDED);
+                assertNull(engine.completionCallback);
+              } catch (Exception failure) {
+                throw new AssertionError(failure);
+              }
+            });
+        assertEquals("success".equals(outcome) ? 1 : 0, primary.ponderCount);
+        assertEquals(0, replacement.ponderCount);
+      } finally {
+        SwingUtilities.invokeAndWait(frame::cancelPendingManualAutoAnalysisStart);
+      }
+    }
+  }
+
   @Test
   void failedAutomaticEngineRestoreDoesNotStartManualAutoAnalysis() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
@@ -2098,6 +2367,240 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void successiveYikeUpdatesKeepAutomaticCloudWorkerDespiteManualCustomOrSshChoice()
+      throws Exception {
+    for (boolean ssh : new boolean[] {false, true}) {
+      try (YikeWorkerFixture fixture = new YikeWorkerFixture()) {
+        Lizzie.config.analysisEngineCommandCustomized = !ssh;
+        Lizzie.config.leelazConfig =
+            new JSONObject()
+                .put("analysis-engine-ssh-info", new JSONObject().put("useJavaSSH", ssh));
+        YikeWorker worker = fixture.worker();
+        fixture.frame.analysisEngine = worker;
+        assertFalse(
+            worker.canServeManualAnalysis(), "manual settings differ from automatic policy");
+
+        for (int update = 0; update < 2; update++) {
+          fixture.run();
+          assertSame(worker, fixture.completed());
+        }
+
+        assertEquals(0, fixture.frame.creations.get());
+        assertEquals(0, worker.quitCount);
+      }
+    }
+  }
+
+  @Test
+  void yikeReplacementClosesIncompatibleIdleWorkerExactlyOnce() throws Exception {
+    try (YikeWorkerFixture fixture = new YikeWorkerFixture()) {
+      YikeWorker old = fixture.worker();
+      old.compatible = false;
+      fixture.frame.analysisEngine = old;
+
+      fixture.run();
+      assertSame(fixture.frame.created, fixture.completed());
+
+      assertEquals(1, old.quitCount);
+      assertEquals(1, old.clearCount);
+      fixture.run();
+      assertSame(fixture.frame.created, fixture.completed());
+      assertEquals(1, fixture.frame.creations.get());
+      assertEquals(1, old.quitCount);
+    }
+  }
+
+  @Test
+  void yikeWaitsForLeaseRestorationBeforeReplacingWorker() throws Exception {
+    try (YikeWorkerFixture fixture = new YikeWorkerFixture()) {
+      YikeWorker restoring = fixture.worker();
+      restoring.compatible = false;
+      restoring.lifecycle = true;
+      fixture.frame.analysisEngine = restoring;
+
+      fixture.run();
+
+      javax.swing.Timer retry =
+          (javax.swing.Timer) getField(fixture.frame, "yikeCurveCompletionTimer");
+      assertTrue(retry != null && retry.isRunning(), "restore must schedule an idle retry");
+      assertSame(restoring, fixture.frame.analysisEngine);
+      assertEquals(0, fixture.frame.creations.get());
+      assertEquals(0, restoring.quitCount);
+    }
+  }
+
+  @Test
+  void lateYikeStartupCannotReplaceAnotherInstalledWorker() throws Exception {
+    try (YikeWorkerFixture fixture = new YikeWorkerFixture()) {
+      fixture.frame.creationRelease = new CountDownLatch(1);
+      fixture.run();
+      assertTrue(fixture.frame.creationEntered.await(2, TimeUnit.SECONDS));
+      YikeWorker other = fixture.worker();
+      SwingUtilities.invokeAndWait(() -> fixture.frame.analysisEngine = other);
+      fixture.frame.creationRelease.countDown();
+      fixture.joinWorkers();
+
+      assertSame(other, fixture.frame.analysisEngine);
+      assertEquals(1, fixture.frame.created.quitCount);
+      assertEquals(0, other.quitCount);
+    }
+  }
+
+  private static final class YikeWorkerFixture implements AutoCloseable {
+    private final TestEnvironment environment = TestEnvironment.open();
+    private final YikeWorkerFrame frame;
+
+    private YikeWorkerFixture() throws Exception {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.config.analysisEngineCommand = "katago analysis -model fixture.bin.gz";
+      Lizzie.config.leelazConfig = new JSONObject();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+      EngineManager.isEmpty = false;
+      frame = allocate(YikeWorkerFrame.class);
+      frame.creations = new AtomicInteger();
+      frame.completed = new java.util.concurrent.LinkedBlockingQueue<>();
+      frame.creationEntered = new CountDownLatch(1);
+      frame.created = worker();
+      Lizzie.frame = frame;
+    }
+
+    private YikeWorker worker() throws Exception {
+      YikeWorker worker = allocate(YikeWorker.class);
+      worker.compatible = true;
+      setDeclaredField(AnalysisEngine.class, worker, "automaticPrimaryForegroundReuse", true);
+      return worker;
+    }
+
+    private void run() throws Exception {
+      Method method =
+          LizzieFrame.class.getDeclaredMethod("runScheduledYikeCurveCompletion", boolean.class);
+      method.setAccessible(true);
+      SwingUtilities.invokeAndWait(() -> invokeReflectiveResult(method, frame, false));
+    }
+
+    private AnalysisEngine completed() throws Exception {
+      AnalysisEngine worker = frame.completed.poll(2, TimeUnit.SECONDS);
+      assertNotNull(worker, "the scheduled request must complete");
+      joinWorkers();
+      return worker;
+    }
+
+    private void joinWorkers() throws Exception {
+      for (Thread thread : Thread.getAllStackTraces().keySet()) {
+        if (thread.getName().equals("yike-curve-analysis-engine-starter")
+            || thread.getName().equals("yike-curve-analysis-request")) {
+          thread.join(2000);
+          assertFalse(thread.isAlive(), "owned Yike worker must exit");
+        }
+      }
+      drainEdt();
+    }
+
+    @Override
+    public void close() throws Exception {
+      if (frame.creationRelease != null) frame.creationRelease.countDown();
+      SwingUtilities.invokeAndWait(frame::cancelYikeLiveCurveCompletion);
+      joinWorkers();
+      environment.close();
+    }
+  }
+
+  private static final class YikeWorkerFrame extends PolicyFrame {
+    private AtomicInteger creations;
+    private java.util.concurrent.BlockingQueue<AnalysisEngine> completed;
+    private CountDownLatch creationEntered;
+    private CountDownLatch creationRelease;
+    private YikeWorker created;
+
+    @Override
+    AnalysisEngine createYikeCurveAnalysisEngine() {
+      creations.incrementAndGet();
+      creationEntered.countDown();
+      try {
+        if (creationRelease != null) assertTrue(creationRelease.await(2, TimeUnit.SECONDS));
+      } catch (InterruptedException interrupted) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError(interrupted);
+      }
+      return created;
+    }
+
+    @Override
+    public void updateYikeLiveSyncStatus(String url, String status) {}
+
+    @Override
+    void refreshCompletedSilentAnalysisProgress() {
+      completed.add(analysisEngine);
+    }
+
+    @Override
+    void resumeForegroundAnalysisAfterQuickAnalysisComplete() {}
+  }
+
+  private static final class YikeWorker extends AnalysisEngine {
+    private boolean compatible;
+    private boolean lifecycle;
+    private int clearCount;
+    private int quitCount;
+
+    private YikeWorker() throws java.io.IOException {
+      super(false);
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return true;
+    }
+
+    @Override
+    public boolean isRunning() {
+      return true;
+    }
+
+    @Override
+    public boolean matchesCurrentAnalysisBackend() {
+      return compatible;
+    }
+
+    @Override
+    public boolean usesSharedForegroundEngine() {
+      return true;
+    }
+
+    @Override
+    public boolean isAutomaticBackgroundTask() {
+      return true;
+    }
+
+    @Override
+    public synchronized boolean isAnalysisInProgress() {
+      return false;
+    }
+
+    @Override
+    public synchronized boolean hasRequestLifecycleInProgress() {
+      return lifecycle;
+    }
+
+    @Override
+    public int startRequestMissingMainline(boolean showProgress) {
+      return 0;
+    }
+
+    @Override
+    public void clearRequestCallbacks() {
+      clearCount++;
+    }
+
+    @Override
+    public void normalQuit() {
+      quitCount++;
+    }
+  }
+
+  @Test
   void yikeCurveCompletionRegistersAsyncHandoffFailure() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -2642,6 +3145,36 @@ class LizzieFrameRegressionTest {
       assertSame(droppedFile, frame.curFile);
     } finally {
       env.close();
+    }
+  }
+
+  @Test
+  void manualFlashReplacementRetiresOnlyIdleIncompatibleWorker() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      LizzieFrame frame = allocate(PolicyFrame.class);
+      ResourceTrackingAnalysisEngine idle = allocate(ResourceTrackingAnalysisEngine.class);
+      idle.completionCallback = result -> {};
+      frame.analysisEngine = idle;
+      assertTrue(frame.releaseIncompatibleFlashAnalysisEngine());
+      assertNull(frame.analysisEngine);
+      assertEquals(1, idle.normalQuitCount);
+      assertNull(idle.completionCallback);
+
+      ResourceTrackingAnalysisEngine restoring = allocate(ResourceTrackingAnalysisEngine.class);
+      restoring.requestLifecycleInProgress = true;
+      restoring.completionCallback = result -> {};
+      frame.analysisEngine = restoring;
+      assertFalse(frame.releaseIncompatibleFlashAnalysisEngine());
+      assertSame(restoring, frame.analysisEngine);
+      assertEquals(0, restoring.normalQuitCount);
+      assertTrue(restoring.completionCallback != null);
+
+      ResourceTrackingAnalysisEngine compatible = allocate(ResourceTrackingAnalysisEngine.class);
+      compatible.reusable = true;
+      frame.analysisEngine = compatible;
+      assertTrue(frame.releaseIncompatibleFlashAnalysisEngine());
+      assertSame(compatible, frame.analysisEngine);
+      assertEquals(0, compatible.normalQuitCount);
     }
   }
 

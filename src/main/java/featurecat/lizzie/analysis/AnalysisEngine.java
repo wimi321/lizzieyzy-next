@@ -176,6 +176,7 @@ public class AnalysisEngine {
   private long remoteGtpLastCompletionActivityMillis;
   private Leelaz sharedForegroundEngine;
   private boolean automaticPrimaryForegroundReuse;
+  private boolean manualPrimaryForegroundReuse;
   private String automaticPrimaryForegroundCommand;
   private boolean sharedForegroundLeaseStarting;
   private boolean sharedForegroundLeaseActive;
@@ -265,22 +266,34 @@ public class AnalysisEngine {
     this.workload = workload == null ? Workload.STANDARD : workload;
     this.purpose = purpose == null ? AnalysisResourceCoordinator.Purpose.OTHER : purpose;
     this.persistentPreload = persistentPreload;
+    Config config = Lizzie.config;
+    Leelaz foreground = Lizzie.leelaz;
     boolean lightweightQuickModelRequested =
         commandOverride != null && !commandOverride.trim().isEmpty();
     automaticPrimaryForegroundReuse =
         this.purpose == AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS
-            && automaticallyReusesPrimaryForeground(lightweightQuickModelRequested);
+            && QuickAnalysisPrimaryReuse.shouldReuse(
+                config,
+                foreground,
+                lightweightQuickModelRequested,
+                () -> Utils.getAnalysisEngineRemoteEngineData().useJavaSSH);
+    manualPrimaryForegroundReuse =
+        this.purpose != AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS
+            && QuickAnalysisPrimaryReuse.shouldReuseForManualAnalysis(config, foreground);
     this.dedicatedLightweightQuickModel =
         this.purpose == AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS
             && !automaticPrimaryForegroundReuse
             && lightweightQuickModelRequested;
     this.dedicatedLightweightQuickModelCommand =
         this.dedicatedLightweightQuickModel ? commandOverride.trim() : "";
-    if (Lizzie.config.analysisReuseCurrentEngine || automaticPrimaryForegroundReuse) {
+    if (config.analysisReuseCurrentEngine
+        || automaticPrimaryForegroundReuse
+        || manualPrimaryForegroundReuse) {
       useRemoteCompute = true;
-      sharedForegroundEngine = Lizzie.leelaz;
+      sharedForegroundEngine = foreground;
       automaticPrimaryForegroundCommand =
-          automaticPrimaryForegroundReuse && sharedForegroundEngine != null
+          (automaticPrimaryForegroundReuse || manualPrimaryForegroundReuse)
+                  && sharedForegroundEngine != null
               ? sharedForegroundEngine.engineCommand()
               : null;
       foregroundLeaseAvailability =
@@ -296,8 +309,8 @@ public class AnalysisEngine {
         requestedMaxVisits > 0
             ? requestedMaxVisits
             : (Lizzie.frame.isBatchAnalysisMode
-                ? Math.max(2, Lizzie.config.batchAnalysisPlayouts)
-                : Lizzie.config.analysisMaxVisits + 1);
+                ? Math.max(2, config.batchAnalysisPlayouts)
+                : config.analysisMaxVisits + 1);
     engineCommand =
         featurecat.lizzie.util.AnalysisEngineLaunchCommand.build(
             resolveConfiguredAnalysisEngineCommand(commandOverride),
@@ -331,15 +344,15 @@ public class AnalysisEngine {
    */
   public static boolean automaticallyReusesPrimaryForeground(
       boolean lightweightQuickModelRequested) {
-    String command = Lizzie.leelaz == null ? null : Lizzie.leelaz.engineCommand();
     return QuickAnalysisPrimaryReuse.shouldReuse(
-        AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS,
-        RemoteComputeConfig.isRemoteComputeEngineCommand(command),
-        KataGoRuntimeHelper.isBundledNvidiaCommand(command),
-        KataGoRuntimeHelper.isBundledTensorRtCommand(command),
+        Lizzie.config,
+        Lizzie.leelaz,
         lightweightQuickModelRequested,
-        QuickAnalysisPrimaryReuse.analysisEngineMissing(
-            Lizzie.config, () -> Utils.getAnalysisEngineRemoteEngineData().useJavaSSH));
+        () -> Utils.getAnalysisEngineRemoteEngineData().useJavaSSH);
+  }
+
+  public static boolean reusesPrimaryForManualAnalysis() {
+    return QuickAnalysisPrimaryReuse.shouldReuseForManualAnalysis(Lizzie.config, Lizzie.leelaz);
   }
 
   /** Whether automatic analysis uses the main engine, by choice or as the only one that works. */
@@ -815,6 +828,11 @@ public class AnalysisEngine {
     int playouts = payload.totalVisits();
     if (moves.isEmpty() || playouts <= 0) {
       return true;
+    }
+    if (!shutdownRequested && remoteGtpAnalyzeResponseStarted && !remoteGtpNonAnalyzeResponse) {
+      if (sharedForegroundLease != null)
+        sharedForegroundLease.markAnalysisProgressAccepted(playouts);
+      else if (remoteTransport != null) remoteTransport.markAnalysisProgressAccepted(playouts);
     }
     if (playouts < job.targetVisits) {
       return true;
@@ -1597,7 +1615,7 @@ public class AnalysisEngine {
       List<BoardHistoryNode> requestedNodes, int targetVisits, boolean includeOwnership) {
     if (!isLoaded || shutdownRequested) return -1;
     List<BoardHistoryNode> pendingNodes =
-        collectWholeGameRequestNodes(
+        WholeGameAnalysisPlan.collectRequestNodes(
             requestedNodes, targetVisits, includeOwnership && supportsWholeGameOwnershipRequests());
     if (pendingNodes.isEmpty()) return 0;
     return startWholeGameRequestNow(pendingNodes, targetVisits, includeOwnership);
@@ -1675,23 +1693,6 @@ public class AnalysisEngine {
     boolean dispatchFailed = requestDispatchFailed;
     showRequestProgressOrContinueBatch(false);
     return dispatchFailed ? -1 : requestCount;
-  }
-
-  private static List<BoardHistoryNode> collectWholeGameRequestNodes(
-      List<BoardHistoryNode> requestedNodes, int targetVisits, boolean ownershipRequested) {
-    int normalizedTargetVisits = Math.max(1, targetVisits);
-    Set<BoardHistoryNode> uniqueNodes = new LinkedHashSet<BoardHistoryNode>();
-    if (requestedNodes != null) {
-      for (BoardHistoryNode node : requestedNodes) {
-        if (node != null
-            && node.getData() != null
-            && !node.getData()
-                .hasCompletePrimaryAnalysis(normalizedTargetVisits, ownershipRequested)) {
-          uniqueNodes.add(node);
-        }
-      }
-    }
-    return new ArrayList<BoardHistoryNode>(uniqueNodes);
   }
 
   private void prepareRequestState(boolean showProgressDialog) {
@@ -3010,16 +3011,18 @@ public class AnalysisEngine {
           .filter(dedicatedLightweightQuickModelCommand::equals)
           .isPresent();
     }
+    Leelaz foreground = Lizzie.leelaz;
     if (sharedForegroundEngine != null) {
       boolean automaticReuseStillMatches =
-          automaticPrimaryForegroundReuse
-              && Lizzie.leelaz != null
+          (automaticPrimaryForegroundReuse
+                  || (manualPrimaryForegroundReuse && reusesPrimaryForManualAnalysis()))
+              && foreground != null
               && automaticPrimaryForegroundCommand != null
-              && automaticPrimaryForegroundCommand.equals(Lizzie.leelaz.engineCommand());
+              && automaticPrimaryForegroundCommand.equals(foreground.engineCommand());
       return (Lizzie.config.analysisReuseCurrentEngine || automaticReuseStillMatches)
-          && sharedForegroundEngine == Lizzie.leelaz;
+          && sharedForegroundEngine == foreground;
     }
-    if (Lizzie.config.analysisReuseCurrentEngine) {
+    if (reusesPrimaryForManualAnalysis()) {
       return false;
     }
     return useRemoteCompute
@@ -3029,6 +3032,11 @@ public class AnalysisEngine {
 
   public boolean usesSharedForegroundEngine() {
     return sharedForegroundEngine != null;
+  }
+
+  public boolean canServeManualAnalysis() {
+    return !dedicatedLightweightQuickModel
+        && (!automaticPrimaryForegroundReuse || reusesPrimaryForManualAnalysis());
   }
 
   public boolean usesAutomaticPrimaryForegroundReuse() {
@@ -3255,17 +3263,7 @@ public class AnalysisEngine {
     }
   }
 
-  private static final class RemoteGtpRootInfo {
-    private final int visits;
-    private final double winrate;
-    private final double scoreLead;
-
-    private RemoteGtpRootInfo(int visits, double winrate, double scoreLead) {
-      this.visits = visits;
-      this.winrate = winrate;
-      this.scoreLead = scoreLead;
-    }
-  }
+  private record RemoteGtpRootInfo(int visits, double winrate, double scoreLead) {}
 
   private interface RemoteGtpMainlineSelector {
     boolean shouldAnalyze(BoardHistoryNode node, int moveNum);

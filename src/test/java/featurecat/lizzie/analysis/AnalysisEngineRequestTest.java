@@ -3,6 +3,7 @@ package featurecat.lizzie.analysis;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -66,6 +67,48 @@ class AnalysisEngineRequestTest {
   }
 
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
+
+  @Test
+  void manualZhiziLeaseProgressRenewsTransportWatchdogBeforeReachingBudget() throws Exception {
+    try (PreparationFixture fixture = new PreparationFixture(true)) {
+      assertEquals(1, fixture.engine.startRequestMissingMainline(false));
+      for (int i = 0; i < 40 && !fixture.hasAnalyze(); i++) fixture.ack(fixture.last());
+      assertTrue(fixture.hasAnalyze());
+      String analyze = fixture.last();
+      Object reader = getField(Leelaz.class, fixture.foreground, "readerStreamBinding");
+      Object transport = getField(reader.getClass(), reader, "remoteTransport");
+      Object watchdog = getField(transport.getClass(), transport, "analysisWatchdog");
+      long originalGeneration = (long) getField(watchdog.getClass(), watchdog, "generation");
+      fixture.reply(remoteGtpInfoLine(1, 61.0, 3.5));
+      assertEquals(originalGeneration, getField(watchdog.getClass(), watchdog, "generation"));
+      fixture.reply("=" + fixture.id(analyze));
+      fixture.reply(remoteGtpInfoLine(5, 61.0, 3.5));
+      assertEquals(5L, getField(watchdog.getClass(), watchdog, "lastProgress"));
+      long progressGeneration = (long) getField(watchdog.getClass(), watchdog, "generation");
+      assertTrue(progressGeneration > originalGeneration);
+      assertTrue(fixture.engine.isAnalysisInProgress(), "progress is below the 16 visit budget");
+      Method expire = watchdog.getClass().getDeclaredMethod("expire", long.class);
+      expire.setAccessible(true);
+      expire.invoke(watchdog, originalGeneration);
+      assertFalse((boolean) getField(watchdog.getClass(), watchdog, "unresponsive"));
+      fixture.reply(remoteGtpInfoLine(5, 61.0, 3.5));
+      fixture.reply(remoteGtpInfoLine(0, 61.0, 3.5));
+      fixture.reply("info malformed payload");
+      assertEquals(progressGeneration, getField(watchdog.getClass(), watchdog, "generation"));
+      fixture.reply("=199999999 unrelated");
+      fixture.reply(remoteGtpInfoLine(6, 61.0, 3.5));
+      assertEquals(progressGeneration, getField(watchdog.getClass(), watchdog, "generation"));
+      fixture.reply("");
+      fixture.reply("=" + fixture.id(analyze));
+      fixture.reply(remoteGtpInfoLine(6, 61.0, 3.5));
+      assertEquals(6L, getField(watchdog.getClass(), watchdog, "lastProgress"));
+      fixture.engine.requestShutdown();
+      fixture.engine.normalQuit();
+      long releasedGeneration = (long) getField(watchdog.getClass(), watchdog, "generation");
+      fixture.reply(remoteGtpInfoLine(7, 61.0, 3.5));
+      assertEquals(releasedGeneration, getField(watchdog.getClass(), watchdog, "generation"));
+    }
+  }
 
   @Test
   void sharedRestoreRemainsPartOfRequestLifecycleAfterLastResponse() throws Exception {
@@ -456,6 +499,137 @@ class AnalysisEngineRequestTest {
       assertTrue(engine.matchesCurrentAnalysisBackend());
       assertNull(engine.process);
       assertFalse(Lizzie.config.analysisReuseCurrentEngine);
+    }
+  }
+
+  @Test
+  void manualFlashAndDeepAnalysisBorrowRemotePrimaryForUncustomizedCommands() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.leelazConfig = new JSONObject();
+      Leelaz foreground = reusableForegroundEngine(true);
+      foreground.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+      Lizzie.leelaz = foreground;
+      Lizzie.config.analysisReuseCurrentEngine = false;
+      Lizzie.config.analysisEngineCommandCustomized = false;
+      for (String command :
+          List.of("", "katago analysis -model model.bin.gz", "missing/katago.exe analysis")) {
+        Lizzie.config.analysisEngineCommand = command;
+        for (AnalysisEngine.Workload workload : AnalysisEngine.Workload.values()) {
+          RoutingAnalysisEngine engine = new RoutingAnalysisEngine(workload);
+          assertTrue(engine.isLoaded(), command + "/" + workload);
+          assertTrue(engine.usesSharedForegroundEngine());
+          assertTrue(engine.matchesCurrentAnalysisBackend());
+          assertFalse(engine.usesAutomaticPrimaryForegroundReuse());
+          assertNull(engine.launchedCommand, "must not launch a local or second cloud engine");
+          assertFalse(Lizzie.config.analysisReuseCurrentEngine);
+          assertEquals(command, Lizzie.config.analysisEngineCommand);
+        }
+      }
+    }
+  }
+
+  @Test
+  void manualRemoteReuseRespectsCustomCommandAndInvalidatesOnForegroundReplacement()
+      throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.leelazConfig = new JSONObject();
+      Leelaz foreground = reusableForegroundEngine(true);
+      foreground.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+      Lizzie.leelaz = foreground;
+      Lizzie.config.analysisEngineCommand = "katago analysis -model model.bin.gz";
+      RoutingAnalysisEngine engine = new RoutingAnalysisEngine(AnalysisEngine.Workload.STANDARD);
+      assertTrue(engine.matchesCurrentAnalysisBackend());
+
+      Lizzie.config.analysisEngineCommandCustomized = true;
+      assertFalse(engine.matchesCurrentAnalysisBackend());
+      RoutingAnalysisEngine custom = new RoutingAnalysisEngine(AnalysisEngine.Workload.STANDARD);
+      assertFalse(custom.usesSharedForegroundEngine());
+      assertNotNull(custom.launchedCommand);
+
+      Lizzie.config.analysisEngineCommandCustomized = false;
+      Lizzie.leelaz = reusableForegroundEngine(true);
+      Lizzie.leelaz.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+      assertFalse(engine.matchesCurrentAnalysisBackend());
+      Lizzie.leelaz = foreground;
+      foreground.setEngineCommand("katago gtp");
+      assertFalse(engine.matchesCurrentAnalysisBackend());
+    }
+  }
+
+  @Test
+  void remoteManualSelectionRejectsPreviouslyPreloadedLocalWorker() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.leelazConfig = new JSONObject();
+      Lizzie.config.analysisEngineCommand = "katago analysis -model model.bin.gz";
+      Leelaz foreground = reusableForegroundEngine(true);
+      foreground.setEngineCommand("katago gtp");
+      Lizzie.leelaz = foreground;
+      RoutingAnalysisEngine local = new RoutingAnalysisEngine(AnalysisEngine.Workload.STANDARD);
+      assertTrue(local.matchesCurrentAnalysisBackend());
+
+      foreground.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+
+      assertFalse(local.matchesCurrentAnalysisBackend());
+    }
+  }
+
+  @Test
+  void manualRemotePolicyKeepsExplicitSshAndReportsUnavailablePrimary() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisEngineCommand = "katago analysis -model model.bin.gz";
+      Lizzie.config.leelazConfig =
+          new JSONObject()
+              .put("analysis-engine-ssh-info", new JSONObject().put("useJavaSSH", true));
+      Leelaz foreground = reusableForegroundEngine(true);
+      foreground.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+      Lizzie.leelaz = foreground;
+      RoutingAnalysisEngine ssh = new RoutingAnalysisEngine(AnalysisEngine.Workload.STANDARD);
+      assertFalse(ssh.usesSharedForegroundEngine());
+      assertTrue(ssh.useJavaSSH);
+      assertNotNull(ssh.launchedCommand);
+
+      Lizzie.config.leelazConfig = new JSONObject();
+      foreground.isLoaded = false;
+      RoutingAnalysisEngine unavailable =
+          new RoutingAnalysisEngine(AnalysisEngine.Workload.STANDARD);
+      assertFalse(unavailable.isLoaded());
+      assertNull(
+          unavailable.launchedCommand, "unready cloud must not fall back to a local process");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY,
+          unavailable.getForegroundLeaseAvailability());
+    }
+  }
+
+  @Test
+  void automaticCloudWorkerCannotOverrideExplicitManualAnalysisEngine() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Leelaz foreground = reusableForegroundEngine(true);
+      foreground.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+      Lizzie.leelaz = foreground;
+      Lizzie.config.leelazConfig = new JSONObject();
+      AnalysisEngine automatic = AnalysisEngine.createAutomaticQuickAnalysis();
+      assertTrue(automatic.canServeManualAnalysis());
+
+      Lizzie.config.analysisEngineCommandCustomized = true;
+      assertTrue(automatic.matchesCurrentAnalysisBackend(), "automatic policy stays unchanged");
+      assertFalse(automatic.canServeManualAnalysis());
+
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      assertTrue(automatic.canServeManualAnalysis(), "explicit reuse wins over a saved command");
+    }
+  }
+
+  private static final class RoutingAnalysisEngine extends AnalysisEngine {
+    private String launchedCommand;
+
+    private RoutingAnalysisEngine(Workload workload) throws IOException {
+      super(false, workload, 500);
+    }
+
+    @Override
+    public void startEngine(String command) {
+      launchedCommand = command;
     }
   }
 

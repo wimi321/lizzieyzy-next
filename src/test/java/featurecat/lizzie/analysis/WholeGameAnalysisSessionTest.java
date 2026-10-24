@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -30,6 +31,7 @@ import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class WholeGameAnalysisSessionTest {
   private static final int BOARD_SIZE = 3;
@@ -149,6 +151,78 @@ class WholeGameAnalysisSessionTest {
       fixture.session.cancel();
       waitForFinished(fixture);
       assertFalse(fixture.frame.resumeForeground);
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "success",
+        "paused",
+        "cancel",
+        "failed",
+        "engine",
+        "game",
+        "no-intent",
+        "replacement-intent"
+      })
+  void sharedDeepConsumesImportedResumeOnlyAfterSuccessfulCompletion(String outcome)
+      throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      SessionFixture fixture = SessionFixture.create();
+      ResumeTrackingLeelaz primary = new ResumeTrackingLeelaz();
+      ResumeTrackingLeelaz replacement = new ResumeTrackingLeelaz();
+      Lizzie.leelaz = primary;
+      fixture.engine.shared = true;
+      setField(fixture.session, "state", WholeGameAnalysisSession.State.PREPARING);
+      setField(fixture.session, "engine", fixture.engine);
+      Field currentSession = LizzieFrame.class.getDeclaredField("wholeGameAnalysisSession");
+      currentSession.setAccessible(true);
+      currentSession.set(fixture.frame, fixture.session);
+      Method confirmedResume =
+          LizzieFrame.class.getDeclaredMethod(
+              "resumeForegroundAnalysisForCurrentPosition", boolean.class);
+      confirmedResume.setAccessible(true);
+      if (!"no-intent".equals(outcome))
+        SwingUtilities.invokeAndWait(
+            () -> {
+              try {
+                assertFalse((boolean) confirmedResume.invoke(fixture.frame, true));
+              } catch (Exception failure) {
+                throw new AssertionError(failure);
+              }
+            });
+      assertEquals(0, primary.ponderCount);
+      if ("paused".equals(outcome)) fixture.frame.userPaused = true;
+      if ("engine".equals(outcome)) Lizzie.leelaz = replacement;
+      if ("replacement-intent".equals(outcome)) {
+        Lizzie.leelaz = replacement;
+        SwingUtilities.invokeAndWait(
+            () -> {
+              try {
+                confirmedResume.invoke(fixture.frame, true);
+              } catch (Exception failure) {
+                throw new AssertionError(failure);
+              }
+            });
+      }
+      if ("game".equals(outcome))
+        Lizzie.board.setHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+      Method finish =
+          WholeGameAnalysisSession.class.getDeclaredMethod(
+              "finish", WholeGameAnalysisSession.State.class, String.class);
+      finish.setAccessible(true);
+      WholeGameAnalysisSession.State terminal =
+          "cancel".equals(outcome)
+              ? WholeGameAnalysisSession.State.CANCELLED
+              : "failed".equals(outcome)
+                  ? WholeGameAnalysisSession.State.FAILED
+                  : WholeGameAnalysisSession.State.COMPLETE;
+      finish.invoke(fixture.session, terminal, "WholeGameAnalysis.complete");
+      waitForFinished(fixture);
+      assertEquals("success".equals(outcome) ? 1 : 0, primary.ponderCount);
+      assertEquals(0, replacement.ponderCount);
+      fixture.engine.quitCalled.await(2, TimeUnit.SECONDS);
     }
   }
 
@@ -276,10 +350,12 @@ class WholeGameAnalysisSessionTest {
     }
   }
 
-  @Test
-  void competitiveTrackingDoesNotDelayWholeGameRequestDispatch() throws Exception {
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void competitiveTrackingDoesNotDelayWholeGameRequestDispatch(boolean explicitReuse)
+      throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
-      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.config.analysisReuseCurrentEngine = explicitReuse;
       SessionAnalysisEngine engine = SessionFixture.newEngine();
       CountDownLatch engineCreated = new CountDownLatch(1);
       SessionFixture fixture =
@@ -290,6 +366,7 @@ class WholeGameAnalysisSessionTest {
               });
       Leelaz previousLeelaz = Lizzie.leelaz;
       CompetitiveTrackingLeelaz foreground = new CompetitiveTrackingLeelaz();
+      foreground.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
       Lizzie.leelaz = foreground;
 
       try {
@@ -313,10 +390,58 @@ class WholeGameAnalysisSessionTest {
     }
   }
 
-  @Test
-  void engineSwapCannotSplitExclusiveAndPreviewAcrossInstances() throws Exception {
+  @ParameterizedTest
+  @ValueSource(strings = {"complete", "cancel", "engine", "game", "unavailable"})
+  void pendingPositionSynchronizationKeepsDeepAnalysisPreparing(String outcome) throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
-      Lizzie.config.analysisReuseCurrentEngine = true;
+      AtomicInteger creations = new AtomicInteger();
+      SessionAnalysisEngine engine = SessionFixture.newEngine();
+      SessionFixture fixture =
+          SessionFixture.createWithFactory(
+              () -> {
+                creations.incrementAndGet();
+                return engine;
+              });
+      PendingPositionLeelaz foreground = new PendingPositionLeelaz();
+      foreground.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+      Lizzie.leelaz = foreground;
+      try {
+        fixture.session.start();
+        assertTrue(
+            foreground.synchronizationChecked.await(2, TimeUnit.SECONDS),
+            "deep analysis must inspect pending position synchronization without an exclusive lease");
+        assertEquals(WholeGameAnalysisSession.State.PREPARING, fixture.session.state());
+        assertEquals(0, creations.get());
+        if ("cancel".equals(outcome)) fixture.session.cancel();
+        if ("engine".equals(outcome)) Lizzie.leelaz = new PendingPositionLeelaz();
+        if ("game".equals(outcome))
+          Lizzie.board.setHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+        if ("unavailable".equals(outcome)) foreground.ready = false;
+        else foreground.pending = false;
+        if ("complete".equals(outcome)) {
+          waitForState(fixture.session, WholeGameAnalysisSession.State.BASELINE);
+          assertEquals(1, creations.get());
+        } else {
+          waitForState(
+              fixture.session,
+              "cancel".equals(outcome)
+                  ? WholeGameAnalysisSession.State.CANCELLED
+                  : WholeGameAnalysisSession.State.FAILED);
+          assertEquals(0, creations.get());
+        }
+      } finally {
+        fixture.session.cancel();
+        drainEdt();
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void engineSwapCannotSplitExclusivePreviewOrRetargetPendingUserRequest(boolean explicitReuse)
+      throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisReuseCurrentEngine = explicitReuse;
       SessionAnalysisEngine engine = SessionFixture.newEngine();
       CountDownLatch engineCreated = new CountDownLatch(1);
       SessionFixture fixture =
@@ -328,6 +453,8 @@ class WholeGameAnalysisSessionTest {
       Leelaz previousLeelaz = Lizzie.leelaz;
       CompetitiveTrackingLeelaz replacement = new CompetitiveTrackingLeelaz();
       CompetitiveTrackingLeelaz foreground = new CompetitiveTrackingLeelaz(replacement);
+      replacement.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
+      foreground.setEngineCommand(RemoteComputeConfig.COMMAND_ZHIZI);
       Lizzie.leelaz = foreground;
 
       try {
@@ -336,17 +463,16 @@ class WholeGameAnalysisSessionTest {
         assertTrue(
             foreground.previewed.await(2, TimeUnit.SECONDS),
             "whole-game session split one availability check across two engine instances");
-        assertTrue(
-            replacement.previewed.await(2, TimeUnit.SECONDS),
-            "whole-game session used an availability result from a replaced engine");
-        assertTrue(engineCreated.await(2, TimeUnit.SECONDS));
+        waitForState(fixture.session, WholeGameAnalysisSession.State.FAILED);
+        assertEquals(1L, replacement.previewed.getCount());
+        assertEquals(
+            1L, engineCreated.getCount(), "replacement must not inherit the user's request");
       } finally {
         fixture.session.cancel();
-        engine.quitCalled.await(2, TimeUnit.SECONDS);
         Lizzie.leelaz = previousLeelaz;
         drainEdt();
       }
-      assertEquals(0L, engine.quitCalled.getCount(), "whole-game analysis closer did not finish");
+      assertEquals(1L, engine.quitCalled.getCount(), "no analysis worker was created");
     }
   }
 
@@ -1024,12 +1150,78 @@ class WholeGameAnalysisSessionTest {
     }
   }
 
+  private static final class PendingPositionLeelaz extends Leelaz {
+    private final CountDownLatch synchronizationChecked = new CountDownLatch(1);
+    private volatile boolean pending = true;
+    private volatile boolean ready = true;
+
+    private PendingPositionLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    public boolean hasPendingPositionSynchronization() {
+      synchronizationChecked.countDown();
+      return pending;
+    }
+
+    @Override
+    public boolean hasExclusiveGtpWorkInProgress() {
+      return false;
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return ready;
+    }
+
+    @Override
+    public boolean isStarted() {
+      return ready;
+    }
+
+    @Override
+    public ExclusiveGtpLeaseAvailability previewForegroundAnalysisLeaseAvailability() {
+      return pending
+          ? ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY
+          : ExclusiveGtpLeaseAvailability.AVAILABLE;
+    }
+  }
+
+  private static final class ResumeTrackingLeelaz extends Leelaz {
+    private int ponderCount;
+
+    private ResumeTrackingLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return true;
+    }
+
+    @Override
+    public boolean isStarted() {
+      return true;
+    }
+
+    @Override
+    public void ponder() {
+      ponderCount++;
+    }
+  }
+
   private static final class TrackingFrame extends LizzieFrame {
     private int attachCount;
     private int finishedCount;
     private AnalysisEngine lastFinishedEngine;
     private boolean resumeForeground;
     private boolean userPaused;
+
+    @Override
+    public boolean isWholeGameAnalysisStartingOrRunning() {
+      return finishedCount == 0;
+    }
 
     private TrackingFrame() {}
 

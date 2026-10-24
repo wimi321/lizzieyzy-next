@@ -47,6 +47,144 @@ import org.junit.jupiter.api.Test;
 class LeelazExclusiveRemoteGtpSessionTest {
   private static final List<Leelaz> createdEngines = new ArrayList<>();
 
+  @Test
+  void foregroundLeaseWaitsForCapturedPositionRestoreAndItsFinalFence() throws Exception {
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    try (ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.installForReader(engine)) {
+      Leelaz.PositionRestore restore = engine.capturePositionRestore(null);
+      try {
+        assertForegroundLeaseWaitsForPosition(engine, output);
+        restore.execute(() -> engine.sendCommandNoLeelaz2("komi 7.5"));
+        assertTrue(commandQueue(engine).isEmpty(), "the physical write is already complete");
+        assertForegroundLeaseWaitsForPosition(engine, output);
+        String komi = output.toString(StandardCharsets.UTF_8).trim();
+        processCommandResponse(engine, "=" + komi.substring(0, komi.indexOf(' ')));
+        assertForegroundLeaseWaitsForPosition(engine, output);
+
+        AtomicBoolean confirmed = new AtomicBoolean();
+        restore.confirm(() -> confirmed.set(true), detail -> fail(detail));
+        assertForegroundLeaseWaitsForPosition(engine, output);
+        String fence =
+            output.toString(StandardCharsets.UTF_8).lines().reduce((a, b) -> b).orElseThrow();
+        assertTrue(fence.endsWith(" name"), fence);
+        processCommandResponse(engine, "=" + fence.substring(0, fence.indexOf(' ')));
+        assertTrue(confirmed.get());
+        assertEquals(
+            Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+            engine
+                .acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {})
+                .availability());
+      } finally {
+        restore.cancel();
+      }
+    }
+  }
+
+  @Test
+  void foregroundLeaseWaitsForOutstandingPositionResponseWithoutRestoreOwner() throws Exception {
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    try (ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.installForReader(engine)) {
+      engine.sendCommandNoLeelaz2("komi 7.5");
+      assertTrue(commandQueue(engine).isEmpty());
+      assertForegroundLeaseWaitsForPosition(engine, output);
+      String komi = output.toString(StandardCharsets.UTF_8).trim();
+      processCommandResponse(engine, "=" + komi.substring(0, komi.indexOf(' ')));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine
+              .acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {})
+              .availability());
+    }
+  }
+
+  @Test
+  void foregroundLeaseCanInterruptOrdinaryAnalysisWithOutstandingResponse() throws Exception {
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    try (ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.installForReader(engine)) {
+      engine.sendCommandNoLeelaz2("kata-analyze B 10");
+      assertTrue(commandQueue(engine).isEmpty());
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine
+              .acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {})
+              .availability());
+      assertTrue(output.toString(StandardCharsets.UTF_8).contains("800000000 stop"));
+    }
+  }
+
+  private static void assertForegroundLeaseWaitsForPosition(
+      Leelaz engine, ByteArrayOutputStream output) {
+    assertTrue(engine.hasPendingPositionSynchronization());
+    assertEquals(
+        Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY,
+        engine.previewForegroundAnalysisLeaseAvailability());
+    assertEquals(
+        Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY,
+        engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {}).availability());
+    assertFalse(engine.hasExclusiveGtpLease());
+    assertFalse(output.toString(StandardCharsets.UTF_8).contains("800000000 stop"));
+  }
+
+  @Test
+  void cancelledUndispatchedRestoreDoesNotBlockFreshConfirmedRestore() throws Exception {
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    try (ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.installForReader(engine)) {
+      Leelaz.PositionRestore cancelled = engine.capturePositionRestore(null);
+      assertForegroundLeaseWaitsForPosition(engine, output);
+      cancelled.cancel();
+      cancelled.cancel();
+      assertFalse(engine.hasPendingPositionSynchronization());
+
+      Leelaz.PositionRestore fresh = engine.capturePositionRestore(null);
+      try {
+        assertForegroundLeaseWaitsForPosition(engine, output);
+        fresh.execute(() -> {});
+        AtomicBoolean confirmed = new AtomicBoolean();
+        fresh.confirm(() -> confirmed.set(true), detail -> fail(detail));
+        String fence = output.toString(StandardCharsets.UTF_8).trim();
+        processCommandResponse(engine, "=" + fence.substring(0, fence.indexOf(' ')));
+        assertTrue(confirmed.get());
+        assertFalse(engine.hasPendingPositionSynchronization());
+        assertEquals(
+            Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+            engine
+                .acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {})
+                .availability());
+      } finally {
+        fresh.cancel();
+      }
+    }
+  }
+
+  @Test
+  void oldReaderRestoreCannotKeepReplacementReaderBusy() throws Exception {
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    try (ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.installForReader(engine)) {
+      Leelaz.PositionRestore old = engine.capturePositionRestore(null);
+      try {
+        assertForegroundLeaseWaitsForPosition(engine, output);
+        List<String> commands = List.copyOf(engine.commandLists);
+        engine.installFreshCommandOutputForTest(new ByteArrayOutputStream());
+        engine.advertiseCommandsForTest(commands);
+        assertFalse(engine.hasPendingPositionSynchronization());
+        old.cancel();
+        assertFalse(engine.hasPendingPositionSynchronization());
+        assertEquals(
+            Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+            engine
+                .acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {})
+                .availability());
+      } finally {
+        old.cancel();
+      }
+    }
+  }
+
   @AfterEach
   void closeCreatedExclusiveSessions() throws Exception {
     for (Leelaz engine : createdEngines) {
@@ -60,9 +198,15 @@ class LeelazExclusiveRemoteGtpSessionTest {
     for (boolean zhizi : List.of(false, true)) {
       Leelaz engine = reusableKatagoEngine(false, false);
       ByteArrayOutputStream output = installOutput(engine);
+      AtomicInteger progressNotifications = new AtomicInteger();
       try (var transport =
               new featurecat.lizzie.analysis.remote.ZhiziGtpTransport(
-                  null, "", "--kata-weight 10b512t");
+                  null, "", "--kata-weight 10b512t") {
+                @Override
+                public void markAnalysisProgressAccepted(long visits) {
+                  progressNotifications.incrementAndGet();
+                }
+              };
           ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.install(engine)) {
         Field readerField = Leelaz.class.getDeclaredField("readerStreamBinding");
         readerField.setAccessible(true);
@@ -77,16 +221,25 @@ class LeelazExclusiveRemoteGtpSessionTest {
         var lease = acquisition.lease();
         assertNotNull(lease);
         assertFalse(lease.isActiveBuiltInZhizi());
+        lease.markAnalysisProgressAccepted(5);
+        assertEquals(0, progressNotifications.get());
         String stop = output.toString(StandardCharsets.UTF_8).trim();
         dispatch(engine, "=" + stop.substring(0, stop.indexOf(' ')));
         assertFalse(lease.isActiveBuiltInZhizi(), "initial stop needs its terminating blank line");
         dispatch(engine, "");
         assertEquals(zhizi, lease.isActiveBuiltInZhizi());
+        lease.markAnalysisProgressAccepted(0);
+        lease.markAnalysisProgressAccepted(5);
+        assertEquals(zhizi ? 1 : 0, progressNotifications.get());
         lease.release(() -> {}, () -> {});
         assertFalse(lease.isActiveBuiltInZhizi());
+        lease.markAnalysisProgressAccepted(6);
+        assertEquals(zhizi ? 1 : 0, progressNotifications.get());
         engine.installFreshCommandOutputForTest(new ByteArrayOutputStream());
         assertFalse(
             lease.isActiveBuiltInZhizi(), "a replacement reader cannot inherit eligibility");
+        lease.markAnalysisProgressAccepted(7);
+        assertEquals(zhizi ? 1 : 0, progressNotifications.get());
       }
     }
   }

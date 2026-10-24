@@ -1,8 +1,10 @@
 package featurecat.lizzie.analysis;
 
 import featurecat.lizzie.Config;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.logging.LogCategories;
 import featurecat.lizzie.util.AnalysisEngineCommandHelper;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +20,32 @@ final class QuickAnalysisPrimaryReuse {
   private static volatile boolean missingEngineLogged;
 
   private QuickAnalysisPrimaryReuse() {}
+
+  static boolean shouldReuse(
+      Config config, Leelaz foreground, boolean lightweightModel, BooleanSupplier javaSsh) {
+    String command = foreground == null ? null : foreground.engineCommand();
+    return shouldReuse(
+        AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS,
+        RemoteComputeConfig.isRemoteComputeEngineCommand(command),
+        KataGoRuntimeHelper.isBundledNvidiaCommand(command),
+        KataGoRuntimeHelper.isBundledTensorRtCommand(command),
+        lightweightModel,
+        analysisEngineMissing(config, javaSsh));
+  }
+
+  /** Default flash/deep analysis follows a selected cloud engine; explicit choices still win. */
+  static boolean shouldReuseForManualAnalysis(Config config, Leelaz foreground) {
+    if (config == null) return false;
+    if (config.analysisReuseCurrentEngine) return true;
+    org.json.JSONObject ssh =
+        config.leelazConfig == null
+            ? null
+            : config.leelazConfig.optJSONObject("analysis-engine-ssh-info");
+    return !config.analysisEngineCommandCustomized
+        && (ssh == null || !ssh.optBoolean("useJavaSSH", false))
+        && foreground != null
+        && RemoteComputeConfig.isRemoteComputeEngineCommand(foreground.engineCommand());
+  }
 
   static boolean shouldReuse(
       AnalysisResourceCoordinator.Purpose purpose,
