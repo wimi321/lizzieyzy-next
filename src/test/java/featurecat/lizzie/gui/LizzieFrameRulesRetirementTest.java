@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryList;
@@ -137,6 +138,59 @@ class LizzieFrameRulesRetirementTest {
   @Test
   void nullEngineIncarnationFenceRemainsCurrentUntilAnEngineAppears() {
     assertTrue(LizzieFrame.exactEngineIncarnationsRemainCurrent(null, null, null, null));
+  }
+
+  @Test
+  void coldStartPlaceholderRemainsCurrentOnlyWhileNoEngineIsSelected() throws Exception {
+    boolean previousEmpty = EngineManager.isEmpty;
+    try {
+      Leelaz placeholder = new Leelaz("");
+      placeholder.isLoaded = true;
+      EngineManager.isEmpty = true;
+      assertNull(placeholder.engineIncarnationToken());
+      assertTrue(LizzieFrame.exactEngineIncarnationsRemainCurrent(placeholder, null, null, null));
+      EngineManager.isEmpty = false;
+      assertFalse(LizzieFrame.exactEngineIncarnationsRemainCurrent(placeholder, null, null, null));
+      EngineManager.isEmpty = true;
+      placeholder.started = true;
+      assertFalse(LizzieFrame.exactEngineIncarnationsRemainCurrent(placeholder, null, null, null));
+    } finally {
+      EngineManager.isEmpty = previousEmpty;
+    }
+  }
+
+  @Test
+  void emptyPrimaryCannotStandInForAComparisonReader() throws Exception {
+    boolean previousEmpty = EngineManager.isEmpty;
+    try {
+      EngineManager.isEmpty = true;
+      Leelaz placeholder = new Leelaz("");
+      assertFalse(
+          LizzieFrame.exactEngineIncarnationsRemainCurrent(
+              placeholder, null, new Leelaz(""), null));
+      assertFalse(
+          LizzieFrame.exactEngineIncarnationsRemainCurrent(placeholder, new Object(), null, null));
+    } finally {
+      EngineManager.isEmpty = previousEmpty;
+    }
+  }
+
+  @Test
+  void capturedEmptyReaderDoesNotMatchANewlyBoundReader() throws Exception {
+    boolean previousEmpty = EngineManager.isEmpty;
+    try {
+      EngineManager.isEmpty = true;
+      Leelaz bound =
+          new Leelaz("") {
+            @Override
+            public Object engineIncarnationToken() {
+              return this;
+            }
+          };
+      assertFalse(LizzieFrame.exactEngineIncarnationsRemainCurrent(bound, null, null, null));
+    } finally {
+      EngineManager.isEmpty = previousEmpty;
+    }
   }
 
   @Test

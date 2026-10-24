@@ -3,7 +3,7 @@
   "max_unlisted_file_lines": 2000,
   "max_lines": {
     "src/main/java/featurecat/lizzie/analysis/Leelaz.java": 25582,
-    "src/main/java/featurecat/lizzie/gui/LizzieFrame.java": 18539,
+    "src/main/java/featurecat/lizzie/gui/LizzieFrame.java": 18536,
     "src/main/java/featurecat/lizzie/analysis/EngineManager.java": 15779,
     "src/main/java/featurecat/lizzie/gui/Menu.java": 11067,
     "src/main/java/featurecat/lizzie/gui/MoveListFrame.java": 8313,

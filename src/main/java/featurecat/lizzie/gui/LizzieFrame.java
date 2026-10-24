@@ -5428,12 +5428,12 @@ public class LizzieFrame extends JFrame {
 
               @Override
               public KifuEngineSyncCoordinator.AttemptResult synchronize() {
+                if (primary == null || EngineManager.isEmpty) {
+                  return KifuEngineSyncCoordinator.AttemptResult.COMPLETE;
+                }
                 if (rulesTarget.kind() == BoardHistoryList.SessionRulesKind.INVALID) {
                   rulesFailure = SessionRulesSynchronizer.synchronize(rulesTarget, null);
                   return KifuEngineSyncCoordinator.AttemptResult.PERMANENT_FAILURE;
-                }
-                if (primary == null || EngineManager.isEmpty) {
-                  return KifuEngineSyncCoordinator.AttemptResult.COMPLETE;
                 }
                 if (remoteRulesSynchronizationMustWait(primary)) {
                   return KifuEngineSyncCoordinator.AttemptResult.RETRY;
@@ -5840,18 +5840,15 @@ public class LizzieFrame extends JFrame {
         && root == currentHistoryRoot()
         && history != null
         && history.captureSessionRules() == rulesTarget
+        && primaryGeneration >= 0
         && Lizzie.capturePrimaryEngineGeneration(primary) == primaryGeneration
         && currentMirror == mirror;
   }
 
   static boolean exactEngineIncarnationsRemainCurrent(
       Leelaz primary, Object primaryIncarnation, Leelaz mirror, Object mirrorIncarnation) {
-    return (primary == null
-            ? primaryIncarnation == null
-            : primary.isCurrentEngineIncarnationToken(primaryIncarnation))
-        && (mirror == null
-            ? mirrorIncarnation == null
-            : mirror.isCurrentEngineIncarnationToken(mirrorIncarnation));
+    return KifuEngineIdentity.remainsCurrent(
+        primary, primaryIncarnation, mirror, mirrorIncarnation, EngineManager.isEmpty);
   }
 
   private void offerContinueAfterRulesFailure(

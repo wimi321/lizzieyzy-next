@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Opening a game record before starting any engine now allows clicking and dragging the winrate graph to navigate moves. Offline imports retain their rules without waiting for an engine reader; stale imports still cannot complete after the selected engine or game changes.
+
 - Flash whole-game overview and whole-game deep analysis now use the selected built-in cloud engine with default analysis settings. Explicit dedicated engines and SSH settings are preserved, and incompatible idle analysis workers are closed before replacement. Starting immediately after a game import waits for board synchronization before sharing the connection; failed or superseded imports cannot leave stale analysis queued. Successful handback preserves the pending post-import analysis request while respecting pause and cancellation.
 
 - Stopping automatic analysis discards already-admitted late results before they advance the game or mark branch/difference analysis complete. Valid progress from a shared Zhizi analysis session now renews its connection watchdog, preventing a long search from being mistaken for a stalled connection.

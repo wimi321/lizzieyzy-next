@@ -57,6 +57,7 @@ DESKTOP_REQUIRED_TESTS = (
     ("featurecat.lizzie.gui.FunctionSearchInputTest", "chineseInputChain"),
     ("featurecat.lizzie.gui.FunctionSearchInputTest", "englishInputChain"),
     ("featurecat.lizzie.gui.OfflineBoardAcceptanceTest", "editsAndImportsWithNoEngine"),
+    ("featurecat.lizzie.gui.OfflineWinrateNavigationAcceptanceTest", "opensAndNavigatesSgfBeforeAnyEngineHasStarted"),
     (
         "featurecat.lizzie.update.CheckUpdateDialogTest",
         "preferencesAndResultSurviveClosingAndReopeningWithoutAnotherCheck",
@@ -663,7 +664,7 @@ def build_steps(
                     "-Dsurefire.reuseForks=true",
                     f"-Dlizzie.desktop.evidence.dir={evidence_dir}",
                     f"-Dsurefire.reportsDirectory={reports_dir}",
-                    "-Dtest=FunctionSearchNavigationTest,ConfigDialog2NavigationTest,EngineProcessSmokeTest,FunctionSearchInputTest,OfflineBoardAcceptanceTest,CheckUpdateDialogTest,UpdatePauseRecoveryTest,SetKataRulesWindowTest,RulesDialogLayoutTest",
+                    "-Dtest=FunctionSearchNavigationTest,ConfigDialog2NavigationTest,EngineProcessSmokeTest,FunctionSearchInputTest,OfflineBoardAcceptanceTest,OfflineWinrateNavigationAcceptanceTest,CheckUpdateDialogTest,UpdatePauseRecoveryTest,SetKataRulesWindowTest,RulesDialogLayoutTest",
                     "test",
                 ),
                 group="desktop",
