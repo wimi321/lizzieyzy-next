@@ -700,8 +700,18 @@ public final class HumanSlGameController {
     heldReply = null;
     assist.clearTurn();
     Board board = Lizzie.board;
-    for (int i = 0; i < moves; i++) {
-      board.deleteMoveNoHint();
+    Runnable deleteMoves =
+        () -> {
+          for (int i = 0; i < moves; i++) {
+            board.deleteMoveNoHint();
+          }
+        };
+    if (config.mode.isLiveAnalysis()) {
+      deleteMoves.run();
+    } else {
+      // The hidden game's moves were never sent to the foreground engine. History navigation
+      // needs the existing local-only scope too; isInputCommand only guards move placement.
+      board.applyReadBoardSyncLocally(deleteMoves);
     }
     liveNode = board.getHistory().getCurrentHistoryNode();
     takeBacks++;

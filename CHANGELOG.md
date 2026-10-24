@@ -6,6 +6,8 @@ All notable maintenance updates to this fork are documented here.
 
 - Engine startup diagnostics now identify explicit Windows loader error 206 and explain how to retry the complete portable package from a shorter folder, preserving the original error evidence and existing data instead of treating the failure as a generic DLL loading problem.
 
+- AI Coach take-backs and blunder retries no longer send undo commands to the isolated foreground engine in hidden-analysis modes. Live-analysis games keep forwarding their take-backs normally.
+
 - Windows final-package acceptance binds startup cleanup to the original launcher and child process identities instead of blindly trusting PIDs. Detected PID reuse or missing identity data prevents termination and remains visible in cleanup results while configuration and isolation resources are restored. Possible surviving descendants after an early launcher exit remain unverified, never silently counted as complete cleanup or terminated by ancestry alone.
 
 - Windows installation and release guidance now distinguishes the NVIDIA full package's bundled

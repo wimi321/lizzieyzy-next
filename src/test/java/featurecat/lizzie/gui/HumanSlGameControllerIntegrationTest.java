@@ -51,6 +51,7 @@ import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class HumanSlGameControllerIntegrationTest {
@@ -246,6 +247,8 @@ class HumanSlGameControllerIntegrationTest {
   @Test
   void takeBackAfterTheAiRepliedRemovesBothMoves() throws Exception {
     try (CoachEnvironment env = CoachEnvironment.open()) {
+      TakeBackLeelaz engine = new TakeBackLeelaz();
+      SwingUtilities.invokeAndWait(() -> Lizzie.leelaz = engine);
       BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
       runner.replyWith(HumanMoveChoice.of("A1"));
       env.allowStonePlacement();
@@ -271,6 +274,8 @@ class HumanSlGameControllerIntegrationTest {
       assertTrue(controller.isHumanTurn());
       assertFalse(controller.canTakeBack());
       assertFalse(controller.isFinished());
+      assertEquals(
+          0, engine.forwardedUndos.get(), "neither hidden-game move reached the main engine");
     }
   }
 
@@ -305,6 +310,109 @@ class HumanSlGameControllerIntegrationTest {
       assertSame(
           humanPass.getVariation(0).get(), Lizzie.board.getHistory().getCurrentHistoryNode());
       assertFalse(controller.isFinished());
+    }
+  }
+
+  @ParameterizedTest
+  @EnumSource(TrainingMode.class)
+  void takeBackOnlyForwardsUndoInLiveAnalysis(TrainingMode mode) throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      TakeBackLeelaz engine = new TakeBackLeelaz();
+      BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
+      HumanSlGameController[] controller = new HumanSlGameController[1];
+      SwingUtilities.invokeAndWait(
+          () -> {
+            Lizzie.leelaz = engine;
+            controller[0] = env.startCoach(runner, mode);
+            controller[0].humanPass();
+          });
+      assertTrue(runner.awaitRequest());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            assertEquals(1, Lizzie.board.getHistory().getMoveNumber());
+            assertFalse(engine.isInputCommand);
+            engine.forwardedUndos.set(0);
+            controller[0].takeBack();
+            assertEquals(0, Lizzie.board.getHistory().getMoveNumber());
+            assertEquals(mode.isLiveAnalysis() ? 1 : 0, engine.forwardedUndos.get());
+            assertFalse(engine.isInputCommand, "the engine flag must remain unchanged");
+            assertEquals(1, controller[0].takeBackCount());
+          });
+    }
+  }
+
+  @Test
+  void takeBackWithoutAForegroundEngineStillUpdatesTheLocalHistory() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
+      HumanSlGameController[] controller = new HumanSlGameController[1];
+      SwingUtilities.invokeAndWait(
+          () -> {
+            controller[0] = env.startCoach(runner, TrainingMode.POST_GAME_REVIEW);
+            controller[0].humanPass();
+          });
+      assertTrue(runner.awaitRequest());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            Leelaz original = Lizzie.leelaz;
+            Lizzie.leelaz = null;
+            try {
+              controller[0].takeBack();
+              assertEquals(0, Lizzie.board.getHistory().getMoveNumber());
+              assertNull(Lizzie.leelaz);
+              assertEquals(1, controller[0].takeBackCount());
+            } finally {
+              Lizzie.leelaz = original;
+            }
+          });
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void failedTakeBackReleasesLocalScopeWithoutChangingEngineFlags(boolean previousInput)
+      throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      TakeBackLeelaz original = new TakeBackLeelaz();
+      TakeBackLeelaz replacement = new TakeBackLeelaz();
+      BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
+      HumanSlGameController[] controller = new HumanSlGameController[1];
+      SwingUtilities.invokeAndWait(
+          () -> {
+            Lizzie.leelaz = original;
+            controller[0] = env.startCoach(runner, TrainingMode.POST_GAME_REVIEW);
+            controller[0].humanPass();
+          });
+      assertTrue(runner.awaitRequest());
+      SwingUtilities.invokeAndWait(
+          () -> {
+            CoachBoard board = (CoachBoard) Lizzie.board;
+            IllegalStateException failure =
+                new IllegalStateException("controlled take-back failure");
+            AtomicBoolean flagDuringDelete = new AtomicBoolean();
+            original.isInputCommand = previousInput;
+            replacement.isInputCommand = !previousInput;
+            board.beforeDelete =
+                () -> {
+                  flagDuringDelete.set(original.isInputCommand);
+                  Lizzie.leelaz = replacement;
+                  throw failure;
+                };
+            try {
+              assertSame(
+                  failure, assertThrows(IllegalStateException.class, controller[0]::takeBack));
+              assertEquals(previousInput, flagDuringDelete.get());
+              assertEquals(previousInput, original.isInputCommand);
+              assertEquals(!previousInput, replacement.isInputCommand);
+              assertSame(replacement, Lizzie.leelaz);
+              assertEquals(1, board.getHistory().getMoveNumber());
+            } finally {
+              board.beforeDelete = null;
+              Lizzie.leelaz = original;
+            }
+            assertTrue(board.previousMove(false));
+            assertEquals(1, original.forwardedUndos.get(), "local-only scope must end on failure");
+          });
     }
   }
 
@@ -673,6 +781,8 @@ class HumanSlGameControllerIntegrationTest {
   @Test
   void playingABlunderAgainTakesItBackAndDropsTheHeldReply() throws Exception {
     try (CoachEnvironment env = CoachEnvironment.open()) {
+      TakeBackLeelaz engine = new TakeBackLeelaz();
+      SwingUtilities.invokeAndWait(() -> Lizzie.leelaz = engine);
       BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
       runner.reviewWith(blunderReview());
       runner.replyWith(HumanMoveChoice.of("B2"));
@@ -693,6 +803,7 @@ class HumanSlGameControllerIntegrationTest {
       assertFalse(onEventThread(controller::isAwaitingDecision));
       assertTrue(onEventThread(controller::isHumanTurn));
       assertTrue(onEventThread(() -> controller.moveReviewer().feedback().isEmpty()));
+      assertEquals(0, engine.forwardedUndos.get(), "retry must not undo the isolated main engine");
     }
   }
 
@@ -2663,6 +2774,15 @@ class HumanSlGameControllerIntegrationTest {
     private List<Thread> movelistWorkers;
     private CountDownLatch movelistComplete;
     private Runnable beforeMovelistUpdate;
+    private Runnable beforeDelete;
+
+    @Override
+    public void deleteMoveNoHint() {
+      if (beforeDelete != null) {
+        beforeDelete.run();
+      }
+      super.deleteMoveNoHint();
+    }
 
     @Override
     public void clearAfterMove() {}
@@ -2707,7 +2827,7 @@ class HumanSlGameControllerIntegrationTest {
     }
   }
 
-  private static final class TrackingLeelaz extends Leelaz {
+  private static class TrackingLeelaz extends Leelaz {
     private final AtomicInteger resumeCount = new AtomicInteger();
     private final AtomicInteger heatmapToggles = new AtomicInteger();
     private final AtomicInteger forwardedMoves = new AtomicInteger();
@@ -2766,6 +2886,27 @@ class HumanSlGameControllerIntegrationTest {
     public boolean forwardBoardClearWithKomi(
         String komiCommand, double komi, boolean applyKomiSideEffects) {
       return true;
+    }
+  }
+
+  /** Keeps real Board forwarding and Leelaz.undo; the protocol and pondering stay in memory. */
+  private static final class TakeBackLeelaz extends TrackingLeelaz {
+    private final AtomicInteger forwardedUndos = new AtomicInteger();
+
+    private TakeBackLeelaz() throws IOException {
+      isKatago = true;
+    }
+
+    @Override
+    public void sendCommand(String command) {
+      if ("undo".equals(command)) {
+        forwardedUndos.incrementAndGet();
+      }
+    }
+
+    @Override
+    public void ponder(boolean addPlayer, boolean blackToPlay) {
+      ponder();
     }
   }
 
