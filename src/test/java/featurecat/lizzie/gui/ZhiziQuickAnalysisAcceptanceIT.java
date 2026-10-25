@@ -13,7 +13,10 @@ import java.awt.Robot;
 import java.awt.Window;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import javax.imageio.ImageIO;
@@ -94,8 +97,41 @@ public class ZhiziQuickAnalysisAcceptanceIT {
             "png",
             result.resolveSibling("failure.png").toFile());
     } finally {
-      System.exit(exit);
+      try {
+        shutdownClockHelper();
+        Files.writeString(
+            result,
+            "clock-helper-closed PASS\n",
+            StandardOpenOption.CREATE,
+            StandardOpenOption.APPEND);
+      } catch (Throwable failure) {
+        exit = 1;
+        try {
+          Files.writeString(result, "result=FAIL\ncleanup=clock-helper\n");
+        } catch (Throwable writeFailure) {
+          System.err.println("Clock helper cleanup failed; result recording also failed");
+        }
+      } finally {
+        System.exit(exit);
+      }
     }
+  }
+
+  private static void shutdownClockHelper() throws Exception {
+    FutureTask<Process> shutdown =
+        new FutureTask<>(
+            () -> {
+              if (Lizzie.frame == null) return null;
+              var field = LizzieFrame.class.getDeclaredField("processClockHelper");
+              field.setAccessible(true);
+              Process helper = (Process) field.get(Lizzie.frame);
+              Lizzie.frame.shutdownClockHelper();
+              return helper;
+            });
+    SwingUtilities.invokeLater(shutdown);
+    Process helper = shutdown.get(5, TimeUnit.SECONDS);
+    assertTrue(
+        helper == null || helper.waitFor(2, TimeUnit.SECONDS), "Clock helper survived cleanup");
   }
 
   private static void printFailureState() {

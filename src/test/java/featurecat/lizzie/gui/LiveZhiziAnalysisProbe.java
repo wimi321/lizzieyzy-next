@@ -157,15 +157,21 @@ public final class LiveZhiziAnalysisProbe {
       record("checks=FAIL stage=" + stage + " type=" + failure.getClass().getSimpleName());
     } finally {
       try {
-        cleanup();
-        scanSecrets();
+        try {
+          cleanup();
+          scanSecrets();
+        } catch (Throwable failure) {
+          exit = 1;
+          record("cleanup=FAIL type=" + failure.getClass().getSimpleName());
+        }
+        record("result=" + (exit == 0 ? "PASS" : "FAIL"));
       } catch (Throwable failure) {
-        record("cleanup=FAIL type=" + failure.getClass().getSimpleName());
         exit = 1;
+        System.err.println("probe-finalization=FAIL type=" + failure.getClass().getSimpleName());
+      } finally {
+        finished = true;
+        System.exit(exit);
       }
-      record("result=" + (exit == 0 ? "PASS" : "FAIL"));
-      finished = true;
-      System.exit(exit);
     }
   }
 
@@ -469,19 +475,24 @@ public final class LiveZhiziAnalysisProbe {
 
   private void cleanup() throws Exception {
     stage = "cleanup";
-    onEdt(
-        () -> {
-          if (Lizzie.frame != null) {
-            for (Window window : Window.getWindows())
-              if (window instanceof JDialog) window.dispose();
-            if (Lizzie.config.isAutoAna) LizzieFrame.toolbar.stopAutoAna(false, true);
-            AnalysisEngine secondary = Lizzie.frame.analysisEngine;
-            if (secondary != null) secondary.normalQuit();
-          }
-          if (Lizzie.leelaz != null) Lizzie.leelaz.normalQuit();
-          if (Lizzie.config != null) RemoteComputeConfig.clearZhiziToken();
-          return null;
-        });
+    Process clockHelper =
+        onEdt(
+            () -> {
+              Process ownedClockHelper = null;
+              if (Lizzie.frame != null) {
+                Object helper = field(Lizzie.frame, "processClockHelper");
+                if (helper instanceof Process) ownedClockHelper = (Process) helper;
+                Lizzie.frame.shutdownClockHelper();
+                for (Window window : Window.getWindows())
+                  if (window instanceof JDialog) window.dispose();
+                if (Lizzie.config.isAutoAna) LizzieFrame.toolbar.stopAutoAna(false, true);
+                AnalysisEngine secondary = Lizzie.frame.analysisEngine;
+                if (secondary != null) secondary.normalQuit();
+              }
+              if (Lizzie.leelaz != null) Lizzie.leelaz.normalQuit();
+              if (Lizzie.config != null) RemoteComputeConfig.clearZhiziToken();
+              return ownedClockHelper;
+            });
     rememberTransports();
     for (EngineTransport transport : transports) transport.abort();
     check(transports.stream().noneMatch(EngineTransport::isOpen), "Cloud transport still open");
@@ -489,6 +500,10 @@ public final class LiveZhiziAnalysisProbe {
         .ifPresent(runtime -> runtime.stopFullTrace());
     featurecat.lizzie.logging.LoggingRuntime.current().ifPresent(runtime -> runtime.shutdown());
     record("cloud-transports-closed PASS");
+    check(
+        clockHelper == null || clockHelper.waitFor(2, TimeUnit.SECONDS),
+        "Clock helper survived cleanup");
+    record("clock-helper-closed PASS");
   }
 
   private void startDeadlineGuard() {
