@@ -198,6 +198,7 @@ public final class LiveZhiziAnalysisProbe {
           return null;
         });
     long start = System.nanoTime();
+    long startedEpochMillis = System.currentTimeMillis();
     boolean nativeClick = mode.equals("native-flash");
     if (nativeClick) record("ready-for-native-flash");
     else SwingUtilities.invokeLater(() -> Lizzie.frame.flashAnalyzeGame(true, false));
@@ -207,6 +208,7 @@ public final class LiveZhiziAnalysisProbe {
         "flash-start-" + run);
     if (nativeClick) {
       start = System.nanoTime();
+      startedEpochMillis = System.currentTimeMillis();
       record("native-flash timing=first-observed-active operator-wait-excluded");
     }
     check(!onEdt(this::modalErrorVisible), "Flash analysis opened a modal error");
@@ -215,16 +217,51 @@ public final class LiveZhiziAnalysisProbe {
         onEdt(() -> Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber)
             == Math.min(4, moves),
         "Flash changed selection");
+    long completedEpochMillis = System.currentTimeMillis();
+    long completeElapsedMillis = elapsed(start);
+    int[] actualVisits =
+        onEdt(
+            () -> {
+              int minimum = Integer.MAX_VALUE;
+              int maximum = 0;
+              BoardHistoryNode node = Lizzie.board.getHistory().getStart();
+              for (int index = 0; index < moves; index++) {
+                node = node.next().orElseThrow();
+                int count = node.getData().getPlayouts();
+                minimum = Math.min(minimum, count);
+                maximum = Math.max(maximum, count);
+              }
+              return new int[] {minimum, maximum};
+            });
     record(
         "flash run="
             + run
             + " elapsedMs="
-            + elapsed(start)
+            + completeElapsedMillis
             + " analyzed="
             + moves
             + " targetVisits="
             + visits);
     assertForeground();
+    JSONObject metrics =
+        new JSONObject()
+            .put("scenario", "flash")
+            .put("run", run)
+            .put("positions", moves)
+            .put("targetVisits", visits)
+            .put("model", RemoteComputeConfig.kataWeightForArgs(RemoteComputeConfig.VIP_ZHIZI_ARGS))
+            .put("startedEpochMillis", startedEpochMillis)
+            .put("completedEpochMillis", completedEpochMillis)
+            .put("foregroundReadyEpochMillis", System.currentTimeMillis())
+            .put("elapsedMillis", completeElapsedMillis)
+            .put("foregroundReadyElapsedMillis", elapsed(start))
+            .put("minimumActualVisits", actualVisits[0])
+            .put("maximumActualVisits", actualVisits[1]);
+    Files.writeString(
+        work.resolve("metrics.jsonl"),
+        metrics + "\n",
+        StandardOpenOption.CREATE,
+        StandardOpenOption.APPEND);
   }
 
   private void automatic(int run) throws Exception {

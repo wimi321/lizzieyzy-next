@@ -1849,6 +1849,21 @@ class AnalysisEngineRequestTest {
       assertEquals(1, engine.startAutomaticQuickAnalysisRequest(use));
     }
 
+    void startOverview() throws Exception {
+      startOverview(500);
+    }
+
+    void startOverview(int visits) throws Exception {
+      Lizzie.config.analysisMaxVisits = visits - 1;
+      BoardHistoryNode node = history.getStart();
+      while (node.next().isPresent()) {
+        node = node.next().get();
+        if (node.getData().getPlayouts() > 0) node.getData().setPlayouts(600);
+      }
+      setField(AnalysisEngine.class, engine, "waitFrame", allocate(ProgressWindow.class));
+      engine.startRequest(-1, -1, true);
+    }
+
     List<String> commands() {
       return output.toString(StandardCharsets.UTF_8).lines().toList();
     }
@@ -1929,6 +1944,32 @@ class AnalysisEngineRequestTest {
       throw new AssertionError("finite search was not dispatched");
     }
 
+    void finishOverviewPreparation() throws Exception {
+      java.util.Set<String> acknowledged = new java.util.HashSet<>();
+      for (int round = 0; round < 30; round++) {
+        if (hasAnalyze()) return;
+        for (String command : List.copyOf(commands())) {
+          if (acknowledged.add(command)) ack(command);
+        }
+      }
+      throw new AssertionError("overview search was not dispatched");
+    }
+
+    java.util.concurrent.BlockingQueue<String> observeNewCommands() {
+      var observed = new java.util.concurrent.LinkedBlockingQueue<String>();
+      foreground.installCommandOutputForTest(
+          new ByteArrayOutputStream() {
+            @Override
+            public synchronized void flush() throws IOException {
+              String commands = toString(StandardCharsets.UTF_8);
+              output.write(toByteArray());
+              reset();
+              commands.lines().forEach(observed::add);
+            }
+          });
+      return observed;
+    }
+
     @Override
     public void close() throws Exception {
       engine.requestShutdown();
@@ -1955,6 +1996,263 @@ class AnalysisEngineRequestTest {
       assertEquals(
           4, fixture.commands().stream().filter(s -> s.contains(" kata-get-param ")).count());
       assertFalse(fixture.commands().stream().anyMatch(s -> s.contains(" kata-set-param ")));
+    }
+  }
+
+  @Test
+  void manualZhiziOverviewKeepsAnalyzeStrategyBudgetAndFullPayload() throws Exception {
+    try (PreparationFixture fixture = new PreparationFixture(true)) {
+      fixture.startOverview();
+      fixture.reachReplay();
+      assertEquals(8, fixture.plays().size(), "initial replay must use the bounded window");
+      fixture.finishOverviewPreparation();
+      String search = fixture.last();
+      assertEquals("kata-analyze B 10", search.substring(search.indexOf(' ') + 1));
+      assertFalse(fixture.commands().stream().anyMatch(s -> s.contains(" kata-set-param ")));
+      assertFalse(fixture.commands().stream().anyMatch(s -> s.endsWith(" list_commands")));
+      fixture.history.setHead(fixture.target);
+      fixture.reply("=" + fixture.id(search));
+      fixture.reply(remoteGtpInfoLine(499, 499, 61.0, 3.5));
+      assertEquals(search, fixture.last(), "the original 500 visit budget must remain in force");
+      fixture.reply(
+          "info move D16 visits 300 winrate 0.61 scoreLead 3.5 order 0 pv D16 Q16 C4"
+              + " info move Q16 visits 199 winrate 0.60 scoreLead 3.0 order 1 pv Q16 D16"
+              + " rootInfo visits 500 winrate 0.605 scoreLead 3.2");
+      String stop = fixture.last();
+      assertTrue(stop.endsWith(" stop"), "the final position retains an explicit stop");
+      assertEquals(0, fixture.target.getData().getPlayouts());
+      fixture.reply("");
+      assertEquals(0, fixture.target.getData().getPlayouts());
+      fixture.reply("=" + fixture.id(stop));
+      assertEquals(500, fixture.target.getData().getPlayouts());
+      assertEquals(2, fixture.target.getData().bestMoves.size());
+      assertEquals(
+          List.of("D16", "Q16", "C4"), fixture.target.getData().bestMoves.get(0).variation);
+      assertEquals(List.of("Q16", "D16"), fixture.target.getData().bestMoves.get(1).variation);
+    }
+  }
+
+  @Test
+  void manualZhiziOverviewCombinesAdvanceButRequiresBothResponseBoundaries() throws Exception {
+    for (boolean ackFirst : List.of(false, true)) {
+      try (PreparationFixture fixture = new PreparationFixture(true, "(;SZ[19];B[dd];W[pp])")) {
+        BoardHistoryNode first = fixture.history.getStart().next().orElseThrow();
+        first.getData().setPlayouts(0);
+        fixture.startOverview();
+        fixture.finishOverviewPreparation();
+        String search = fixture.last();
+        fixture.reply("=" + fixture.id(search));
+        fixture.reply(remoteGtpInfoLine(200, 500, 61.0, 3.5));
+        String advance = fixture.last();
+        assertTrue(advance.endsWith(" play W Q4"), advance);
+        assertEquals(0, first.getData().getPlayouts());
+        fixture.reply("=199999999 unrelated");
+        fixture.reply("");
+        assertEquals(advance, fixture.last());
+        if (ackFirst) {
+          fixture.reply("=" + fixture.id(advance));
+          fixture.reply("");
+          assertEquals(advance, fixture.last(), "the play response cannot replace analysis EOF");
+          fixture.reply("");
+        } else {
+          fixture.reply("");
+          assertEquals(advance, fixture.last(), "analysis EOF alone cannot admit the next search");
+          fixture.reply("=" + fixture.id(advance));
+          fixture.reply("");
+        }
+        assertEquals(500, first.getData().getPlayouts());
+        assertTrue(fixture.last().contains(" kata-analyze B 10"));
+        assertEquals(1, fixture.commands().stream().filter(s -> s.endsWith(" play W Q4")).count());
+        assertEquals(1, fixture.commands().stream().filter(s -> s.endsWith(" stop")).count());
+      }
+    }
+  }
+
+  @Test
+  void manualZhiziOverviewRejectsLateResultsAfterCancellationErrorOrContextChanges()
+      throws Exception {
+    for (String change : List.of("cancel", "error", "game", "engine", "komi", "position")) {
+      try (PreparationFixture fixture = new PreparationFixture(true, "(;SZ[19];B[dd];W[pp])")) {
+        BoardHistoryNode first = fixture.history.getStart().next().orElseThrow();
+        first.getData().setPlayouts(0);
+        fixture.startOverview();
+        fixture.finishOverviewPreparation();
+        String search = fixture.last();
+        setField(AnalysisEngine.class, fixture.engine, "silentProgress", true);
+        fixture.reply("=" + fixture.id(search));
+        fixture.reply(remoteGtpInfoLine(200, 500, 61.0, 3.5));
+        String advance = fixture.last();
+        assertTrue(advance.endsWith(" play W Q4"));
+        fixture.reply("");
+        switch (change) {
+          case "cancel" -> fixture.engine.normalQuit();
+          case "error" -> fixture.reply("?" + fixture.id(advance) + " illegal move");
+          case "game" ->
+              boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+          case "engine" -> Lizzie.leelaz = reusableForegroundEngine(true);
+          case "komi" -> fixture.history.getGameInfo().setKomi(9.5);
+          case "position" -> first.getData().stones[0] = Stone.BLACK;
+        }
+        fixture.reply("=" + fixture.id(advance));
+        fixture.reply("");
+        assertEquals(0, first.getData().getPlayouts(), change);
+        assertEquals(0, fixture.target.getData().getPlayouts(), change);
+        assertFalse(fixture.engine.isAnalysisInProgress(), change);
+        assertEquals(
+            1,
+            fixture.commands().stream().filter(s -> s.contains(" kata-analyze ")).count(),
+            change);
+        assertTrue(
+            fixture.commands().stream().filter(s -> s.endsWith(" stop")).count() > 1, change);
+      }
+    }
+  }
+
+  @Test
+  void manualZhiziOverviewDoesNotAdvanceAChangedGame() throws Exception {
+    try (PreparationFixture fixture = new PreparationFixture(true, "(;SZ[19];B[dd];W[pp])")) {
+      fixture.history.getStart().next().orElseThrow().getData().setPlayouts(0);
+      fixture.startOverview();
+      fixture.finishOverviewPreparation();
+      String search = fixture.last();
+      fixture.reply("=" + fixture.id(search));
+      boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+      fixture.reply(remoteGtpInfoLine(200, 500, 61.0, 3.5));
+      assertTrue(fixture.last().endsWith(" stop"));
+      assertFalse(fixture.commands().stream().anyMatch(s -> s.endsWith(" play W Q4")));
+    }
+  }
+
+  @Test
+  void manualZhiziOverviewUsesAnExplicitStopBeforeResetSetup() throws Exception {
+    try (PreparationFixture fixture =
+        new PreparationFixture(true, "(;SZ[19];B[dd];AB[pp]PL[W];W[qq])")) {
+      fixture.history.getStart().next().orElseThrow().getData().setPlayouts(0);
+      fixture.startOverview();
+      fixture.finishOverviewPreparation();
+      String search = fixture.last();
+      fixture.reply("=" + fixture.id(search));
+      fixture.reply(remoteGtpInfoLine(200, 500, 61.0, 3.5));
+      assertTrue(fixture.last().endsWith(" stop"));
+    }
+  }
+
+  @Test
+  void manualZhiziOverviewAdvancesPassExactlyOnce() throws Exception {
+    try (PreparationFixture fixture = new PreparationFixture(true, "(;SZ[19];B[dd];W[])")) {
+      fixture.history.getStart().next().orElseThrow().getData().setPlayouts(0);
+      fixture.startOverview();
+      fixture.finishOverviewPreparation();
+      String search = fixture.last();
+      fixture.reply("=" + fixture.id(search));
+      fixture.reply(remoteGtpInfoLine(200, 500, 61.0, 3.5));
+      String advance = fixture.last();
+      assertTrue(advance.endsWith(" play W pass"));
+      fixture.reply("");
+      fixture.reply("=" + fixture.id(advance));
+      assertTrue(fixture.last().contains(" kata-analyze B 10"));
+      assertEquals(1, fixture.commands().stream().filter(s -> s.endsWith(" play W pass")).count());
+    }
+  }
+
+  @Test
+  void manualZhiziOverviewTimesOutMissingAdvanceBoundaryWithoutStartingAnotherSearch()
+      throws Exception {
+    for (boolean missingAck : List.of(false, true)) {
+      try (PreparationFixture fixture = new PreparationFixture(true, "(;SZ[19];B[dd];W[pp])")) {
+        BoardHistoryNode first = fixture.history.getStart().next().orElseThrow();
+        first.getData().setPlayouts(0);
+        fixture.startOverview();
+        fixture.finishOverviewPreparation();
+        setField(AnalysisEngine.class, fixture.engine, "silentProgress", true);
+        fixture.reply("=" + fixture.id(fixture.last()));
+        fixture.reply(remoteGtpInfoLine(200, 500, 61.0, 3.5));
+        String advance = fixture.last();
+        assertTrue(advance.endsWith(" play W Q4"));
+        if (!missingAck) fixture.reply("=" + fixture.id(advance));
+        fixture.reply("");
+        var commands = fixture.observeNewCommands();
+        setField(AnalysisEngine.class, fixture.engine, "remoteGtpLastCompletionActivityMillis", 0L);
+        Method timeout =
+            AnalysisEngine.class.getDeclaredMethod("scheduleRemoteGtpStopAckFallback", long.class);
+        timeout.setAccessible(true);
+        timeout.invoke(fixture.engine, 1L);
+        String stop = commands.poll(2, TimeUnit.SECONDS);
+        assertNotNull(stop, "the elapsed barrier deadline must release the lease");
+        assertTrue(stop.endsWith(" stop"), stop);
+        assertFalse(fixture.engine.isAnalysisInProgress());
+        assertEquals(0, first.getData().getPlayouts());
+        assertEquals(
+            1, fixture.commands().stream().filter(s -> s.contains(" kata-analyze ")).count());
+      }
+    }
+  }
+
+  @Test
+  void manualZhiziOverviewCancellationAfterAdvanceRestoresTheCurrentBoard() throws Exception {
+    try (PreparationFixture fixture = new PreparationFixture(true, "(;SZ[19];B[dd];W[pp])")) {
+      BoardHistoryNode first = fixture.history.getStart().next().orElseThrow();
+      first.getData().setPlayouts(0);
+      fixture.startOverview();
+      fixture.finishOverviewPreparation();
+      fixture.reply("=" + fixture.id(fixture.last()));
+      fixture.reply(remoteGtpInfoLine(200, 500, 61.0, 3.5));
+      String advance = fixture.last();
+      assertTrue(advance.endsWith(" play W Q4"));
+      fixture.reply("");
+      fixture.history.setHead(fixture.target);
+      int restoreStart = fixture.commands().size();
+      var commands = fixture.observeNewCommands();
+      fixture.engine.normalQuit(() -> commands.add("finished"), () -> commands.add("failed"));
+      fixture.reply("=" + fixture.id(advance));
+      fixture.reply("");
+      Method response =
+          Leelaz.class.getDeclaredMethod("runPendingResponseHandlerForLine", String.class);
+      response.setAccessible(true);
+      boolean finished = false;
+      for (int i = 0; i < 100 && !finished; i++) {
+        String command = commands.poll(2, TimeUnit.SECONDS);
+        assertNotNull(command, "restore must make progress without a real watchdog timeout");
+        assertFalse(command.equals("failed"));
+        if (command.equals("finished")) finished = true;
+        else {
+          String token = command.split(" ", 2)[0];
+          String reply = "=" + (token.matches("[0-9]+") ? token : "");
+          if (!dispatchExclusiveLine(fixture.foreground, reply))
+            response.invoke(fixture.foreground, reply);
+          dispatchExclusiveLine(fixture.foreground, "");
+          javax.swing.SwingUtilities.invokeAndWait(() -> {});
+        }
+      }
+      assertTrue(finished);
+      assertFalse(fixture.foreground.hasForegroundAnalysisLeaseWorkInProgress());
+      assertEquals(0, first.getData().getPlayouts());
+      assertEquals(0, fixture.target.getData().getPlayouts());
+      List<String> restored = fixture.commands().subList(restoreStart, fixture.commands().size());
+      assertTrue(restored.stream().anyMatch(s -> s.endsWith(" play B D16")), restored.toString());
+      assertTrue(restored.stream().anyMatch(s -> s.endsWith(" play W Q4")), restored.toString());
+      assertSame(fixture.target, fixture.history.getCurrentHistoryNode());
+    }
+  }
+
+  @Test
+  void manualZhiziOverviewOptimizationExcludesOtherSharedEnginesPartialAndLargeBudgets()
+      throws Exception {
+    for (String mode : List.of("other", "partial", "large")) {
+      try (PreparationFixture fixture = new PreparationFixture(!mode.equals("other"))) {
+        if (mode.equals("partial")) {
+          setField(
+              AnalysisEngine.class, fixture.engine, "waitFrame", allocate(ProgressWindow.class));
+          fixture.engine.startRequest(1, -1, true);
+        } else fixture.startOverview(mode.equals("large") ? 501 : 500);
+        fixture.reachReplay();
+        assertEquals(1, fixture.plays().size(), mode);
+        fixture.finishOverviewPreparation();
+        assertTrue(fixture.last().contains(" kata-analyze B 50"), mode);
+        assertFalse(fixture.commands().stream().anyMatch(s -> s.endsWith(" list_commands")), mode);
+        assertFalse(
+            fixture.commands().stream().anyMatch(s -> s.contains(" kata-set-param ")), mode);
+      }
     }
   }
 

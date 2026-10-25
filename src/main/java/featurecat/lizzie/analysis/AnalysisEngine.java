@@ -2,6 +2,7 @@ package featurecat.lizzie.analysis;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.gtp.GtpAnalysisProtocol;
 import featurecat.lizzie.analysis.remote.EngineTransport;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.gui.AnalysisSettings;
@@ -158,6 +159,7 @@ public class AnalysisEngine {
   private boolean remoteGtpSetupDraining;
   private boolean remoteGtpNonAnalyzeResponse;
   private volatile AutomaticRequestUse automaticRequestUse;
+  private boolean manualOverviewRequest;
   private volatile Object retiredAutomaticUseIdentity;
   private int remoteGtpNextSetupCommandId = REMOTE_GTP_SETUP_COMMAND_ID_BASE;
   private long remoteGtpSetupAckGeneration;
@@ -756,8 +758,8 @@ public class AnalysisEngine {
         && remoteGtpExpectedAnalyzeCommandId > 0) return handleFiniteSearch(trimmed);
     if (trimmed.startsWith("=") || trimmed.startsWith("?")) {
       remoteGtpNonAnalyzeResponse =
-          !isExpectedRemoteGtpSuccessResponse(trimmed, remoteGtpExpectedAnalyzeCommandId)
-              && !isExpectedRemoteGtpErrorResponse(trimmed, remoteGtpExpectedAnalyzeCommandId);
+          !GtpAnalysisProtocol.success(trimmed, remoteGtpExpectedAnalyzeCommandId)
+              && !GtpAnalysisProtocol.error(trimmed, remoteGtpExpectedAnalyzeCommandId);
     } else if (trimmed.isEmpty() && remoteGtpNonAnalyzeResponse) {
       remoteGtpNonAnalyzeResponse = false;
       return true;
@@ -787,8 +789,8 @@ public class AnalysisEngine {
         }
         return true;
       }
-      if (isExpectedRemoteGtpErrorResponse(trimmed, remoteGtpExpectedAnalyzeCommandId)
-          || isExpectedRemoteGtpErrorResponse(trimmed, remoteGtpExpectedStopCommandId)) {
+      if (GtpAnalysisProtocol.error(trimmed, remoteGtpExpectedAnalyzeCommandId)
+          || GtpAnalysisProtocol.error(trimmed, remoteGtpExpectedStopCommandId)) {
         requestDispatchFailed = true;
         finishFailedRequestDispatch(!silentProgress);
       } else if (isExpectedRemoteGtpAnalyzeResponse(trimmed)) {
@@ -810,7 +812,7 @@ public class AnalysisEngine {
       }
       return false;
     }
-    if (isExpectedRemoteGtpErrorResponse(trimmed, remoteGtpExpectedAnalyzeCommandId)) {
+    if (GtpAnalysisProtocol.error(trimmed, remoteGtpExpectedAnalyzeCommandId)) {
       requestDispatchFailed = true;
       finishFailedRequestDispatch(!silentProgress);
       return true;
@@ -874,7 +876,13 @@ public class AnalysisEngine {
     remoteGtpStopAckReceived = false;
     remoteGtpLastCompletionActivityMillis = System.currentTimeMillis();
     remoteGtpWaitingForStopAck = true;
-    if (sendCommand(stopCommandId + " stop")) {
+    String interrupt = "stop";
+    RemoteGtpAnalyzeJob next = remoteGtpQueue().peekFirst();
+    if (usesManualZhiziOverview() && requestStillTargetsCurrentGame() && next != null) {
+      String advance = GtpAnalysisProtocol.advanceCommand(next.commands);
+      if (advance != null) interrupt = next.commands.remove(0);
+    }
+    if (sendCommand(stopCommandId + " " + interrupt)) {
       if (remoteGtpWaitingForStopAck) {
         scheduleRemoteGtpStopAckFallback();
       }
@@ -900,27 +908,11 @@ public class AnalysisEngine {
   }
 
   private boolean isExpectedRemoteGtpAnalyzeResponse(String line) {
-    return isExpectedRemoteGtpSuccessResponse(line, remoteGtpExpectedAnalyzeCommandId);
+    return GtpAnalysisProtocol.success(line, remoteGtpExpectedAnalyzeCommandId);
   }
 
   private static boolean isExpectedRemoteGtpResponse(String line, int commandId) {
-    return isExpectedRemoteGtpSuccessResponse(line, commandId);
-  }
-
-  private static boolean isExpectedRemoteGtpSuccessResponse(String line, int commandId) {
-    if (commandId <= 0 || line == null) {
-      return false;
-    }
-    String successPrefix = "=" + commandId;
-    return line.equals(successPrefix) || line.startsWith(successPrefix + " ");
-  }
-
-  private static boolean isExpectedRemoteGtpErrorResponse(String line, int commandId) {
-    if (commandId <= 0 || line == null) {
-      return false;
-    }
-    String errorPrefix = "?" + commandId;
-    return line.equals(errorPrefix) || line.startsWith(errorPrefix + " ");
+    return GtpAnalysisProtocol.success(line, commandId);
   }
 
   private int nextRemoteGtpStopCommandId() {
@@ -946,14 +938,14 @@ public class AnalysisEngine {
 
   private boolean handleRemoteGtpRulesResponse(String line) {
     int commandId = remoteGtpExpectedRulesCommandId;
-    if (isExpectedRemoteGtpErrorResponse(line, commandId)) {
+    if (GtpAnalysisProtocol.error(line, commandId)) {
       failRemoteGtpSetup();
       return true;
     }
-    if (!isExpectedRemoteGtpSuccessResponse(line, commandId)) {
+    if (!GtpAnalysisProtocol.success(line, commandId)) {
       return line.isEmpty() || line.startsWith("=") || line.startsWith("?");
     }
-    String payload = responsePayload(line, commandId);
+    String payload = GtpAnalysisProtocol.payload(line, commandId);
     try {
       new JSONObject(payload);
     } catch (RuntimeException ex) {
@@ -983,11 +975,11 @@ public class AnalysisEngine {
   private boolean handleRemoteGtpSetupResponse(String line) {
     PendingSetupCommand acknowledged = null;
     for (PendingSetupCommand pending : remoteGtpSetupInFlight) {
-      if (isExpectedRemoteGtpErrorResponse(line, pending.id())) {
+      if (GtpAnalysisProtocol.error(line, pending.id())) {
         failRemoteGtpSetup();
         return true;
       }
-      if (isExpectedRemoteGtpSuccessResponse(line, pending.id())) {
+      if (GtpAnalysisProtocol.success(line, pending.id())) {
         acknowledged = pending;
         break;
       }
@@ -1004,11 +996,6 @@ public class AnalysisEngine {
     if (startupDiagnosticAttempt != null) startupDiagnosticAttempt.ready();
     if (!sendNextSharedForegroundSetupCommand()) failRemoteGtpSetup();
     return true;
-  }
-
-  private static String responsePayload(String line, int commandId) {
-    String prefix = "=" + commandId;
-    return line.length() <= prefix.length() ? "" : line.substring(prefix.length()).trim();
   }
 
   private void failRemoteGtpSetup() {
@@ -1437,6 +1424,16 @@ public class AnalysisEngine {
   private void startRequestNow(int startMove, int endMove, boolean showProgressDialog) {
     prepareRequestState(showProgressDialog);
     int targetVisits = targetAnalysisVisitsForCurrentRequest(showProgressDialog);
+    manualOverviewRequest =
+        useRemoteCompute
+            && sharedForegroundEngine != null
+            && workload == Workload.STANDARD
+            && showProgressDialog
+            && startMove < 0
+            && endMove < 0
+            && !isBatchAnalysisMode()
+            && GtpAnalysisProtocol.supportsOverviewBudget(targetVisits);
+    if (manualOverviewRequest) captureCurrentGameIdentity();
     if (useRemoteCompute) {
       enqueueRemoteGtpMainlineRequests(
           targetVisits,
@@ -1710,21 +1707,21 @@ public class AnalysisEngine {
   private boolean handleFinitePreparation(String line) {
     if (line.startsWith("=") || line.startsWith("?")) {
       if (finiteResponseId != 0
-          && (isExpectedRemoteGtpSuccessResponse(line, finiteResponseId)
-              || isExpectedRemoteGtpErrorResponse(line, finiteResponseId))) {
+          && (GtpAnalysisProtocol.success(line, finiteResponseId)
+              || GtpAnalysisProtocol.error(line, finiteResponseId))) {
         failRemoteGtpSetup();
         return true;
       }
       finiteResponseId = 0;
       finiteResponse = null;
       for (int id : finiteParameterCommands.keySet()) {
-        if (isExpectedRemoteGtpErrorResponse(line, id)) {
+        if (GtpAnalysisProtocol.error(line, id)) {
           failRemoteGtpSetup();
           return true;
         }
-        if (isExpectedRemoteGtpSuccessResponse(line, id)) {
+        if (GtpAnalysisProtocol.success(line, id)) {
           finiteResponseId = id;
-          finiteResponse = new StringBuilder(responsePayload(line, id));
+          finiteResponse = new StringBuilder(GtpAnalysisProtocol.payload(line, id));
           break;
         }
       }
@@ -1835,7 +1832,7 @@ public class AnalysisEngine {
   private boolean handleFiniteSearch(String line) {
     if (line.startsWith("=") || line.startsWith("?")) {
       remoteGtpNonAnalyzeResponse = !isExpectedRemoteGtpAnalyzeResponse(line);
-      if (isExpectedRemoteGtpErrorResponse(line, remoteGtpExpectedAnalyzeCommandId)
+      if (GtpAnalysisProtocol.error(line, remoteGtpExpectedAnalyzeCommandId)
           || (!remoteGtpNonAnalyzeResponse && remoteGtpAnalyzeResponseStarted)) {
         failRemoteGtpSetup();
       } else if (!remoteGtpNonAnalyzeResponse) remoteGtpAnalyzeResponseStarted = true;
@@ -1887,6 +1884,7 @@ public class AnalysisEngine {
     finiteSearchGeneration++;
     automaticRequestUse = use;
     foregroundRestoreResult = ForegroundRestoreResult.NOT_REQUIRED;
+    manualOverviewRequest = false;
     analyzeMap.clear();
     remoteGtpQueue().clear();
     remoteGtpActiveJob = null;
@@ -2316,23 +2314,10 @@ public class AnalysisEngine {
   }
 
   private boolean startSharedForegroundGtpJob(RemoteGtpAnalyzeJob job) {
-    ArrayDeque<String> setupCommands = new ArrayDeque<String>();
-    String analyzeCommand = null;
-    for (String command : job.commands) {
-      if (command.startsWith("kata-analyze ")) {
-        if (analyzeCommand != null) {
-          return false;
-        }
-        analyzeCommand = command;
-      } else {
-        setupCommands.addLast(command);
-      }
-    }
-    if (analyzeCommand == null) {
-      return false;
-    }
-    remoteGtpPendingSetupCommands = setupCommands;
-    remoteGtpPendingAnalyzeCommand = analyzeCommand;
+    GtpAnalysisProtocol.Setup setup = GtpAnalysisProtocol.split(job.commands);
+    if (setup == null) return false;
+    remoteGtpPendingSetupCommands = setup.commands();
+    remoteGtpPendingAnalyzeCommand = setup.analyze();
     return sendNextSharedForegroundSetupCommand();
   }
 
@@ -2346,7 +2331,9 @@ public class AnalysisEngine {
         if (requestDispatchFailed || !requestStillTargetsCurrentGame()) return false;
         String next = remoteGtpPendingSetupCommands.peekFirst();
         AutomaticRequestUse use = automaticRequestUse;
-        boolean replay = use != null && use.pipeline && next.startsWith("play ");
+        boolean replay =
+            ((use != null && use.pipeline) || usesManualZhiziOverview())
+                && next.startsWith("play ");
         int window = replay ? REMOTE_GTP_PREPARATION_WINDOW : 1;
         if (remoteGtpSetupInFlight.size() >= window
             || (!remoteGtpSetupInFlight.isEmpty()
@@ -2373,6 +2360,8 @@ public class AnalysisEngine {
       if (analyzeCommand == null) return true;
       int commandId = nextRemoteGtpAnalyzeCommandId();
       remoteGtpExpectedAnalyzeCommandId = commandId;
+      if (usesManualZhiziOverview())
+        analyzeCommand = GtpAnalysisProtocol.overviewCommand(analyzeCommand);
       if (finitePreparation == FinitePreparation.READY) {
         // Zhizi needs the terminal-output interval to expose the completed root budget.
         analyzeCommand =
@@ -2405,6 +2394,13 @@ public class AnalysisEngine {
           && sharedForegroundLease.sendFiniteSearch(command, () -> scheduleFiniteSearchTimeout(id));
     }
     return sendCommand(command);
+  }
+
+  private boolean usesManualZhiziOverview() {
+    return manualOverviewRequest
+        && finitePreparation == null
+        && sharedForegroundLease != null
+        && sharedForegroundLease.isActiveBuiltInZhizi();
   }
 
   private void scheduleOldestSetupTimeout() {
@@ -3186,7 +3182,7 @@ public class AnalysisEngine {
   private boolean requestStillTargetsCurrentGame() {
     return !shutdownRequested
         && !automaticRequestRetired()
-        && (automaticRequestUse == null
+        && ((automaticRequestUse == null && !manualOverviewRequest)
             || sharedForegroundEngine == null
             || Lizzie.leelaz == sharedForegroundEngine)
         && (requestHistoryRoot == null

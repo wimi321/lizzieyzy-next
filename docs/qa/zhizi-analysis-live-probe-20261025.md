@@ -25,6 +25,12 @@ credential store and normal application profile are not read or written.
 
 - `flash` invokes the real `flashAnalyzeGame(true, false)` entry point for
   **整盘速览（闪电）**, checks per-position visits and selected-move preservation.
+  Each completed repetition also writes `metrics.jsonl`: start/completion/foreground
+  timestamps, elapsed times, position count, configured model, target visits, and
+  the minimum/maximum visits actually stored. The target is a completion threshold,
+  not a promise that a streaming search stops at exactly that count. Repeated
+  imports may retain engine search/cache state; report cold and warm observations
+  separately and include actual visits when comparing builds.
 - `native-flash` loads the same fresh fixture and selects a move, then prints
   `ready-for-native-flash`. It never invokes the analysis action: use the real
   application menu with the mouse within 60 seconds. The same completion,

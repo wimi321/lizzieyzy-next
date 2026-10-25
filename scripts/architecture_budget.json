@@ -18,7 +18,7 @@
     "src/main/java/featurecat/lizzie/gui/OnlineDialog.java": 4565,
     "src/main/java/featurecat/lizzie/util/KataGoAutoSetupHelper.java": 3996,
     "src/main/java/featurecat/lizzie/Config.java": 4031,
-    "src/main/java/featurecat/lizzie/analysis/AnalysisEngine.java": 3271,
+    "src/main/java/featurecat/lizzie/analysis/AnalysisEngine.java": 3267,
     "src/main/java/featurecat/lizzie/gui/WinrateGraph.java": 3189,
     "src/main/java/featurecat/lizzie/gui/FloatBoardRenderer.java": 3061,
     "src/main/java/featurecat/lizzie/gui/RemoteComputeDialog.java": 3049,

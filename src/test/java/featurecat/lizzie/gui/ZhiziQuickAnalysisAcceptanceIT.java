@@ -7,13 +7,18 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.ZhiziLoopbackAcceptanceServer;
 import featurecat.lizzie.rules.BoardHistoryNode;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Robot;
+import java.awt.Window;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import javax.imageio.ImageIO;
+import javax.swing.JDialog;
+import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -52,6 +57,11 @@ public class ZhiziQuickAnalysisAcceptanceIT {
   @Test
   void disabledAutomaticCurveDoesNotAcquireRemoteWorker() throws Exception {
     run("disabled");
+  }
+
+  @Test
+  void manualOverviewCompletesBudgetPreservesSelectionAndHandsBackForeground() throws Exception {
+    run("manual-overview");
   }
 
   private void run(String mode) throws Exception {
@@ -149,12 +159,15 @@ public class ZhiziQuickAnalysisAcceptanceIT {
             .put("autoload-empty", true)
             .put("first-time-load", false)
             .put("use-language", 1)
-            .put("auto-quick-analyze-on-load", !mode.equals("disabled"))
+            .put(
+                "auto-quick-analyze-on-load",
+                !mode.equals("disabled") && !mode.equals("manual-overview"))
             .put("analysis-reuse-current-engine", false)
             .put("quick-analysis-lightweight-model-enabled", false)
             .put("analysis-engine-command", "")
             .put("analysis-engine-preload", false)
             .put("play-sound", false);
+    if (mode.equals("manual-overview")) ui.put("analysis-max-visits", 499);
     Files.writeString(
         work.resolve("config.txt"),
         new JSONObject()
@@ -191,6 +204,11 @@ public class ZhiziQuickAnalysisAcceptanceIT {
                         == featurecat.lizzie.analysis.EngineManager.EngineSwitchUiPhase.ACTIVE,
             70,
             "remote ready and startup board restored");
+      if (mode.equals("manual-overview")) {
+        manualOverview(primary[0], server, result);
+        primary[0].normalQuit();
+        return;
+      }
       DesktopProbeProcess.phase(result, "fox-import");
       if (mode.equals("reconnect")) server.disconnect();
       loadFox("(;FF[4]GM[1]SZ[19]KM[7.5]RU[Chinese]GN[fox-fixture];B[pd];W[dd];B[qp];W[dq])");
@@ -264,6 +282,111 @@ public class ZhiziQuickAnalysisAcceptanceIT {
           result, "result=PASS\nmode=" + mode + "\nsessions=" + server.sessions.get() + "\n");
       primary[0].normalQuit();
     }
+  }
+
+  private static void manualOverview(
+      Leelaz primary, ZhiziLoopbackAcceptanceServer server, Path result) throws Exception {
+    DesktopProbeProcess.phase(result, "manual-overview");
+    loadFox(
+        "(;FF[4]GM[1]SZ[19]KM[7.5]RU[Chinese]GN[manual-overview]"
+            + ";B[pd];W[dd];B[qp];W[dq];B[fc];W[cf];B[qn];W[nq])");
+    BoardHistoryNode[] identity = new BoardHistoryNode[2];
+    SwingUtilities.invokeAndWait(
+        () -> {
+          Lizzie.board.goToMoveNumber(4);
+          identity[0] = Lizzie.board.getHistory().getStart();
+          identity[1] = Lizzie.board.getHistory().getCurrentHistoryNode();
+        });
+    int commandStart = server.commands.size();
+    long start = System.nanoTime();
+    SwingUtilities.invokeLater(() -> Lizzie.frame.flashAnalyzeGame(true, false));
+    await(
+        () ->
+            onEventThread(
+                () ->
+                    modalErrorVisible()
+                        || (allMovesMeetBudget(8, 500)
+                            && Lizzie.frame.analysisEngine != null
+                            && !Lizzie.frame.analysisEngine.hasRequestLifecycleInProgress())),
+        100,
+        "manual remote overview budget and lease release");
+    long elapsedMillis =
+        java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+    SwingUtilities.invokeAndWait(
+        () -> {
+          assertFalse(modalErrorVisible(), "Manual overview must not show an error dialog");
+          assertSame(primary, Lizzie.leelaz);
+          assertFalse(primary.isDownWithError);
+          assertSame(identity[0], Lizzie.board.getHistory().getStart());
+          assertSame(identity[1], Lizzie.board.getHistory().getCurrentHistoryNode());
+          assertTrue(allMovesMeetBudget(8, 500));
+        });
+    await(() -> onEventThread(primary::isPondering), 20, "manual overview foreground restored");
+    int[] before = new int[1];
+    SwingUtilities.invokeAndWait(() -> before[0] = identity[1].getData().getPlayouts());
+    await(
+        () -> onEventThread(() -> identity[1].getData().getPlayouts() > before[0]),
+        20,
+        "manual overview foreground visits growing");
+    List<String> overviewCommands =
+        List.copyOf(server.commands.subList(commandStart, server.commands.size()));
+    assertEquals(
+        7,
+        overviewCommands.stream().filter(command -> command.matches("81[0-9]{7} play .*")).count(),
+        "Each next position must reuse the search-stop boundary for its play");
+    assertFalse(
+        overviewCommands.stream().anyMatch(command -> command.contains("kata-search_analyze")),
+        "Manual overview must retain analysis search semantics");
+    assertEquals(1, server.sessions.get(), "Reuse the foreground cloud worker");
+    screenshot(result);
+    Files.writeString(result.resolveSibling("commands.txt"), String.join("\n", overviewCommands));
+    Files.writeString(
+        result,
+        "result=PASS\nmode=manual-overview\npositions=8\ntargetVisits=500\nelapsedMillis="
+            + elapsedMillis
+            + "\nsessions="
+            + server.sessions.get()
+            + "\n");
+  }
+
+  private static boolean allMovesMeetBudget(int expected, int visits) {
+    BoardHistoryNode node = Lizzie.board.getHistory().getStart();
+    int count = 0;
+    while (node.next().isPresent()) {
+      node = node.next().orElseThrow();
+      if (!node.getData().hasCompletePrimaryAnalysis(visits, false)) return false;
+      count++;
+    }
+    return count == expected;
+  }
+
+  private static boolean onEventThread(BooleanSupplier condition) {
+    if (SwingUtilities.isEventDispatchThread()) return condition.getAsBoolean();
+    AtomicBoolean value = new AtomicBoolean();
+    try {
+      SwingUtilities.invokeAndWait(() -> value.set(condition.getAsBoolean()));
+    } catch (Exception failure) {
+      throw new AssertionError("Cannot inspect the desktop acceptance state", failure);
+    }
+    return value.get();
+  }
+
+  private static boolean modalErrorVisible() {
+    for (Window window : Window.getWindows()) {
+      if (window instanceof JDialog && window.isShowing() && containsOptionPane(window))
+        return true;
+    }
+    return false;
+  }
+
+  private static boolean containsOptionPane(Component component) {
+    if (component instanceof JOptionPane) return true;
+    if (component instanceof Container container) {
+      for (Component child : container.getComponents()) {
+        if (containsOptionPane(child)) return true;
+      }
+    }
+    return false;
   }
 
   private static void screenshot(Path result) throws Exception {

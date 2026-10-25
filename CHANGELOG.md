@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Built-in Zhizi whole-game overview with the default 500-visit budget reduces sequential network waits between positions and requests more frequent analysis reports. It keeps the same analysis command, model, requested visits and full candidate variations; errors and cancellation still restore the foreground position before reuse.
+
 - Opening a game record before starting any engine now allows clicking and dragging the winrate graph to navigate moves. Offline imports retain their rules without waiting for an engine reader; stale imports still cannot complete after the selected engine or game changes.
 
 - Flash whole-game overview and whole-game deep analysis now use the selected built-in cloud engine with default analysis settings. Explicit dedicated engines and SSH settings are preserved, and incompatible idle analysis workers are closed before replacement. Starting immediately after a game import waits for board synchronization before sharing the connection; failed or superseded imports cannot leave stale analysis queued. Successful handback preserves the pending post-import analysis request while respecting pause and cancellation.
