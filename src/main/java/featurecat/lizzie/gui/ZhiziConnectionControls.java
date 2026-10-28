@@ -3,6 +3,8 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.ZhiziEngineConnections;
 import java.awt.BorderLayout;
+import java.awt.Container;
+import java.awt.Dimension;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
@@ -14,6 +16,7 @@ import javax.swing.JPanel;
 import javax.swing.JTextArea;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
+import javax.swing.text.View;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,12 +91,35 @@ final class ZhiziConnectionControls extends JPanel {
         new JTextArea(
             text.apply(
                 "RemoteCompute.zhiziSession.billing",
-                "Only main, comparison and retained engine connections are covered. Independent analysis may remain connected. Switching engines or signing out can retain connections; client closure does not confirm server billing has ended."));
+                "Only main, comparison and retained engine connections are covered. Independent"
+                    + " analysis may remain connected. Switching engines or signing out can retain"
+                    + " connections; client closure does not confirm server billing has ended.")) {
+          @Override
+          public Dimension getPreferredSize() {
+            // The dialog is at least 900px wide, with 24px content insets on each side.
+            // Measure wrapping before BorderLayout allocates the footer height: a fixed row
+            // count clips longer translations and larger native Windows fonts.
+            // Ancestors can already be narrower while our bounds still reflect the previous
+            // layout pass, so include their available width when the dialog shrinks.
+            int width = Integer.MAX_VALUE;
+            for (Container parent = getParent(); parent != null; parent = parent.getParent()) {
+              var parentInsets = parent.getInsets();
+              int available = parent.getWidth() - parentInsets.left - parentInsets.right;
+              if (available > 0) width = Math.min(width, available);
+            }
+            if (width == Integer.MAX_VALUE) width = 852;
+            var insets = getInsets();
+            View view = getUI().getRootView(this);
+            view.setSize(Math.max(1, width - insets.left - insets.right), Integer.MAX_VALUE);
+            return new Dimension(
+                width,
+                (int) Math.ceil(view.getPreferredSpan(View.Y_AXIS)) + insets.top + insets.bottom);
+          }
+        };
     hint.setEditable(false);
     hint.setLineWrap(true);
     hint.setWrapStyleWord(true);
     hint.setOpaque(false);
-    hint.setRows(3);
     hint.setFont(status.getFont());
     add(hint, BorderLayout.CENTER);
     refresh = new Timer(500, event -> refresh());
