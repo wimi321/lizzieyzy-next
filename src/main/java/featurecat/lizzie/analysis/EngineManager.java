@@ -3596,23 +3596,6 @@ public class EngineManager {
     LizzieFrame.menu.toggleDoubleMenuGameStatus();
   }
 
-  //  private void checkEngineNotHang() {
-  //    if (isEngineGame
-  //        && !Lizzie.frame.toolbar.isGenmoveToolbar
-  //        && !Lizzie.frame.toolbar.isPkStop
-  //        && System.currentTimeMillis() - startInfoTime > 1000 * 240) {
-  //      Lizzie.leelaz.process.destroy();
-  //      Lizzie.gtpConsole.addLine("EnginePkHangs");
-  //      startInfoTime = System.currentTimeMillis();
-  //    }
-  //    //    try {
-  //    //      timer3.stop();
-  //    //      // timer3 = null;
-  //    //    } catch (Exception ex) {
-  //    //
-  //    //    }
-  //  }
-
   private void checkEngineAlive() {
     if (isEmpty || isSetupModeActive()) return;
     if (!hasPlayingEngineGameTransaction()
@@ -3641,42 +3624,7 @@ public class EngineManager {
           }
       }
     }
-    //   if (isEngineGame) {
-    //    {
-    // checkEngineNotHang();
     checkEnginePK();
-    // if (Lizzie.leelaz.resigned) Lizzie.leelaz.pkResign();
-    //        if (Lizzie.leelaz.isPondering() && (timer3 == null || !timer3.isRunning())) {
-    //          timer3 =
-    //              new Timer(
-    //                  5000,
-    //                  new ActionListener() {
-    //                    public void actionPerformed(ActionEvent evt) {
-    //
-    //
-    //                      try {
-    //                      } catch (Exception e) {
-    //                      }
-    //                    }
-    //                  });
-    //          timer3.start();
-    //        }
-    //      }
-    //      if ((timer2 == null || !timer2.isRunning())) {
-    //        timer2 =
-    //            new Timer(
-    //                20000,
-    //                new ActionListener() {
-    //                  public void actionPerformed(ActionEvent evt) {
-    //                    checkEnginePK();
-    //                    try {
-    //                    } catch (Exception e) {
-    //                    }
-    //                  }
-    //                });
-    //        timer2.start();
-    //    }
-    //   }
   }
 
   private void checkEnginePK() {
@@ -3713,12 +3661,6 @@ public class EngineManager {
         failure.printStackTrace();
       }
     }
-    //    try {
-    //      timer2.stop();
-    //      // timer2 = null;
-    //    } catch (Exception ex) {
-    //
-    //    }
   }
 
   public void updateEngines() throws JSONException, IOException {
@@ -4396,6 +4338,57 @@ public class EngineManager {
     }
     EnginePkIdentity.restoreToolbarSelection(engineData, Lizzie.config, LizzieFrame.toolbar);
     LizzieFrame.toolbar.addEngineLis();
+  }
+
+  private boolean zhiziSelectionBusy() {
+    EngineSwitchTransaction switching = engineSwitchTransaction.get();
+    EngineGameOwnerTransaction game = activeEngineGameTransaction;
+    return (switching != null
+            && ZhiziEngineConnections.includesZhizi(
+                switching.previousEngine, switching.targetEngine))
+        || (game != null
+            && game.manager == this
+            && ZhiziEngineConnections.includesZhizi(game.blackEngine, game.whiteEngine))
+        || (retiringEngineGameTransaction != null
+            && retiringEngineGameTransaction.manager == this
+            && ZhiziEngineConnections.includesZhizi(
+                retiringEngineGameTransaction.blackEngine,
+                retiringEngineGameTransaction.whiteEngine));
+  }
+
+  private List<Leelaz> zhiziConnectionTargets() {
+    EngineSelectionAvailability selected = captureEngineSelectionAvailability();
+    return ZhiziEngineConnections.targets(engineList, selected.primary, selected.secondary);
+  }
+
+  public ZhiziEngineConnections.State zhiziConnectionState() {
+    synchronized (ENGINE_SELECTION_STATE_LOCK) {
+      return ZhiziEngineConnections.state(zhiziConnectionTargets(), zhiziSelectionBusy());
+    }
+  }
+
+  /** Closes only Zhizi clients; it does not assert server-side billing settlement. */
+  public ZhiziEngineConnections.State disconnectZhiziEngines() {
+    ZhiziEngineConnections.Shutdown shutdown;
+    List<EngineSwitchUiSnapshot> updates = new ArrayList<>();
+    synchronized (ENGINE_SELECTION_STATE_LOCK) {
+      shutdown =
+          ZhiziEngineConnections.prepare(
+              zhiziConnectionTargets(),
+              zhiziSelectionBusy(),
+              engine -> {
+                rollbackPrimaryEngineSelection(engine, engine, -1);
+                rollbackSecondaryEngineSelection(engine, engine, -1);
+                updates.addAll(engineSwitchUiTracker.disconnect(engine));
+              });
+    }
+    if (shutdown == null) return ZhiziEngineConnections.State.BUSY;
+    try {
+      updates.forEach(this::publishEngineSwitchUiState);
+    } finally {
+      shutdown.finish();
+    }
+    return shutdown.result;
   }
 
   public boolean killAllEngines() {
@@ -5823,6 +5816,19 @@ public class EngineManager {
       EngineSwitchUiSnapshot abandoned = EngineSwitchUiSnapshot.idle(main);
       set(main, abandoned);
       return Optional.of(abandoned);
+    }
+
+    synchronized List<EngineSwitchUiSnapshot> disconnect(Leelaz engine) {
+      List<EngineSwitchUiSnapshot> updates = new ArrayList<>();
+      for (boolean main : new boolean[] {true, false}) {
+        EngineSwitchUiSnapshot old = current(main);
+        if (old.activeEngineIdentity == engine || old.targetEngineIdentity == engine) {
+          EngineSwitchUiSnapshot idle = EngineSwitchUiSnapshot.idle(main);
+          set(main, idle);
+          updates.add(idle);
+        }
+      }
+      return updates;
     }
 
     synchronized EngineSwitchUiSnapshot current(boolean main) {
@@ -10941,7 +10947,7 @@ public class EngineManager {
       }
       Lizzie.setPrimaryEngine(rollbackEngine);
       currentEngineNo = rollbackEngine == null ? -1 : rollbackIndex;
-      isEmpty = rollbackEngine == null;
+      isEmpty = rollbackEngine == null || rollbackIndex < 0;
     }
   }
 
@@ -12175,6 +12181,7 @@ public class EngineManager {
           isMain, preparedSwitch.previousEngine, newEng, installedTransaction)) {
         throw new IllegalStateException("Engine selection changed before switch execution");
       }
+      newEng.allowExplicitZhiziConnection();
       if (preparedSwitch.explicitRestart && isMain) {
         // Re-installing the same object deliberately advances the primary generation; bind the
         // restarted incarnation after that publication so its final READY/PDA callback is valid.
@@ -15664,18 +15671,6 @@ public class EngineManager {
           && activeEngineGameTransaction.blackEngine == engine;
     }
   }
-
-  //  public void setEngineCountDown(
-  //      EngineCountDown engineCountDown,
-  //      int leftMinutes,
-  //      int countDownSeconds,
-  //      int countDownMoves,
-  //      Leelaz engine) {
-  //    engineCountDown.leftSeconds = leftMinutes * 60;
-  //    engineCountDown.countDownSeconds = countDownSeconds;
-  //    engineCountDown.countDownMoves = countDownMoves;
-  //    engineCountDown.engine = engine;
-  //  }
 
   private void clearFirstSecondEngineCountDown() {
     firstEngineCountDown = null;

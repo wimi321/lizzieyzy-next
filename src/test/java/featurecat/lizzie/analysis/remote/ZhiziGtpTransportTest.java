@@ -22,6 +22,88 @@ import org.junit.jupiter.api.Test;
 
 class ZhiziGtpTransportTest {
   @Test
+  void closedLifecycleCannotBeginAnotherAttemptOrAcceptLateEvents() {
+    ZhiziGtpTransport.SessionLifecycle lifecycle = new ZhiziGtpTransport.SessionLifecycle();
+    long generation = lifecycle.beginAttempt();
+    assertTrue(lifecycle.tokenFetched(generation));
+    lifecycle.close();
+
+    assertEquals(-1L, lifecycle.beginAttempt());
+    assertFalse(lifecycle.tokenFetched(generation));
+    assertFalse(lifecycle.connected(generation));
+    assertFalse(lifecycle.ready(generation));
+    assertFalse(lifecycle.activate(generation));
+    assertFalse(lifecycle.acceptsEngineOutput(generation));
+    assertFalse(lifecycle.acceptsDiagnostics(generation));
+    assertFalse(lifecycle.requestRecovery());
+    assertEquals(
+        ZhiziGtpTransport.SessionFailureAction.IGNORED, lifecycle.sessionFailed(generation));
+    lifecycle.retireAttempt();
+    assertEquals(ZhiziGtpTransport.SessionState.CLOSED, lifecycle.state());
+  }
+
+  @Test
+  void closeBeforeSocketPublicationRejectsConnectCallback() {
+    ZhiziGtpTransport.SessionLifecycle lifecycle = new ZhiziGtpTransport.SessionLifecycle();
+    long generation = lifecycle.beginAttempt();
+    assertTrue(lifecycle.tokenFetched(generation));
+    lifecycle.close();
+    AtomicInteger connects = new AtomicInteger();
+
+    assertFalse(lifecycle.connectIfCurrent(generation, connects::incrementAndGet));
+    assertEquals(0, connects.get());
+  }
+
+  @Test
+  void retiredTokenCannotPublishSocketOverCurrentAttempt() {
+    ZhiziGtpTransport.SessionLifecycle lifecycle = new ZhiziGtpTransport.SessionLifecycle();
+    long retired = lifecycle.beginAttempt();
+    assertTrue(lifecycle.tokenFetched(retired));
+    lifecycle.retireAttempt();
+    long current = lifecycle.beginAttempt();
+    assertTrue(lifecycle.tokenFetched(current));
+    AtomicInteger connects = new AtomicInteger();
+
+    assertFalse(lifecycle.connectIfCurrent(retired, connects::incrementAndGet));
+    assertTrue(lifecycle.connectIfCurrent(current, connects::incrementAndGet));
+    assertEquals(1, connects.get());
+  }
+
+  @Test
+  void explicitCloseWakesRetryBackoffWithoutWaitingForItsDeadline() throws Exception {
+    ZhiziGtpTransport.SessionLifecycle lifecycle = new ZhiziGtpTransport.SessionLifecycle();
+    lifecycle.beginAttempt();
+    lifecycle.retireAttempt();
+    CountDownLatch entered = new CountDownLatch(1);
+    AtomicReference<Boolean> retried = new AtomicReference<>();
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+    Thread waiting =
+        new Thread(
+            () -> {
+              synchronized (lifecycle) {
+                entered.countDown();
+                try {
+                  retried.set(lifecycle.awaitRetry(TimeUnit.DAYS.toMillis(1)));
+                } catch (Throwable unexpected) {
+                  failure.set(unexpected);
+                }
+              }
+            });
+    try {
+      waiting.start();
+      assertTrue(entered.await(2, TimeUnit.SECONDS));
+      lifecycle.close();
+      waiting.join(1_000L);
+      assertFalse(waiting.isAlive());
+      assertNull(failure.get());
+      assertEquals(Boolean.FALSE, retried.get());
+    } finally {
+      waiting.interrupt();
+      waiting.join(1_000L);
+    }
+  }
+
+  @Test
   void modelIdentifierBelongsToTheConnectionNotLaterEditedSettings() throws Exception {
     try (ZhiziGtpTransport b11 = new ZhiziGtpTransport(null, "", "--kata-weight 11b768t");
         ZhiziGtpTransport b10 = new ZhiziGtpTransport(null, "", "--kata-weight 10b512t")) {

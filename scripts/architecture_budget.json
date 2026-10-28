@@ -2,9 +2,9 @@
   "_comment": "Upper bounds that may only go down. Run `python3 scripts/check_architecture_budget.py --tighten` after shrinking code; see AGENTS.md.",
   "max_unlisted_file_lines": 2000,
   "max_lines": {
-    "src/main/java/featurecat/lizzie/analysis/Leelaz.java": 25575,
+    "src/main/java/featurecat/lizzie/analysis/Leelaz.java": 25552,
     "src/main/java/featurecat/lizzie/gui/LizzieFrame.java": 18529,
-    "src/main/java/featurecat/lizzie/analysis/EngineManager.java": 15764,
+    "src/main/java/featurecat/lizzie/analysis/EngineManager.java": 15759,
     "src/main/java/featurecat/lizzie/gui/Menu.java": 10960,
     "src/main/java/featurecat/lizzie/gui/MoveListFrame.java": 8313,
     "src/main/java/featurecat/lizzie/gui/KataGoAutoSetupDialog.java": 8248,
@@ -21,7 +21,7 @@
     "src/main/java/featurecat/lizzie/analysis/AnalysisEngine.java": 3267,
     "src/main/java/featurecat/lizzie/gui/WinrateGraph.java": 3189,
     "src/main/java/featurecat/lizzie/gui/FloatBoardRenderer.java": 3061,
-    "src/main/java/featurecat/lizzie/gui/RemoteComputeDialog.java": 3049,
+    "src/main/java/featurecat/lizzie/gui/RemoteComputeDialog.java": 3021,
     "src/main/java/featurecat/lizzie/logging/DiagnosticBundleExporter.java": 2668,
     "src/main/java/featurecat/lizzie/analysis/PlayerStrengthEstimator.java": 2171,
     "src/main/java/featurecat/lizzie/search/FunctionCatalog.java": 2154,
@@ -31,9 +31,9 @@
     "Lizzie.config": 6841,
     "Lizzie.frame": 3214,
     "Lizzie.board": 1947,
-    "Lizzie.leelaz": 1068,
+    "Lizzie.leelaz": 1067,
     "Lizzie.leelaz2": 115,
-    "Lizzie.engineManager": 153
+    "Lizzie.engineManager": 151
   },
   "max_cross_package_references": {
     "featurecat.lizzie.analysis -> featurecat.lizzie.gui": 35,

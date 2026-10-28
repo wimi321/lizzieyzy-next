@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- The remote compute center now shows main/comparison and retained Zhizi engine connections and offers an explicit Zhizi-only engine disconnect, including after switching to a local engine. Independent analysis workers are outside this control and may remain connected; the dialog calls out this limit. Busy tasks and engine transitions are reported instead of being forcibly interrupted; other engine connections and the global fast-switch setting are preserved. Dismissed or superseded connection requests and closed transports cannot silently reconnect through stale callbacks or startup retries. Client disconnection does not verify that server-side billing has ended.
+
 - Built-in Zhizi whole-game overview with the default 500-visit budget reduces sequential network waits between positions and requests more frequent analysis reports. It keeps the same analysis command, model, requested visits and full candidate variations; errors and cancellation still restore the foreground position before reuse.
 
 - Opening a game record before starting any engine now allows clicking and dragging the winrate graph to navigate moves. Offline imports retain their rules without waiting for an engine reader; stale imports still cannot complete after the selected engine or game changes.

@@ -40,7 +40,7 @@ public class ZhiziGtpTransport implements EngineTransport {
   private final BlockingByteInputStream stderr = new BlockingByteInputStream();
   private final SocketCommandOutputStream stdin;
   private final AtomicBoolean open = new AtomicBoolean(false);
-  private final AtomicBoolean closed = new AtomicBoolean(true);
+  private final AtomicBoolean closed = new AtomicBoolean(false);
   private final AtomicBoolean gracefulCloseStarted = new AtomicBoolean(false);
   private final AtomicBoolean abortStarted = new AtomicBoolean(false);
   private final AtomicBoolean recoveryRequested = new AtomicBoolean(false);
@@ -95,6 +95,7 @@ public class ZhiziGtpTransport implements EngineTransport {
         disposeSocketSession(false);
         boolean terminalFailure =
             Thread.currentThread().isInterrupted()
+                || closed.get()
                 || isFatalStartupFailure(startupFailureText(failure))
                 || attempt >= MAX_START_ATTEMPTS;
         if (terminalFailure) {
@@ -111,7 +112,9 @@ public class ZhiziGtpTransport implements EngineTransport {
                 + MAX_START_ATTEMPTS
                 + "）...");
         try {
-          TimeUnit.MILLISECONDS.sleep(retryDelayMillis);
+          if (!lifecycle.awaitRetry(retryDelayMillis)) {
+            throw new IOException("智子云算力连接已取消。");
+          }
         } catch (InterruptedException interrupted) {
           Thread.currentThread().interrupt();
           close();
@@ -127,8 +130,10 @@ public class ZhiziGtpTransport implements EngineTransport {
     if (accountToken.isEmpty()) {
       throw new IOException("请先登录智子云算力。");
     }
-    closed.set(false);
     long generation = lifecycle.beginAttempt();
+    if (generation < 0L) {
+      throw new IOException("智子云算力连接已取消。");
+    }
     ZhiziApiClient.SocketToken socketToken;
     try {
       socketToken = apiClient.fetchSocketioToken(accountToken, args);
@@ -143,6 +148,7 @@ public class ZhiziGtpTransport implements EngineTransport {
     CountDownLatch failureLatch = new CountDownLatch(1);
     AtomicReference<String> startupError = new AtomicReference<>("");
     Socket sessionSocket;
+    OkHttpClient sessionHttpClient = NetworkProxy.configure(new OkHttpClient.Builder()).build();
     try {
       IO.Options options =
           IO.Options.builder()
@@ -154,12 +160,11 @@ public class ZhiziGtpTransport implements EngineTransport {
               .setReconnection(false)
               .setTimeout(30000)
               .build();
-      socketHttpClient = NetworkProxy.configure(new OkHttpClient.Builder()).build();
-      options.callFactory = socketHttpClient;
-      options.webSocketFactory = socketHttpClient;
+      options.callFactory = sessionHttpClient;
+      options.webSocketFactory = sessionHttpClient;
       sessionSocket = IO.socket(socketToken.socketIOURL, options);
-      socket = sessionSocket;
     } catch (URISyntaxException e) {
+      closeHttpClient(sessionHttpClient);
       lifecycle.startupFailed(generation);
       throw new IOException("智子云算力连接地址无效。", e);
     }
@@ -206,10 +211,24 @@ public class ZhiziGtpTransport implements EngineTransport {
           String error = summarize(first(objects));
           handleSessionFailure(generation, "智子云算力连接失败: " + error, startupError, failureLatch);
         });
-    sessionSocket.connect();
+    if (!lifecycle.connectIfCurrent(
+        generation,
+        () -> {
+          socketHttpClient = sessionHttpClient;
+          socket = sessionSocket;
+          sessionSocket.connect();
+        })) {
+      sessionSocket.off();
+      sessionSocket.close();
+      closeHttpClient(sessionHttpClient);
+      throw new IOException("智子云算力连接已取消。");
+    }
     long deadline = System.currentTimeMillis() + READY_TIMEOUT.toMillis();
     try {
       while (!readyLatch.await(250, TimeUnit.MILLISECONDS)) {
+        if (closed.get()) {
+          throw new IOException("智子云算力连接已取消。");
+        }
         if (failureLatch.getCount() == 0) {
           String detail = startupError.get();
           throw new IOException(
@@ -477,6 +496,10 @@ public class ZhiziGtpTransport implements EngineTransport {
   private void closeSocketHttpClient() {
     OkHttpClient client = socketHttpClient;
     socketHttpClient = null;
+    closeHttpClient(client);
+  }
+
+  private static void closeHttpClient(OkHttpClient client) {
     if (client == null) {
       return;
     }
@@ -525,9 +548,34 @@ public class ZhiziGtpTransport implements EngineTransport {
     private SessionState state = SessionState.NEW;
 
     synchronized long beginAttempt() {
+      if (state == SessionState.CLOSED) {
+        return -1L;
+      }
       generation++;
       state = SessionState.FETCHING_TOKEN;
       return generation;
+    }
+
+    // This existing lifecycle monitor owns both terminal closure and socket publication.
+    // connect() only enqueues Socket.IO work; no network wait or teardown runs under this monitor.
+    synchronized boolean connectIfCurrent(long expectedGeneration, Runnable connect) {
+      if (expectedGeneration != generation || state != SessionState.CONNECTING) {
+        return false;
+      }
+      connect.run();
+      return true;
+    }
+
+    synchronized boolean awaitRetry(long delayMillis) throws InterruptedException {
+      long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(delayMillis);
+      while (state != SessionState.CLOSED) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0L) {
+          return true;
+        }
+        TimeUnit.NANOSECONDS.timedWait(this, remaining);
+      }
+      return false;
     }
 
     synchronized boolean tokenFetched(long expectedGeneration) {
@@ -607,6 +655,7 @@ public class ZhiziGtpTransport implements EngineTransport {
     synchronized void close() {
       generation++;
       state = SessionState.CLOSED;
+      notifyAll();
     }
 
     private boolean transition(

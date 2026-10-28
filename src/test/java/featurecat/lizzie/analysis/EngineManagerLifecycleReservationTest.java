@@ -6216,6 +6216,54 @@ class EngineManagerLifecycleReservationTest {
   }
 
   @Test
+  void explicitZhiziReselectionAfterDisconnectReopensOnlyTheRequestedOwner() throws Exception {
+    AtomicInteger starts = new AtomicInteger();
+    RestartIndexLeelaz cloud =
+        new RestartIndexLeelaz(RemoteComputeConfig.COMMAND_ZHIZI) {
+          @Override
+          public void startEngine(int index) {
+            try {
+              assertFalse(
+                  (boolean) getLeelazField(this, "zhiziDisconnected"),
+                  "accepted explicit selection must clear the disconnect latch before startup");
+            } catch (Exception failure) {
+              throw new AssertionError(failure);
+            }
+            starts.incrementAndGet();
+            rebindReader(this);
+            ExactSnapshotRestoreProtocolFixture.install(
+                this, ignored -> ExactSnapshotRestoreProtocolFixture.Response.success());
+            super.startEngine(index);
+          }
+        };
+    RestartIndexLeelaz local = new RestartIndexLeelaz("local-fixture");
+    EngineManager oldManager = Lizzie.engineManager;
+    try (RestartIndexTestEnvironment environment =
+        new RestartIndexTestEnvironment(List.of(cloud, local), 0, 1)) {
+      Lizzie.engineManager = environment.manager;
+      assertEquals(
+          ZhiziEngineConnections.State.DISCONNECTED, environment.manager.disconnectZhiziEngines());
+      assertTrue((boolean) getLeelazField(cloud, "zhiziDisconnected"));
+      assertEquals(-1, EngineManager.currentEngineNo);
+      assertSame(local, Lizzie.leelaz2);
+      assertTrue(local.isStarted());
+
+      environment.manager.switchEngine(0, true);
+      environment.completeDeferredSwitch();
+
+      assertEquals(1, starts.get());
+      assertEquals(0, EngineManager.currentEngineNo);
+      assertSame(cloud, Lizzie.leelaz);
+      assertTrue(cloud.isStarted());
+      assertFalse((boolean) getLeelazField(cloud, "zhiziDisconnected"));
+      assertEquals(0, local.shutdownCount);
+      assertEquals(-1, local.startIndex);
+    } finally {
+      Lizzie.engineManager = oldManager;
+    }
+  }
+
+  @Test
   void primaryRestartKeepsIndexZeroAfterSecondaryExplicitRestart() throws Exception {
     RestartIndexLeelaz primary = new RestartIndexLeelaz("same-command");
     RestartIndexLeelaz secondary = new RestartIndexLeelaz("same-command");
@@ -11005,7 +11053,7 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
-  private static final class RestartIndexLeelaz extends Leelaz {
+  private static class RestartIndexLeelaz extends Leelaz {
     private int shutdownCount;
     private int startIndex = -1;
 

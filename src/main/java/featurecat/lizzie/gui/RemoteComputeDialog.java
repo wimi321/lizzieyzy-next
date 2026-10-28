@@ -46,7 +46,6 @@ import java.net.URI;
 import java.text.MessageFormat;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.Optional;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -212,7 +211,8 @@ public class RemoteComputeDialog extends JDialog {
   private char passwordEchoChar;
   private boolean busy;
   private boolean updatingWeightOptions;
-  private Timer engineSwitchMonitor;
+  private RemoteComputeEngineSwitch engineSwitch;
+  private ZhiziConnectionControls zhiziConnections;
   private Timer verificationCooldownTimer;
   private int verificationCooldownSeconds;
   private SwingWorker<ZhiziAccountService.Overview, Void> accountOverviewWorker;
@@ -225,7 +225,7 @@ public class RemoteComputeDialog extends JDialog {
     accountService = new ZhiziAccountService(apiClient);
     catalogService = new ZhiziEngineCatalogService(apiClient);
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-    setMinimumSize(new Dimension(900, 600));
+    setMinimumSize(new Dimension(900, 710));
     setPreferredSize(new Dimension(1120, 740));
     setContentPane(buildContent());
     AccessibilitySupport.installEscapeToClose(getRootPane(), this);
@@ -260,7 +260,22 @@ public class RemoteComputeDialog extends JDialog {
     pageCards.add(buildZhiziPage(), RemoteComputeConfig.PROVIDER_ZHIZI);
     pageCards.add(buildCustomPage(), RemoteComputeConfig.PROVIDER_CUSTOM);
     root.add(pageCards, BorderLayout.CENTER);
-    root.add(buildFooter(), BorderLayout.SOUTH);
+    JPanel footer = transparent(new BorderLayout(0, 8));
+    zhiziConnections =
+        new ZhiziConnectionControls(
+            () -> ZhiziConnectionControls.backend(engineManager()),
+            () -> {
+              if (engineSwitch != null) engineSwitch.cancelZhizi();
+            },
+            () -> engineSwitch != null && engineSwitch.isZhiziPending(),
+            working -> {
+              setBusy(working || (engineSwitch != null && engineSwitch.isPending()));
+              if (!working) updateCurrentStatus();
+            },
+            RemoteComputeDialog::text);
+    footer.add(zhiziConnections, BorderLayout.NORTH);
+    footer.add(buildFooter(), BorderLayout.SOUTH);
+    root.add(footer, BorderLayout.SOUTH);
     return root;
   }
 
@@ -1733,7 +1748,7 @@ public class RemoteComputeDialog extends JDialog {
 
   private void switchToLocalProvider() {
     int localEngineIndex = RemoteComputeConfig.saveLocalProviderAndDefaultEngine();
-    if (localEngineIndex >= 0 && Lizzie.engineManager != null) {
+    if (localEngineIndex >= 0 && engineManager() != null) {
       switchPrimaryEngine(
           localEngineIndex,
           text("RemoteCompute.status.startingLocal", "Switching to the local engine..."),
@@ -1760,95 +1775,43 @@ public class RemoteComputeDialog extends JDialog {
       String successMessage,
       String failureMessage,
       Runnable afterActivation) {
-    stopEngineSwitchMonitor();
+    if (engineSwitch == null) engineSwitch = new RemoteComputeEngineSwitch();
     setBusy(true);
     updateStatus(startingMessage, true);
-    Runnable submit =
-        () -> {
-          EngineManager manager = Lizzie.engineManager;
-          if (manager == null || engineIndex < 0 || engineIndex >= manager.engineList.size()) {
-            finishEngineSwitch(false, failureMessage, null);
-            return;
+    engineSwitch.start(
+        engineIndex,
+        submit -> {
+          if (Lizzie.frame != null) {
+            Lizzie.frame.runAfterAutomaticQuickAnalysisReleased(submit);
+          } else {
+            SwingUtilities.invokeLater(submit);
           }
-          Leelaz target = manager.engineList.get(engineIndex);
-          if (Lizzie.leelaz == target && target != null && target.isLoaded()) {
-            finishEngineSwitch(true, successMessage, afterActivation);
-            return;
-          }
-          Optional<EngineManager.EngineSwitchUiSnapshot> submitted =
-              manager.switchEngineTrackedIfAvailable(engineIndex, true);
-          if (submitted.isEmpty()) {
-            finishEngineSwitch(false, failureMessage, null);
-            return;
-          }
-          monitorEngineSwitch(
-              manager,
-              submitted.orElseThrow().token(),
-              engineIndex,
-              successMessage,
-              failureMessage,
-              afterActivation);
-        };
-    if (Lizzie.frame != null) {
-      Lizzie.frame.runAfterAutomaticQuickAnalysisReleased(submit);
-    } else {
-      SwingUtilities.invokeLater(submit);
-    }
+        },
+        () ->
+            RemoteComputeEngineSwitch.backend(
+                engineManager(), () -> engineManager(), () -> Lizzie.leelaz, engineIndex),
+        result -> {
+          setBusy(false);
+          updateCurrentStatus();
+          if (result.success() && afterActivation != null) afterActivation.run();
+          String message = result.success() ? successMessage : failureMessage;
+          if (!result.detail().isEmpty()) message += " " + result.detail();
+          updateStatus(message, result.success());
+        });
   }
 
-  private void monitorEngineSwitch(
-      EngineManager manager,
-      long token,
-      int engineIndex,
-      String successMessage,
-      String failureMessage,
-      Runnable afterActivation) {
-    engineSwitchMonitor =
-        new Timer(
-            250,
-            event -> {
-              if (Lizzie.engineManager != manager) {
-                finishEngineSwitch(false, failureMessage, null);
-                return;
-              }
-              EngineManager.EngineSwitchUiSnapshot snapshot = manager.engineSwitchUiSnapshot(true);
-              if (snapshot.token() != token) {
-                finishEngineSwitch(false, failureMessage, null);
-                return;
-              }
-              if (snapshot.phase() == EngineManager.EngineSwitchUiPhase.ACTIVE
-                  && snapshot.activeIndex() == engineIndex) {
-                finishEngineSwitch(true, successMessage, afterActivation);
-              } else if (snapshot.phase() == EngineManager.EngineSwitchUiPhase.FAILED) {
-                String detail = snapshot.failureDetail().trim();
-                finishEngineSwitch(
-                    false, detail.isEmpty() ? failureMessage : failureMessage + " " + detail, null);
-              }
-            });
-    engineSwitchMonitor.setInitialDelay(0);
-    engineSwitchMonitor.start();
-  }
-
-  private void finishEngineSwitch(boolean success, String message, Runnable afterActivation) {
-    stopEngineSwitchMonitor();
-    setBusy(false);
-    updateCurrentStatus();
-    if (success && afterActivation != null) {
-      afterActivation.run();
-    }
-    updateStatus(message, success);
+  private EngineManager engineManager() {
+    return Lizzie.engineManager;
   }
 
   private void stopEngineSwitchMonitor() {
-    if (engineSwitchMonitor != null) {
-      engineSwitchMonitor.stop();
-      engineSwitchMonitor = null;
-    }
+    if (engineSwitch != null) engineSwitch.cancel();
   }
 
   @Override
   public void dispose() {
     stopEngineSwitchMonitor();
+    if (zhiziConnections != null) zhiziConnections.close();
     cancelAccountOverviewRefresh();
     if (catalogWorker != null) {
       catalogWorker.cancel(true);
@@ -1871,8 +1834,13 @@ public class RemoteComputeDialog extends JDialog {
 
   private void updateCurrentStatus() {
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
-    String activeProvider = activeProviderForStatus(Lizzie.leelaz, state);
-    if (RemoteComputeConfig.PROVIDER_ZHIZI.equals(activeProvider)) {
+    Leelaz activeEngine = Lizzie.leelaz;
+    String activeProvider = activeProviderForStatus(activeEngine, state);
+    if (activeEngine == null || !activeEngine.isStarted()) {
+      currentStatusLabel.setText(text("RemoteCompute.current.none", "No active primary engine"));
+      currentStatusLabel.setToolTipText(currentStatusLabel.getText());
+      statusDot.setColor(MUTED());
+    } else if (RemoteComputeConfig.PROVIDER_ZHIZI.equals(activeProvider)) {
       String fullName = RemoteComputeConfig.displayNameForZhiziArgs(state.zhiziArgs);
       currentStatusLabel.setText(
           text("RemoteCompute.current.zhizi", "Currently using: Zhizi Cloud"));
@@ -1925,7 +1893,11 @@ public class RemoteComputeDialog extends JDialog {
     boolean sameArgs = currentArgs().equals(state.zhiziArgs);
     boolean currentZhizi = isCurrentZhiziEngine();
     boolean loaded = currentZhizi && Lizzie.leelaz.isLoaded();
-    boolean failed = currentZhizi && Lizzie.leelaz.isDownWithError && !Lizzie.leelaz.isStarted();
+    boolean failed =
+        currentZhizi
+            && !Lizzie.leelaz.isStarted()
+            && !loaded
+            && (engineSwitch == null || !engineSwitch.isPending());
     if (!loggedIn) {
       useZhiziButton.setText(
           text("RemoteCompute.action.loginToEnable", "Sign in to enable Zhizi Cloud"));

@@ -310,6 +310,9 @@ public class Leelaz {
   private Process process;
   private volatile BenchmarkExecution currentBenchmarkExecution;
   private transient EngineTransport remoteTransport;
+  private boolean zhiziDisconnected;
+  private boolean zhiziStarting;
+  private boolean zhiziDisconnectReserved;
   private volatile Object engineArbitrationLock = new Object();
   private volatile Object analysisControlPonderLock = new Object();
 
@@ -1390,6 +1393,12 @@ public class Leelaz {
   }
 
   public void startEngine(int index) throws IOException {
+    boolean zhizi = RemoteComputeConfig.isZhiziEngineCommand(engineCommand);
+    synchronized (engineArbitrationLock()) {
+      if (zhizi && (zhiziDisconnected || zhiziStarting || zhiziDisconnectReserved))
+        throw new IOException("Zhizi connection was disconnected or is already starting");
+      if (zhizi) zhiziStarting = true;
+    }
     EngineStartupDiagnostics.Attempt previous = startupDiagnosticAttempt;
     try {
       startEngineOwned(index);
@@ -1398,6 +1407,52 @@ public class Leelaz {
       if (attempt != null && attempt != previous)
         attempt.fail("startup-handshake", failure.toString());
       throw failure;
+    } finally {
+      synchronized (engineArbitrationLock()) {
+        if (zhizi) zhiziStarting = false;
+      }
+    }
+  }
+
+  boolean zhiziConnectionBusy() {
+    synchronized (engineArbitrationLock()) {
+      return zhiziStarting
+          || zhiziDisconnectReserved
+          || activeUpdateEngineStartAttempt != null
+          || readBoardGmaReservation != null
+          || hasExclusiveGtpWorkInProgress();
+    }
+  }
+
+  ExclusiveGtpLifecycleReservation reserveZhiziDisconnect() {
+    synchronized (engineArbitrationLock()) {
+      if (zhiziConnectionBusy()) return null;
+      ExclusiveGtpLifecycleReservation reservation = beginExclusiveGtpLifecycleReservation();
+      if (reservation != null) zhiziDisconnectReserved = true;
+      return reservation;
+    }
+  }
+
+  void releaseZhiziDisconnect(ExclusiveGtpLifecycleReservation reservation) {
+    try {
+      reservation.close();
+    } finally {
+      synchronized (engineArbitrationLock()) {
+        zhiziDisconnectReserved = false;
+      }
+    }
+  }
+
+  void markZhiziDisconnected() {
+    synchronized (engineArbitrationLock()) {
+      zhiziDisconnected = true;
+      canCheckAlive = false;
+    }
+  }
+
+  void allowExplicitZhiziConnection() {
+    synchronized (engineArbitrationLock()) {
+      zhiziDisconnected = false;
     }
   }
 
@@ -10370,7 +10425,9 @@ public class Leelaz {
         return null;
       }
     }
-    if (binding.remoteTransport != null && binding.remoteTransport.isRecoveryRequested()) {
+    if (!binding.normalExitRequested
+        && binding.remoteTransport != null
+        && binding.remoteTransport.isRecoveryRequested()) {
       isDownWithError = true;
       rememberRecentLine(
           recentStderrLines,
@@ -23343,86 +23400,6 @@ public class Leelaz {
 
     return stats;
   }
-
-  /*
-   * initializes the normalizing factor for winrate_to_handicap_stones conversion.
-   */
-  //	public void estimatePassWinrate() {
-  //		// we use A1 instead of pass, because valuenetwork is more accurate for A1 on
-  //		// empty board than a
-  //		// pass.
-  //		// probably the reason for higher accuracy is that networks have randomness
-  //		// which produces
-  //		// occasionally A1 as first move, but never pass.
-  //		// for all practical purposes, A1 should equal pass for the value it provides,
-  //		// hence good
-  //		// replacement.
-  //		// this way we avoid having to run lots of playouts for accurate winrate for
-  //		// pass.
-  //		playMove(Stone.BLACK, "A1");
-  //		togglePonder();
-  //		WinrateStats stats = getWinrateStats();
-  //
-  //		// we could use a timelimit or higher minimum playouts to get a more accurate
-  //		// measurement.
-  //		while (stats.totalPlayouts < 1) {
-  //			try {
-  //				Thread.sleep(100);
-  //			} catch (InterruptedException e) {
-  //				throw new Error(e);
-  //			}
-  //			stats = getWinrateStats();
-  //		}
-  //		mHandicapWinrate = stats.maxWinrate;
-  //		togglePonder();
-  //		undo();
-  //		Lizzie.board.clear(false);
-  //	}
-
-  // public static double mHandicapWinrate = 25;
-
-  /**
-   * Convert winrate to handicap stones, by normalizing winrate by first move pass winrate (one
-   * stone handicap).
-   */
-  //	public static double winrateToHandicap(double pWinrate) {
-  //		// we assume each additional handicap lowers winrate by fixed percentage.
-  //		// this is pretty accurate for human handicap games at least.
-  //		// also this kind of property is a requirement for handicaps to determined based
-  //		// on rank
-  //		// difference.
-  //
-  //		// lets convert the 0%-50% range and 100%-50% from both the move and and pass
-  //		// into range of 0-1
-  //		double moveWinrateSymmetric = 1 - Math.abs(1 - (pWinrate / 100) * 2);
-  //		double passWinrateSymmetric = 1 - Math.abs(1 - (mHandicapWinrate / 100) * 2);
-  //
-  //		// convert the symmetric move winrate into correctly scaled log scale, so that
-  //		// winrate of
-  //		// passWinrate equals 1 handicap.
-  //		double handicapSymmetric = Math.log(moveWinrateSymmetric) / Math.log(passWinrateSymmetric);
-  //
-  //		// make it negative if we had low winrate below 50.
-  //		return Math.signum(pWinrate - 50) * handicapSymmetric;
-  //	}
-
-  // public synchronized void addListener(LeelazListener listener) {
-  // listeners.add(listener);
-  // }
-
-  // Beware, due to race conditions, bestMoveNotification can be called once even
-  // after item is
-  // removed
-  // with removeListener
-  //	public synchronized void removeListener(LeelazListener listener) {
-  //		listeners.remove(listener);
-  //	}
-
-  // private synchronized void notifyBestMoveListeners() {
-  // for (LeelazListener listener : listeners) {
-  // listener.bestMoveNotification(bestMoves);
-  // }
-  // }
 
   public boolean isStarted() {
     return started;
