@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Passing again after stepping back now enters the existing pass variation instead of creating a duplicate branch, even when that variation already carries analysis comments. Stones already did this; passes now match original LizzieYzy too.
+
 - Invalid ordinary breadth drafts no longer overwrite effective engine values or persisted analysis metadata. Saving engine-game records after changing score-display mode preserves move-attributed summaries and personal notes; already-open custom-PDA editors also respect pending parameter restoration and current-engine eligibility.
 
 - Analysis comments now show PDA and known nonzero analysis breadth independently, including small breadth values. Both engine slots retain breadth metadata through SGF save/load and history copies; older records without that metadata remain unknown. Ordinary breadth edits, checkbox changes and advanced settings share the effective value without relabeling results from the previous search.

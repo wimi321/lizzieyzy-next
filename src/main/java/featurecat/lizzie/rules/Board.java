@@ -2607,9 +2607,7 @@ public class Board {
 
       // check to see if this move is being replayed in history
       if (history.getNext().map(this::isKnownPass).orElse(false) && !newBranch) {
-        // this is the next move in history. Just increment history so that we don't
-        // erase the
-        // redo's
+        // this is the next move in history: walk into it so the redo's are kept
         history.next();
         if (Lizzie.config.playSound) Utils.playVoiceFile();
         if (!engineGamePlaying()) feedEngineForMainlineMove(color, "pass");
@@ -2645,7 +2643,10 @@ public class Board {
               0,
               0);
       newState.dummy = dummy;
-      history.addOrGoto(newState, newBranch);
+      // A pass already played as a later variation is reused, like place() does for stones.
+      if (!newBranch && !dummy && history.nextByMoveIdentity(newState).isPresent())
+        clearAfterMove();
+      else history.addOrGoto(newState, newBranch);
       // update leelaz with pass
       if (Lizzie.leelaz != null && !Lizzie.leelaz.isInputCommand && !engineGamePlaying())
         feedEngineForMainlineMove(color, "pass");
@@ -2655,7 +2656,6 @@ public class Board {
           && Lizzie.frame.playerIsBlack != getData().blackToPlay)
         Lizzie.leelaz.genmove((history.isBlacksTurn() ? "b" : "w"));
 
-      // update history with pass
       if (Lizzie.config.playSound) Utils.playVoiceFile();
       Lizzie.frame.refresh();
       if (Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz) {
