@@ -171,6 +171,27 @@ class BoardPlayCaptureHistoryRegressionTest {
   }
 
   @Test
+  void replayingAPassVariationWalksIntoItInsteadOfForkingAgain() throws Exception {
+    try (RulesLayerTestHarness env = RulesLayerTestHarness.open(SIZE)) {
+      Board board = env.board();
+      board.place(2, 2, Stone.BLACK);
+      board.place(3, 3, Stone.WHITE);
+      BoardHistoryNode afterBlack = board.getHistory().getStart().next().orElseThrow();
+      board.previousMove(false);
+
+      board.pass(Stone.WHITE);
+      BoardHistoryNode passVariation = env.current();
+      // Analysis comments are written onto visited nodes; they must not hide the variation.
+      passVariation.getData().comment = "analysed pass";
+      board.previousMove(false);
+      board.pass(Stone.WHITE);
+
+      assertSame(passVariation, env.current());
+      assertEquals(2, afterBlack.numberOfChildren());
+    }
+  }
+
+  @Test
   void koRecaptureIsRejectedUntilThePositionChanges() throws Exception {
     try (RulesLayerTestHarness env = RulesLayerTestHarness.open(SIZE)) {
       Board board = env.board();
