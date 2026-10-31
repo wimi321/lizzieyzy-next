@@ -40,6 +40,7 @@ final class CoachSetupForm extends JPanel {
   private final CoachSetupWidgets.RankSlider slider;
   private final CoachSetupWidgets.SheetButton weaker;
   private final CoachSetupWidgets.SheetButton stronger;
+  private final CoachRankTable.Link rankTable;
   private final List<CoachSetupWidgets.ChoiceCard> modeCards = new ArrayList<>();
   private final CoachSetupWidgets.Segmented color;
   private final CoachSetupWidgets.Segmented pace;
@@ -82,6 +83,15 @@ final class CoachSetupForm extends JPanel {
             CoachSetupWidgets.SheetButton.Shape.ROUND,
             CoachSetupWidgets.SheetButton.Glyph.PLUS,
             t("HumanSlTraining.rank.up", "One step stronger"));
+    rankTable =
+        new CoachRankTable.Link(
+            t(
+                "HumanSlTraining.rankTable.tip",
+                "Compare KataGo ranks with Fox / Tygem and real-world grades"));
+    rankTable.addActionListener(
+        event ->
+            CoachRankTable.show(
+                this, text, RankScale.rank(slider.value()), RankScale.dan(slider.value())));
     weaker.addActionListener(event -> slider.setValue(slider.value() - 1, true));
     stronger.addActionListener(event -> slider.setValue(slider.value() + 1, true));
     for (TrainingMode choice : TrainingMode.CHOICES) {
@@ -137,6 +147,7 @@ final class CoachSetupForm extends JPanel {
     fromCurrent =
         new CoachSetupWidgets.Switch(
             t("HumanSlTraining.fromCurrent", "Start from the current position"), () -> {});
+    add(rankTable);
     add(weaker);
     add(slider);
     add(stronger);
@@ -194,6 +205,7 @@ final class CoachSetupForm extends JPanel {
   public void setEnabled(boolean enabled) {
     super.setEnabled(enabled);
     slider.setEnabled(enabled);
+    rankTable.setEnabled(enabled);
     weaker.setEnabled(enabled);
     stronger.setEnabled(enabled);
     modeCards.forEach(card -> card.setEnabled(enabled));
@@ -206,6 +218,10 @@ final class CoachSetupForm extends JPanel {
   private void rankChanged() {
     weaker.setEnabled(isEnabled() && slider.value() > 0);
     stronger.setEnabled(isEnabled() && slider.value() < RankScale.STOPS - 1);
+    rankTable.setText(
+        CoachRankTable.summary(
+            text, RankScale.rank(slider.value()), RankScale.dan(slider.value())));
+    revalidate();
     repaint();
   }
 
@@ -327,6 +343,11 @@ final class CoachSetupForm extends JPanel {
   private int layoutHeight(int width, boolean place) {
     int y = 0;
     strengthTop = y;
+    if (place) {
+      Dimension link = rankTable.getPreferredSize();
+      int linkWidth = Math.min(link.width, width / 2);
+      rankTable.setBounds(width - linkWidth, y + (LABEL - link.height) / 2, linkWidth, link.height);
+    }
     y += LABEL + 10 + RANK_TEXT + 10;
     if (place) {
       weaker.setBounds(0, y + 4, 36, 36);

@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- The AI Coach setup sheet shows what the chosen opponent rank roughly equals on Fox/Tygem and as a real-world amateur grade, and opens a full KataGo rank table with the current opponent highlighted. The community-compiled table is a guide for picking an opponent, not a rating.
+
 - Passing again after stepping back now enters the existing pass variation instead of creating a duplicate branch, even when that variation already carries analysis comments. Stones already did this; passes now match original LizzieYzy too.
 
 - Invalid ordinary breadth drafts no longer overwrite effective engine values or persisted analysis metadata. Saving engine-game records after changing score-display mode preserves move-attributed summaries and personal notes; already-open custom-PDA editors also respect pending parameter restoration and current-engine eligibility.

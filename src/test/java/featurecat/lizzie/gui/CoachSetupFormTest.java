@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import featurecat.lizzie.training.HumanSlTrainingConfig;
 import featurecat.lizzie.training.HumanThinkTime;
 import featurecat.lizzie.training.OpponentPreset;
+import featurecat.lizzie.training.RankReference;
 import featurecat.lizzie.training.TrainingMode;
 import java.awt.Component;
 import java.awt.Rectangle;
@@ -145,6 +146,39 @@ class CoachSetupFormTest {
         shown.add(bounds);
       }
     }
+  }
+
+  @Test
+  void theRankTableLinkFollowsTheSliderAndFallsBackBelowTenKyu() {
+    CoachSetupForm form = form(false);
+    CoachSetupWidgets.RankSlider slider = componentOf(form, CoachSetupWidgets.RankSlider.class);
+    CoachRankTable.Link link = componentOf(form, CoachRankTable.Link.class);
+
+    assertEquals("≈ Fox/Tygem 3D · Amateur 3 dan", link.getText());
+    press(slider, KeyEvent.VK_END);
+    assertEquals("≈ Fox/Tygem 9D · Amateur 6 dan", link.getText());
+    press(slider, KeyEvent.VK_HOME);
+    assertEquals("Rank table", link.getText(), "the table stops at 10 kyu");
+  }
+
+  @Test
+  void theRankTablePicksOutTheChosenOpponentAndUsesTheLocalizedNames() {
+    CoachRankTable.Sheet sheet = new CoachRankTable.Sheet((key, fallback) -> fallback, 3, true);
+    RankReference.Row picked = RankReference.ROWS.get(sheet.highlightedRow());
+    assertEquals("3D", picked.fox());
+    assertEquals(
+        -1, new CoachRankTable.Sheet((key, fallback) -> fallback, 15, false).highlightedRow());
+
+    java.util.Map<String, String> zh =
+        java.util.Map.of(
+            "HumanSlTraining.rank.danValue", "{0}段",
+            "HumanSlTraining.rankTable.strong", "强{0}",
+            "HumanSlTraining.rankTable.amateurDan", "业余{0}段");
+    java.util.function.BinaryOperator<String> text =
+        (key, fallback) -> zh.getOrDefault(key, fallback);
+    RankReference.Row strongEight = RankReference.ROWS.get(5);
+    assertEquals("强8段", CoachRankTable.rank(text, strongEight));
+    assertEquals("业余5段", CoachRankTable.grade(text, strongEight));
   }
 
   @Test
