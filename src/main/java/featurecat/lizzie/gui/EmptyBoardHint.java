@@ -10,6 +10,7 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.util.List;
 import java.util.ResourceBundle;
 
 /**
@@ -48,12 +49,12 @@ final class EmptyBoardHint {
   /**
    * The main board's call.
    *
-   * @param firstUse whether no game was ever opened; people who have opened one know the way
+   * @param recentFiles the recently opened games; people who have opened one know the way
    */
   static void paintOnMainBoard(
       Graphics2D g,
       boolean mainBoard,
-      boolean firstUse,
+      List<String> recentFiles,
       int boardX,
       int boardY,
       int boardWidth,
@@ -61,7 +62,8 @@ final class EmptyBoardHint {
     Board board = Lizzie.board;
     paint(
         g,
-        board != null && shows(mainBoard, firstUse, board.getHistory()),
+        board != null
+            && shows(mainBoard, recentFiles == null || recentFiles.isEmpty(), board.getHistory()),
         Lizzie.resourceBundle,
         LizzieFrame.uiFont,
         boardX,

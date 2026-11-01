@@ -420,7 +420,7 @@ public class BoardRenderer {
     EmptyBoardHint.paintOnMainBoard(
         g,
         !isIndependBoard && boardIndex == 0,
-        Lizzie.config.recentFilePaths.isEmpty(),
+        Lizzie.config.recentFilePaths,
         x,
         y,
         boardWidth,
