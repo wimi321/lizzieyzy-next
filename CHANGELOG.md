@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- AI Coach offers every level of the KataGo rank table, from 10 kyu to 11 dan with the strong half steps (强1段 to 强10段), and names the opponent by its Fox rank, with the KataGo level and real-world grade beside it. Each level plays with the settings of the HumanSL config it was measured with: kyu levels sample a pre-AlphaZero HumanSL policy, and dan levels search with their own profile, visits, PiKL lambda, exploration and temperatures, then play the move KataGo's genmove would choose. Clicking a row of the rank table picks that level. Saved 1–9 dan and 1–10 kyu choices keep their number; weaker saved kyu ranks become 10 kyu.
+
 - The AI Coach setup sheet shows what the chosen opponent rank roughly equals on Fox/Tygem and as a real-world amateur grade, and opens a full KataGo rank table with the current opponent highlighted. The community-compiled table is a guide for picking an opponent, not a rating.
 
 - Passing again after stepping back now enters the existing pass variation instead of creating a duplicate branch, even when that variation already carries analysis comments. Stones already did this; passes now match original LizzieYzy too.

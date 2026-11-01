@@ -44,10 +44,13 @@ final class HumanPolicySampler {
    * KataGo's interpolateEarly: the temperature halves its distance to the late value each halflife.
    */
   static double temperature(int moveNumber, int boardWidth, int boardHeight) {
-    double area = Math.max(1, boardWidth) * (double) Math.max(1, boardHeight);
-    double halflives =
-        Math.max(0, moveNumber) / TEMPERATURE_HALFLIFE_MOVES * 19.0 / Math.sqrt(area);
-    return LATE_TEMPERATURE + (EARLY_TEMPERATURE - LATE_TEMPERATURE) * Math.pow(0.5, halflives);
+    return HumanSlChosenMove.interpolateEarly(
+        moveNumber,
+        boardWidth,
+        boardHeight,
+        TEMPERATURE_HALFLIFE_MOVES,
+        EARLY_TEMPERATURE,
+        LATE_TEMPERATURE);
   }
 
   /**
@@ -56,34 +59,12 @@ final class HumanPolicySampler {
    * keep their human odds, rarer ones are sharpened away by the temperature.
    */
   static double[] weights(List<HumanLikeMoveSelector.Candidate> moves, double temperature) {
-    double[] weights = new double[moves == null ? 0 : moves.size()];
-    double max = 0.0;
-    double sum = 0.0;
-    for (int i = 0; i < weights.length; i++) {
-      double probability = moves.get(i).probability;
-      if (probability > 0.0 && Double.isFinite(probability)) {
-        max = Math.max(max, probability);
-        sum += probability;
-      }
+    double[] probabilities = new double[moves == null ? 0 : moves.size()];
+    for (int i = 0; i < probabilities.length; i++) {
+      probabilities[i] = moves.get(i).probability;
     }
-    if (!(max > 0.0) || !Double.isFinite(sum)) {
-      return weights;
-    }
-    double threshold = Math.min(0.0, Math.log(RARE_MOVE_PROBABILITY) + Math.log(sum / max));
-    double safeTemperature = Math.max(1.0e-4, temperature);
-    for (int i = 0; i < weights.length; i++) {
-      double probability = moves.get(i).probability;
-      if (!(probability > 0.0) || !Double.isFinite(probability)) {
-        continue;
-      }
-      double logRelative = Math.log(probability / max);
-      double damped =
-          logRelative > threshold
-              ? logRelative
-              : (logRelative - threshold) / safeTemperature + threshold;
-      weights[i] = Math.exp(damped);
-    }
-    return weights;
+    return HumanSlChosenMove.temperatureWeights(
+        probabilities, Math.max(1.0e-4, temperature), RARE_MOVE_PROBABILITY);
   }
 
   /** Samples one move; {@code randomValue} is uniform in [0, 1). Null when nothing is playable. */
@@ -93,28 +74,10 @@ final class HumanPolicySampler {
       int boardWidth,
       int boardHeight,
       double randomValue) {
-    double[] weights = weights(moves, temperature(moveNumber, boardWidth, boardHeight));
-    double total = 0.0;
-    for (double weight : weights) {
-      total += weight;
-    }
-    if (!(total > 0.0) || !Double.isFinite(total)) {
-      return null;
-    }
-    double target = Math.max(0.0, Math.min(0.999999999999, randomValue)) * total;
-    double cumulative = 0.0;
-    String last = null;
-    for (int i = 0; i < weights.length; i++) {
-      if (weights[i] <= 0.0) {
-        continue;
-      }
-      last = moves.get(i).move;
-      cumulative += weights[i];
-      if (target < cumulative) {
-        return last;
-      }
-    }
-    return last;
+    int index =
+        HumanSlChosenMove.sampleIndex(
+            weights(moves, temperature(moveNumber, boardWidth, boardHeight)), randomValue);
+    return index < 0 ? null : moves.get(index).move;
   }
 
   /** Share of the policy on passing, 0 when the moves do not include a pass. */

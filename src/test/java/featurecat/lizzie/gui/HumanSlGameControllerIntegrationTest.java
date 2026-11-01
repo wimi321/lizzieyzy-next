@@ -23,7 +23,9 @@ import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.training.AiResignation;
+import featurecat.lizzie.training.CoachLevel;
 import featurecat.lizzie.training.GameResult;
+import featurecat.lizzie.training.HumanSlPlaySettings;
 import featurecat.lizzie.training.HumanSlTrainingConfig;
 import featurecat.lizzie.training.HumanSlTrainingSession;
 import featurecat.lizzie.training.MoveVerdict;
@@ -178,6 +180,32 @@ class HumanSlGameControllerIntegrationTest {
       assertEquals(1, runner.requestCount());
       assertTrue(controller.isAiThinking());
       assertSame(controller, Lizzie.frame.humanSlGame);
+
+      controller.abort();
+      assertTrue(controller.isFinished());
+    }
+  }
+
+  @Test
+  void theAiPlaysWithTheSettingsOfTheChosenLevel() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              runner,
+              HumanSlTrainingConfig.builder()
+                  .level(CoachLevel.STRONG_DAN_10)
+                  .playerColor(HumanSlTrainingConfig.PlayerColor.WHITE)
+                  .fromCurrentPosition(true)
+                  .moveTimeSeconds(2)
+                  .build(),
+              new HumanSlTrainingSession());
+      controller.setExitLifecycleForTesting(Runnable::run, Runnable::run, () -> true, null);
+      controller.start();
+
+      assertTrue(runner.awaitRequest());
+      assertEquals(List.of(CoachLevel.STRONG_DAN_10.play()), runner.playedSettings);
+      assertEquals(200, runner.playedSettings.get(0).maxVisits());
 
       controller.abort();
       assertTrue(controller.isFinished());
@@ -2441,6 +2469,8 @@ class HumanSlGameControllerIntegrationTest {
     private final AtomicInteger reviewCount = new AtomicInteger();
     private volatile PositionReview review;
     private volatile OptionalDouble finalBlackLead = OptionalDouble.of(3.4);
+    private final List<HumanSlPlaySettings> playedSettings =
+        java.util.Collections.synchronizedList(new ArrayList<HumanSlPlaySettings>());
 
     private BlockingHumanSlRunner() {
       this(null);
@@ -2469,6 +2499,18 @@ class HumanSlGameControllerIntegrationTest {
         return Optional.empty();
       }
       return Optional.of(reply);
+    }
+
+    @Override
+    public Optional<HumanMoveChoice> chooseMove(
+        BoardHistoryNode positionNode, HumanSlPlaySettings play, Duration timeout) {
+      playedSettings.add(play);
+      return chooseHumanMove(
+          positionNode,
+          play.profile(),
+          play.maxVisits(),
+          HumanSlPlaySettings.ROOT_SYMMETRIES,
+          timeout);
     }
 
     @Override

@@ -16,6 +16,7 @@ import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.training.AiResignation;
 import featurecat.lizzie.training.GameResult;
 import featurecat.lizzie.training.GameTreePosition;
+import featurecat.lizzie.training.HumanSlPlaySettings;
 import featurecat.lizzie.training.HumanSlTrainingConfig;
 import featurecat.lizzie.training.HumanSlTrainingSession;
 import featurecat.lizzie.training.HumanThinkTime;
@@ -60,6 +61,10 @@ public final class HumanSlGameController {
   private final HumanSlTrainingSession trainingSession;
   private final boolean humanIsBlack;
   private final String profile;
+
+  /** The level's settings; null for a retired preset, which plays by profile alone. */
+  private final HumanSlPlaySettings play;
+
   private final Duration moveTimeout;
   private final ExecutorService gameExecutor = Executors.newSingleThreadExecutor();
   private final AtomicLong requestGeneration = new AtomicLong();
@@ -142,8 +147,9 @@ public final class HumanSlGameController {
     this.trainingSession = trainingSession == null ? new HumanSlTrainingSession() : trainingSession;
     humanIsBlack = config.resolveHumanIsBlack();
     profile = config.humanSlProfile();
+    play = config.play().orElse(null);
     moveTimeout = Duration.ofSeconds(Math.max(2, config.moveTimeSeconds));
-    aiResignation = AiResignation.forProfile(profile);
+    aiResignation = play != null ? AiResignation.forPlay(play) : AiResignation.forProfile(profile);
   }
 
   /** Compatibility constructor for existing integrations and tests. */
@@ -249,7 +255,7 @@ public final class HumanSlGameController {
         return text("HumanSlTraining.pro.online9d", "Online 9 dan");
       case RANK:
       default:
-        return rankLabel(config.rank, config.danRank);
+        return CoachLevelText.fox(this::text, config.level);
     }
   }
 
@@ -459,7 +465,11 @@ public final class HumanSlGameController {
 
   private void configurePlayerNames() {
     String me = text("HumanSlGame.humanPlayer", "You");
-    String ai = text("HumanSlGame.aiPlayer", "HumanSL AI") + " (" + opponentLabel() + ")";
+    String opponent =
+        config.opponentPreset == OpponentPreset.RANK
+            ? opponentLabel() + ", KataGo " + CoachLevelText.kataGo(this::text, config.level)
+            : opponentLabel();
+    String ai = text("HumanSlGame.aiPlayer", "HumanSL AI") + " (" + opponent + ")";
     GameInfo info = Lizzie.board.getHistory().getGameInfo();
     info.setPlayerBlack(humanIsBlack ? me : ai);
     info.setPlayerWhite(humanIsBlack ? ai : me);
@@ -860,12 +870,14 @@ public final class HumanSlGameController {
                       && generation == requestGeneration.get();
                   attempt++) {
                 choice =
-                    runner.chooseHumanMove(
-                        positionNode,
-                        profile,
-                        config.analysisVisits(),
-                        config.rootSymmetries(),
-                        moveTimeout);
+                    play != null
+                        ? runner.chooseMove(positionNode, play, moveTimeout)
+                        : runner.chooseHumanMove(
+                            positionNode,
+                            profile,
+                            config.analysisVisits(),
+                            config.rootSymmetries(),
+                            moveTimeout);
                 if (choice.isPresent()) {
                   choice = resignIfHopeless(choice.get(), positionNode);
                   break;
@@ -1886,12 +1898,6 @@ public final class HumanSlGameController {
     } catch (Exception ignored) {
       return fallback;
     }
-  }
-
-  private String rankLabel(int rank, boolean danRank) {
-    String key = danRank ? "HumanSlTraining.rank.danValue" : "HumanSlTraining.rank.kyuValue";
-    String fallback = danRank ? "{0} dan" : "{0} kyu";
-    return MessageFormat.format(text(key, fallback), rank);
   }
 
   public static Path resolveDefaultHumanModel() {
