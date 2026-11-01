@@ -15,7 +15,8 @@ the player's own moves. This page describes how it works and where the code is.
 - **执棋**: 执黑, 执白 or 随机. With a handicap the player always takes Black and receives the
   stones, and komi is 0.5.
 - **AI 思考时间**: 自然, 快 or 慢 (`HumanThinkTime.Pace`). It only paces the AI's replies. The
-  move is chosen the same way, with the same 10-second search budget, at every pace.
+  move is chosen the same way, with the same search budget, at every pace: 10 seconds a move, and
+  20 for 强10段 and 11段.
 - **更多设置**: 让子, 贴目 and 从当前局面开始.
 
 The last game's choices are saved (`HumanSlTrainingPreferences`). The dialog checks the HumanSL
@@ -39,7 +40,10 @@ table was measured with (`HumanSlPlaySettings`):
   exp((utility − best utility) / lambda), with moves the search did not reach at the average
   utility; the pass keeps the share the search gives it; then the temperature sharpens the
   result. A lower lambda lets KataGo, not the human model, decide. The search keeps genmove's
-  `wideRootNoise` of 0, which the analysis engine would otherwise raise.
+  `wideRootNoise` of 0, which the analysis engine would otherwise raise. A search stops at its
+  visits or at the move budget; 强10段 and 11段, with 200 and 400 visits, get twice the budget
+  (`moveTimeFactor`). On an Apple Silicon Mac with the B11 network, 11段's 400 visits take about
+  11 seconds and 强10段's 200 between 5 and 9.
 - **Passing:** from 40% of the board on, or after the player passed. A kyu level asks a 40-visit
   search; a dan level passes when its own search prefers to.
 - **Resigning:** as in the configs: a kyu level after 20 turns below 0.5% and 40 points behind, a

@@ -94,14 +94,14 @@ public enum CoachLevel {
       "10D",
       Grade.TOP_PRO,
       0,
-      search("rank_8d").visits(200).pikl(0.25).rootWeightless(0.9)),
+      search("rank_8d").visits(200).pikl(0.25).rootWeightless(0.9).moveTime(2)),
   DAN_11(
       Kind.DAN,
       11,
       "10D",
       Grade.BEYOND_TOP_PRO,
       0,
-      search("rank_9d").visits(400).pikl(0.01).rootWeightless(1.0));
+      search("rank_9d").visits(400).pikl(0.01).rootWeightless(1.0).moveTime(2));
 
   /** The level a new game starts at. */
   public static final CoachLevel DEFAULT = DAN_3;

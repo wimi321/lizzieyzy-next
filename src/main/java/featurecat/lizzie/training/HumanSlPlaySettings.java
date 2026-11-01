@@ -27,6 +27,8 @@ import java.util.Map;
  *     chosenMoveTemperatureOnlyBelowProb}
  * @param staticScoreUtility {@code staticScoreUtilityFactor}
  * @param dynamicScoreUtility {@code dynamicScoreUtilityFactor}
+ * @param moveTimeFactor how many times the coach's time per move the level may search: the levels
+ *     of 200 and 400 visits get twice as long, so that slower machines still reach their visits
  */
 public record HumanSlPlaySettings(
     String profile,
@@ -37,7 +39,8 @@ public record HumanSlPlaySettings(
     double cpuctPermanent,
     double temperatureOnlyBelowProb,
     double staticScoreUtility,
-    double dynamicScoreUtility) {
+    double dynamicScoreUtility,
+    int moveTimeFactor) {
   /** Both families sample the root from two symmetries ({@code rootNumSymmetriesToSample}). */
   public static final int ROOT_SYMMETRIES = 2;
 
@@ -45,12 +48,12 @@ public record HumanSlPlaySettings(
 
   /** A level that plays the raw policy of {@code profile}, as gtp_human5k_example.cfg does. */
   public static HumanSlPlaySettings policy(String profile) {
-    return new HumanSlPlaySettings(profile, false, 40, 100000000.0, 0.0, 1000.0, 0.01, 0.3, 0.0);
+    return new HumanSlPlaySettings(profile, false, 40, 100000000.0, 0.0, 1000.0, 0.01, 0.3, 0.0, 1);
   }
 
   /** A search level with the values of gtp_human9d_search_example.cfg's family. */
   public static HumanSlPlaySettings search(String profile) {
-    return new HumanSlPlaySettings(profile, true, 60, 0.75, 0.8, 5.0, 1.0, 0.5, 0.5);
+    return new HumanSlPlaySettings(profile, true, 60, 0.75, 0.8, 5.0, 1.0, 0.5, 0.5, 1);
   }
 
   HumanSlPlaySettings visits(int value) {
@@ -63,7 +66,8 @@ public record HumanSlPlaySettings(
         cpuctPermanent,
         temperatureOnlyBelowProb,
         staticScoreUtility,
-        dynamicScoreUtility);
+        dynamicScoreUtility,
+        moveTimeFactor);
   }
 
   HumanSlPlaySettings pikl(double value) {
@@ -76,7 +80,8 @@ public record HumanSlPlaySettings(
         cpuctPermanent,
         temperatureOnlyBelowProb,
         staticScoreUtility,
-        dynamicScoreUtility);
+        dynamicScoreUtility,
+        moveTimeFactor);
   }
 
   HumanSlPlaySettings rootWeightless(double value) {
@@ -89,7 +94,8 @@ public record HumanSlPlaySettings(
         cpuctPermanent,
         temperatureOnlyBelowProb,
         staticScoreUtility,
-        dynamicScoreUtility);
+        dynamicScoreUtility,
+        moveTimeFactor);
   }
 
   HumanSlPlaySettings permanentExploration(double value) {
@@ -102,7 +108,8 @@ public record HumanSlPlaySettings(
         value,
         temperatureOnlyBelowProb,
         staticScoreUtility,
-        dynamicScoreUtility);
+        dynamicScoreUtility,
+        moveTimeFactor);
   }
 
   HumanSlPlaySettings onlyBelowProb(double value) {
@@ -115,7 +122,8 @@ public record HumanSlPlaySettings(
         cpuctPermanent,
         value,
         staticScoreUtility,
-        dynamicScoreUtility);
+        dynamicScoreUtility,
+        moveTimeFactor);
   }
 
   HumanSlPlaySettings scoreUtility(double value) {
@@ -128,7 +136,22 @@ public record HumanSlPlaySettings(
         cpuctPermanent,
         temperatureOnlyBelowProb,
         value,
-        value);
+        value,
+        moveTimeFactor);
+  }
+
+  HumanSlPlaySettings moveTime(int factor) {
+    return new HumanSlPlaySettings(
+        profile,
+        searches,
+        maxVisits,
+        piklLambda,
+        rootExploreWeightless,
+        cpuctPermanent,
+        temperatureOnlyBelowProb,
+        staticScoreUtility,
+        dynamicScoreUtility,
+        factor);
   }
 
   /** The move temperature at the start of the game, {@code chosenMoveTemperatureEarly}. */

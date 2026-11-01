@@ -148,7 +148,11 @@ public final class HumanSlGameController {
     humanIsBlack = config.resolveHumanIsBlack();
     profile = config.humanSlProfile();
     play = config.play().orElse(null);
-    moveTimeout = Duration.ofSeconds(Math.max(2, config.moveTimeSeconds));
+    // The 200- and 400-visit levels get more of the clock, so slower machines reach their visits.
+    moveTimeout =
+        Duration.ofSeconds(
+            (long) Math.max(2, config.moveTimeSeconds)
+                * (play != null ? play.moveTimeFactor() : 1));
     aiResignation = play != null ? AiResignation.forPlay(play) : AiResignation.forProfile(profile);
   }
 

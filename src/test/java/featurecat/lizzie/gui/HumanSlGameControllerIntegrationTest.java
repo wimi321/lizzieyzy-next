@@ -206,6 +206,35 @@ class HumanSlGameControllerIntegrationTest {
       assertTrue(runner.awaitRequest());
       assertEquals(List.of(CoachLevel.STRONG_DAN_10.play()), runner.playedSettings);
       assertEquals(200, runner.playedSettings.get(0).maxVisits());
+      assertEquals(
+          List.of(Duration.ofSeconds(4)),
+          runner.playedTimeouts,
+          "the 200-visit level searches twice the 2-second budget");
+
+      controller.abort();
+      assertTrue(controller.isFinished());
+    }
+  }
+
+  @Test
+  void ordinaryLevelsKeepTheBudgetOfTheGame() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              runner,
+              HumanSlTrainingConfig.builder()
+                  .level(CoachLevel.DAN_9)
+                  .playerColor(HumanSlTrainingConfig.PlayerColor.WHITE)
+                  .fromCurrentPosition(true)
+                  .moveTimeSeconds(2)
+                  .build(),
+              new HumanSlTrainingSession());
+      controller.setExitLifecycleForTesting(Runnable::run, Runnable::run, () -> true, null);
+      controller.start();
+
+      assertTrue(runner.awaitRequest());
+      assertEquals(List.of(Duration.ofSeconds(2)), runner.playedTimeouts);
 
       controller.abort();
       assertTrue(controller.isFinished());
@@ -2471,6 +2500,8 @@ class HumanSlGameControllerIntegrationTest {
     private volatile OptionalDouble finalBlackLead = OptionalDouble.of(3.4);
     private final List<HumanSlPlaySettings> playedSettings =
         java.util.Collections.synchronizedList(new ArrayList<HumanSlPlaySettings>());
+    private final List<Duration> playedTimeouts =
+        java.util.Collections.synchronizedList(new ArrayList<Duration>());
 
     private BlockingHumanSlRunner() {
       this(null);
@@ -2505,6 +2536,7 @@ class HumanSlGameControllerIntegrationTest {
     public Optional<HumanMoveChoice> chooseMove(
         BoardHistoryNode positionNode, HumanSlPlaySettings play, Duration timeout) {
       playedSettings.add(play);
+      playedTimeouts.add(timeout);
       return chooseHumanMove(
           positionNode,
           play.profile(),

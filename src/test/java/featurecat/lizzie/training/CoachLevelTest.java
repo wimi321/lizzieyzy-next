@@ -87,6 +87,16 @@ class CoachLevelTest {
   }
 
   @Test
+  void onlyTheTwoBiggestSearchesGetMoreTimePerMove() {
+    for (CoachLevel level : CoachLevel.values()) {
+      boolean big = level.play().searches() && level.play().maxVisits() >= 200;
+      assertEquals(big ? 2 : 1, level.play().moveTimeFactor(), level.name());
+    }
+    assertEquals(2, CoachLevel.STRONG_DAN_10.play().moveTimeFactor());
+    assertEquals(2, CoachLevel.DAN_11.play().moveTimeFactor());
+  }
+
+  @Test
   void theSearchOverridesAreTheConfigOfTheLevel() {
     Map<String, Object> tenDan = CoachLevel.DAN_10.play().searchOverrides();
 
