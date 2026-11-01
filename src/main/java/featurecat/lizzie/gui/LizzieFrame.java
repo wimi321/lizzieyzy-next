@@ -338,6 +338,7 @@ public class LizzieFrame extends JFrame {
   private javax.swing.Timer humanSlPreparationTimer;
   private BoardHistoryNode automaticQuickAnalysisRoot;
   private AutomaticQuickAnalysisEngineAdapter automaticQuickAnalysisAdapter;
+  private BigWinrateWindow bigWinrateWindow;
   private volatile boolean userAnalysisPaused;
   private volatile BoardHistoryNode userCancelledQuickAnalysisRoot;
   private volatile boolean pendingForegroundResumeAfterCleanup;
@@ -797,18 +798,6 @@ public class LizzieFrame extends JFrame {
     varTreeScrollPane.getVerticalScrollBar().setUnitIncrement(16);
     varTreeScrollPane.getHorizontalScrollBar().setUnitIncrement(16);
     varTreeScrollPane.setVisible(Lizzie.config.showVariationGraph);
-    //    varTreeScrollPane
-    //        .getVerticalScrollBar()
-    //        .addAdjustmentListener(
-    //            new AdjustmentListener() {
-    //              @Override
-    //              public void adjustmentValueChanged(AdjustmentEvent e) {
-    //                // TODO Auto-generated method stub
-    //            	  varTreeScrollPane.repaint();
-    //              }
-    //            });
-    // varTreeScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_ALWAYS);
-    // varTreeScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
     commentEditTextPane = new JIMSendTextPane(true);
     commentEditTextPane.setBorder(BorderFactory.createEmptyBorder());
     commentEditTextPane.setBackground(Color.LIGHT_GRAY);
@@ -2377,8 +2366,9 @@ public class LizzieFrame extends JFrame {
   }
 
   public void setProblemListMetric(ProblemListMetric metric) {
-    Lizzie.config.problemListMetric = ProblemListMetric.WINRATE_LOSS.configValue();
-    Lizzie.config.uiConfig.put("problem-list-metric", Lizzie.config.problemListMetric);
+    Config config = Lizzie.config;
+    config.problemListMetric = ProblemListMetric.WINRATE_LOSS.configValue();
+    config.uiConfig.put("problem-list-metric", config.problemListMetric);
   }
 
   public ProblemListSideFilter getProblemListSideFilter() {
@@ -8081,11 +8071,12 @@ public class LizzieFrame extends JFrame {
   }
 
   private void updateMoveList(boolean notPondering) {
+    Board board = Lizzie.board;
     if (notPondering) {
-      int lastMoveCandidateNo = Lizzie.board.getData().lastMoveMatchCandidteNo;
-      Lizzie.board.updateMovelist(Lizzie.board.getHistory().getCurrentHistoryNode());
-      if (Lizzie.board.getData().lastMoveMatchCandidteNo != lastMoveCandidateNo) refresh();
-    } else Lizzie.board.updateMovelist(Lizzie.board.getHistory().getCurrentHistoryNode());
+      int lastMoveCandidateNo = board.getData().lastMoveMatchCandidteNo;
+      board.updateMovelist(board.getHistory().getCurrentHistoryNode());
+      if (board.getData().lastMoveMatchCandidteNo != lastMoveCandidateNo) refresh();
+    } else board.updateMovelist(board.getHistory().getCurrentHistoryNode());
   }
 
   private Graphics2D createBackground(int width, int height) {
@@ -8695,14 +8686,9 @@ public class LizzieFrame extends JFrame {
     if (engineGame.playing() && Lizzie.board.getHistory().getMoveNumber() > 3) {
       lastWR = 100 - lastWR;
     }
-    // Leelaz.WinrateStats stats = Lizzie.leelaz.getWinrateStats();
-    double curWR = curData.winrate; // stats.maxWinrate; // winrate on this move
+    double curWR = curData.winrate; // winrate on this move
     double curScore = curData.scoreMean;
     boolean validWinrate = (curData.getPlayouts() > 0);
-    //    if (isPlayingAgainstLeelaz
-    //        && playerIsBlack == !Lizzie.board.getHistory().getData().blackToPlay) {
-    //      validWinrate = false;
-    //    }
 
     if (!validWinrate) {
       curWR = 100 - lastWR; // display last move's winrate for now (with color difference)
@@ -8739,16 +8725,6 @@ public class LizzieFrame extends JFrame {
     // validLastWinrate && validWinrate
     //   if (true) {
     String text = "";
-    // if (Lizzie.config.handicapInsteadOfWinrate) {
-    // double currHandicapedWR = Lizzie.leelaz.winrateToHandicap(100 - curWR);
-    // double lastHandicapedWR = Lizzie.leelaz.winrateToHandicap(lastWR);
-    // text = String.format(Locale.ENGLISH,": %.2f", currHandicapedWR - lastHandicapedWR);
-    // } else {
-
-    // }
-    //    if (EngineManager.isEngineGame && Lizzie.board.getHistory().getMoveNumber() <= 3) {
-    //      text = "";
-    //    }
     boolean isKataStyle = false;
     Leelaz engineGameBlack = EngineGamePresentation.blackEngine(engineGame);
     Leelaz engineGameWhite = EngineGamePresentation.whiteEngine(engineGame);
@@ -14756,6 +14732,21 @@ public class LizzieFrame extends JFrame {
         CandidateTableStyle.paintShareBar(
             (Graphics2D) g, Double.parseDouble(mainValue.toString()), getWidth(), getHeight());
     }
+  }
+
+  /** Shows or hides 黑白胜率大字, Black's and White's win rates in large figures. */
+  public void toggleBigWinrateWindow() {
+    if (bigWinrateWindow == null) {
+      bigWinrateWindow =
+          new BigWinrateWindow(
+              this,
+              () -> Lizzie.board.getHistory().getCurrentHistoryNode(),
+              Lizzie.config.uiConfig,
+              Lizzie.resourceBundle,
+              winrateFont,
+              uiFont);
+    }
+    bigWinrateWindow.setVisible(!bigWinrateWindow.isVisible());
   }
 
   public void toggleIndependentMainBoard() {

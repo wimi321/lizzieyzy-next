@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- 显示 → 黑白胜率大字 opens a window of its own with Black's and White's win rates in large figures, on a black and a white card or as glowing seven-segment digits (right click to switch, or to keep the window on top). It follows the main board's position and remembers its style and place.
+
 - The AI Coach setup sheet shows what the chosen opponent rank roughly equals on Fox/Tygem and as a real-world amateur grade, and opens a full KataGo rank table with the current opponent highlighted. The community-compiled table is a guide for picking an opponent, not a rating.
 
 - Passing again after stepping back now enters the existing pass variation instead of creating a duplicate branch, even when that variation already carries analysis comments. Stones already did this; passes now match original LizzieYzy too.
