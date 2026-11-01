@@ -92,6 +92,8 @@ public class BoardRenderer {
 
   private BufferedImage cachedBackgroundImage = emptyImage;
   private boolean cachedIsBigMargin = false;
+  private CoordinateLabels coordinateLabels;
+  private CoordinateLabels cachedCoordinateLabels;
   private int cachedBoardWidth = 0, cachedBoardHeight = 0;
   private BufferedImage cachedStonesImage = emptyImage;
   private BufferedImage cachedStonesImagedraged = emptyImage;
@@ -289,7 +291,7 @@ public class BoardRenderer {
       }
       stoneRadius = oriStoneRadius;
     } else {
-      if (!Lizzie.config.isThinkingMode() || (Lizzie.config.isThinkingMode() && boardIndex != 2)) {
+      if (!Lizzie.config.isThinkingMode() || boardIndex != 2) {
         if (showHeatmap && !Lizzie.frame.isAnaPlayingAgainstLeelaz && !Lizzie.leelaz.isZen)
           drawRawWinrate(g);
         else if (showPolicy
@@ -878,6 +880,7 @@ public class BoardRenderer {
         || cachedBoardHeight != boardHeight
         || changedName
         || cachedShowCoords != showCoordinates()
+        || !labels().equals(cachedCoordinateLabels)
         || !cachedBoardStyle.equals(Lizzie.config.boardStyle)
         || Lizzie.board.isForceRefresh()) {
       cachedShadow = null;
@@ -889,6 +892,7 @@ public class BoardRenderer {
       cachedBoardWidth = boardWidth;
       cachedBoardHeight = boardHeight;
       cachedBoardStyle = Lizzie.config.boardStyle;
+      cachedCoordinateLabels = labels();
       Lizzie.board.setForceRefresh(false);
 
       cachedBackgroundImage = new BufferedImage(width, height, TYPE_INT_ARGB);
@@ -950,6 +954,7 @@ public class BoardRenderer {
       // Draw coordinates if enabled
       if (showCoordinates()) {
         g.setColor(Color.BLACK);
+        CoordinateLabels labels = labels();
         boolean chineseClassicCoordinates = Lizzie.config.useChineseClassicBoardStyle();
         for (int i = 0; i < Board.boardWidth; i++) {
           String coordinateLabel =
@@ -958,14 +963,12 @@ public class BoardRenderer {
                   : (Lizzie.config.useNumCoordsFromTop || Lizzie.config.useNumCoordsFromBottom)
                       ? String.valueOf(i + 1)
                       : Board.asName(i);
-          drawString(
+          drawCoordinate(
               g,
               scaledMarginWidth + squareWidth * i,
               scaledMarginHeight * 4 / 10,
-              LizzieFrame.uiFont,
               coordinateLabel,
-              stoneRadius * 4 / 5,
-              stoneRadius);
+              labels);
           if ((!Lizzie.config.showNameInBoard
                   || (Lizzie.board != null
                       && (Lizzie.board.getHistory().getGameInfo().getPlayerWhite().equals("")
@@ -973,14 +976,12 @@ public class BoardRenderer {
                   || (Lizzie.config.isThinkingMode() && boardIndex == 2))
               && (!Lizzie.frame.isShowingHeatmap || Lizzie.leelaz.isZen)
               && (!Lizzie.frame.isShowingPolicy || Lizzie.leelaz.isKatago || Lizzie.leelaz.isZen)) {
-            drawString(
+            drawCoordinate(
                 g,
                 scaledMarginWidth + squareWidth * i,
                 -scaledMarginHeight * 4 / 10 + boardHeight,
-                LizzieFrame.uiFont,
                 coordinateLabel,
-                stoneRadius * 4 / 5,
-                stoneRadius);
+                labels);
           }
         }
         for (int i = 0; i < Board.boardHeight; i++) {
@@ -993,22 +994,18 @@ public class BoardRenderer {
                                   || Lizzie.config.useFoxStyleCoords)
                           ? (Board.boardHeight - i)
                           : (i + 1)));
-          drawString(
+          drawCoordinate(
               g,
               scaledMarginWidth * 4 / 10,
               scaledMarginHeight + squareHeight * i,
-              LizzieFrame.uiFont,
               coordinateLabel,
-              stoneRadius * 4 / 5,
-              stoneRadius);
-          drawString(
+              labels);
+          drawCoordinate(
               g,
               -scaledMarginWidth * 4 / 10 + boardWidth,
               scaledMarginHeight + squareHeight * i,
-              LizzieFrame.uiFont,
               coordinateLabel,
-              stoneRadius * 4 / 5,
-              stoneRadius);
+              labels);
         }
       }
       g.dispose();
@@ -3633,7 +3630,8 @@ public class BoardRenderer {
 
     // decrease boardLength until the availableLength will result in square board
     // intersections
-    double marginWidth = (isBigMargin ? 0.055 : 0.03) / Board.boardWidth * 19.0;
+    double bigMargin = showCoordinates ? labels().margin(0.055) : 0.055;
+    double marginWidth = (isBigMargin ? bigMargin : 0.03) / Board.boardWidth * 19.0;
     boardWidth++;
     do {
       boardWidth--;
@@ -3645,7 +3643,7 @@ public class BoardRenderer {
     int squareWidth = 0;
     int squareHeight = 0;
     if (Board.boardWidth != Board.boardHeight) {
-      double marginHeight = (isBigMargin ? 0.055 : 0.03) / Board.boardHeight * 19.0;
+      double marginHeight = (isBigMargin ? bigMargin : 0.03) / Board.boardHeight * 19.0;
       boardHeight++;
       do {
         boardHeight--;
@@ -3890,59 +3888,6 @@ public class BoardRenderer {
     cachedBoardWidth = 0;
     cachedBoardHeight = 0;
   }
-
-  /**
-   * Draw scale smooth image, enhanced display quality (Not use, for future) This function use the
-   * traditional Image.getScaledInstance() method to provide the nice quality, but the performance
-   * is poor. Recommended for use in a few drawings
-   */
-  // public void drawScaleSmoothImage(Graphics2D g, BufferedImage img, int x, int
-  // y, int width,
-  // int height, ImageObserver observer) {
-  // BufferedImage newstone = new BufferedImage(width, height, TYPE_INT_ARGB);
-  // Graphics2D g2 = newstone.createGraphics();
-  // g2.drawImage(img.getScaledInstance(width, height,
-  // java.awt.Image.SCALE_SMOOTH), 0, 0,
-  // observer);
-  // g2.dispose();
-  // g.drawImage(newstone, x, y, width, height, observer);
-  // }
-
-  /**
-   * Draw scale smooth image, enhanced display quality (Not use, for future) This functions use a
-   * multi-step approach to prevent the information loss and produces a much higher quality that is
-   * close to the Image.getScaledInstance() and faster than Image.getScaledInstance() method.
-   */
-  // public void drawScaleImage(Graphics2D g, BufferedImage img, int x, int y, int
-  // width, int
-  // height, ImageObserver observer) {
-  // BufferedImage newstone = (BufferedImage)img;
-  // int w = img.getWidth();
-  // int h = img.getHeight();
-  // do {
-  // if (w > width) {
-  // w /= 2;
-  // if (w < width) {
-  // w = width;
-  // }
-  // }
-  // if (h > height) {
-  // h /= 2;
-  // if (h < height) {
-  // h = height;
-  // }
-  // }
-  // BufferedImage tmp = new BufferedImage(w, h, TYPE_INT_ARGB);
-  // Graphics2D g2 = tmp.createGraphics();
-  // g2.setRenderingHint(KEY_INTERPOLATION,
-  // VALUE_INTERPOLATION_BICUBIC);
-  // g2.drawImage(newstone, 0, 0, w, h, null);
-  // g2.dispose();
-  // newstone = tmp;
-  // }
-  // while (w != width || h != height);
-  // g.drawImage(newstone, x, y, width, height, observer);
-  // }
 
   /** Draw texture image */
   public void drawTextureImage(
@@ -4278,6 +4223,24 @@ public class BoardRenderer {
     drawString(g, x, y, fontBase, Font.PLAIN, string, maximumFontHeight, maximumFontWidth, 0);
   }
 
+  private void drawCoordinate(Graphics2D g, int x, int y, String label, CoordinateLabels labels) {
+    drawString(
+        g,
+        x,
+        y,
+        LizzieFrame.uiFont,
+        labels.fontStyle(),
+        label,
+        labels.maxHeight(stoneRadius),
+        labels.maxWidth(stoneRadius),
+        0);
+  }
+
+  /** The theme's coordinate labels, as of the last layout. */
+  private CoordinateLabels labels() {
+    return coordinateLabels == null ? CoordinateLabels.STANDARD : coordinateLabels;
+  }
+
   private void drawStringBold(
       Graphics2D g,
       int x,
@@ -4336,6 +4299,9 @@ public class BoardRenderer {
    */
   public void setBoardLength(int boardWidth, int boardHeight) {
     boolean isBigMargin = isBigMargin();
+    CoordinateLabels labels = CoordinateLabels.of(Lizzie.config.theme);
+    boolean labelsChanged = !labels.equals(coordinateLabels);
+    coordinateLabels = labels;
     if (this.boardWidth != boardWidth
         || this.boardHeight != boardHeight
         || boardWSize != Board.boardWidth
@@ -4345,7 +4311,7 @@ public class BoardRenderer {
       boardWSize = Board.boardWidth;
       boardHSize = Board.boardHeight;
       setupSizeParameters(isBigMargin);
-    } else if (isBigMargin != cachedIsBigMargin) {
+    } else if (isBigMargin != cachedIsBigMargin || labelsChanged) {
       cachedIsBigMargin = isBigMargin;
       setupSizeParameters(isBigMargin);
     }

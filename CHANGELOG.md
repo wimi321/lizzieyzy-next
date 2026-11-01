@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Theme settings can enlarge and embolden the board coordinates (线条与字体 → 棋盘坐标: standard, large or extra large, and bold). Larger labels widen the board margin just enough to stay clear of the stones on the edge lines; the default look is unchanged.
+
 - The AI Coach setup sheet shows what the chosen opponent rank roughly equals on Fox/Tygem and as a real-world amateur grade, and opens a full KataGo rank table with the current opponent highlighted. The community-compiled table is a guide for picking an opponent, not a rating.
 
 - Passing again after stepping back now enters the existing pass variation instead of creating a duplicate branch, even when that variation already carries analysis comments. Stones already did this; passes now match original LizzieYzy too.

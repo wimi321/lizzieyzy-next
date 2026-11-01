@@ -303,6 +303,8 @@ public class ConfigDialog2 extends JDialog {
   private ColorLabel lblCommentFontColor;
   private ColorLabel lblBestMoveColor;
   private JTextField txtCommentFontSize;
+  private JCheckBox chkCoordinateBold;
+  private JComboBox<String> cmbCoordinateSize;
   private JTextField txtBackgroundFilter;
   private JRadioButton rdoStoneIndicatorDelta;
   private JRadioButton rdoStoneIndicatorCircle;
@@ -3808,6 +3810,12 @@ public class ConfigDialog2 extends JDialog {
         configText("ConfigDialog2.modern.theme.winrateFont", "胜率目数字体"),
         configText("ConfigDialog2.modern.theme.winrateFontSub", "胜率条和目差显示字体"),
         cmbWinrateFontName);
+    addComponentRow(
+        strokes,
+        "config.theme.coordinates",
+        configText("ConfigDialog2.modern.theme.coordinates", "棋盘坐标"),
+        configText("ConfigDialog2.modern.theme.coordinatesSub", "放大或加粗棋盘四周的字母和数字"),
+        rowOf(cmbCoordinateSize, chkCoordinateBold));
     content.add(strokes);
     content.add(javax.swing.Box.createVerticalStrut(12));
 
@@ -4749,6 +4757,15 @@ public class ConfigDialog2 extends JDialog {
             });
     txtCommentFontSize.setBounds(529, 403, 52, 24);
     themeTab.add(txtCommentFontSize);
+    chkCoordinateBold =
+        new JCheckBox(configText("ConfigDialog2.modern.theme.coordinateBold", "加粗"));
+    cmbCoordinateSize =
+        new JComboBox<String>(
+            new String[] {
+              configText("ConfigDialog2.modern.theme.coordinateSize.standard", "标准"),
+              configText("ConfigDialog2.modern.theme.coordinateSize.large", "大"),
+              configText("ConfigDialog2.modern.theme.coordinateSize.extraLarge", "特大")
+            });
 
     JLabel lblStoneIndicatorType =
         new JLabel(resourceBundle.getString("LizzieConfig.title.stoneIndicatorType"));
@@ -5988,28 +6005,6 @@ public class ConfigDialog2 extends JDialog {
     return osName != null && !osName.contains("darwin") && osName.contains("win");
   }
 
-  //  private void setShowLcbWinrate() {
-  //
-  //    if (Lizzie.config.showLcbWinrate) {
-  //      rdoLcb.setSelected(true);
-  //    } else {
-  //      rdoWinrate.setSelected(true);
-  //    }
-  //  }
-  //
-  //  private boolean getShowLcbWinrate() {
-  //
-  //    if (rdoLcb.isSelected()) {
-  //      Lizzie.config.showLcbWinrate = true;
-  //      return true;
-  //    }
-  //    if (rdoWinrate.isSelected()) {
-  //      Lizzie.config.showLcbWinrate = false;
-  //      return false;
-  //    }
-  //    return true;
-  //  }
-
   private void setBoardSize() {
     int size = Board.boardWidth;
     int width = Board.boardWidth;
@@ -6186,6 +6181,8 @@ public class ConfigDialog2 extends JDialog {
         lblBestMoveColor.setColor(
             new Color(BestCl.getRed(), BestCl.getGreen(), BestCl.getBlue(), 240));
         txtCommentFontSize.setText(String.valueOf(theme.commentFontSize()));
+        chkCoordinateBold.setSelected(theme.coordinateBold());
+        cmbCoordinateSize.setSelectedIndex(CoordinateLabels.sizeIndex(theme.coordinateSize()));
         txtBackgroundFilter.setText(String.valueOf(theme.backgroundFilter()));
         tblBlunderNodes.setModel(
             new BlunderNodeTableModel(
@@ -6287,6 +6284,9 @@ public class ConfigDialog2 extends JDialog {
         theme.config.put("comment-font-color", Theme.color2Array(lblCommentFontColor.getColor()));
         theme.config.put("best-move-color", Theme.color2Array(lblBestMoveColor.getColor()));
         theme.config.put("comment-font-size", txtFieldIntValue(txtCommentFontSize));
+        theme.config.put("coordinate-bold", chkCoordinateBold.isSelected());
+        theme.config.put(
+            "coordinate-size", CoordinateLabels.SIZES[cmbCoordinateSize.getSelectedIndex()]);
         if (txtFieldIntValue(txtBackgroundFilter) != Lizzie.frame.filter20.getRadius()) {
           Lizzie.frame.testFilter(txtFieldIntValue(txtBackgroundFilter));
         }
@@ -6303,27 +6303,24 @@ public class ConfigDialog2 extends JDialog {
   }
 
   private void readDefaultTheme() {
-    chkPureStone.setSelected(Lizzie.config.uiConfig.optBoolean("use-pure-stone", false));
-    chkPureBoard.setSelected(Lizzie.config.uiConfig.optBoolean("use-pure-board", false));
+    JSONObject ui = Lizzie.config.uiConfig;
+    chkPureStone.setSelected(ui.optBoolean("use-pure-stone", false));
+    chkPureBoard.setSelected(ui.optBoolean("use-pure-board", false));
     lblPureBoardColor.setColor(
-        Theme.array2Color(
-            Lizzie.config.uiConfig.optJSONArray("pure-board-color"), new Color(217, 152, 77)));
-    chkShowStoneShaow.setSelected(Lizzie.config.uiConfig.optBoolean("show-stone-shadow", true));
+        Theme.array2Color(ui.optJSONArray("pure-board-color"), new Color(217, 152, 77)));
+    chkShowStoneShaow.setSelected(ui.optBoolean("show-stone-shadow", true));
     spnShadowSize.setEnabled(chkShowStoneShaow.isSelected());
-    chkPureBackground.setSelected(Lizzie.config.uiConfig.optBoolean("use-pure-background", false));
+    chkPureBackground.setSelected(ui.optBoolean("use-pure-background", false));
     lblPureBackgroundColor.setColor(
-        Theme.array2Color(
-            Lizzie.config.uiConfig.optJSONArray("pure-background-color"), Color.GRAY));
+        Theme.array2Color(ui.optJSONArray("pure-background-color"), Color.GRAY));
     txtBackgroundFilter.setEnabled(!chkPureBackground.isSelected());
-    spnWinrateStrokeWidth.setValue(Lizzie.config.uiConfig.optFloat("winrate-stroke-width", 1.7f));
-    spnScoreLeadStrokeWidth.setValue(
-        Lizzie.config.uiConfig.optFloat("score-lead-stroke-width", 1.0f));
-    spnMinimumBlunderBarWidth.setValue(
-        Lizzie.config.uiConfig.optInt("minimum-blunder-bar-width", 1));
-    spnShadowSize.setValue(Lizzie.config.uiConfig.optInt("shadow-size", 85));
-    setFontValue(cmbFontName, Lizzie.config.uiConfig.optString("font-name", null));
-    setFontValue(cmbUiFontName, Lizzie.config.uiConfig.optString("ui-font-name", null));
-    setFontValue(cmbWinrateFontName, Lizzie.config.uiConfig.optString("winrate-font-name", null));
+    spnWinrateStrokeWidth.setValue(ui.optFloat("winrate-stroke-width", 1.7f));
+    spnScoreLeadStrokeWidth.setValue(ui.optFloat("score-lead-stroke-width", 1.0f));
+    spnMinimumBlunderBarWidth.setValue(ui.optInt("minimum-blunder-bar-width", 1));
+    spnShadowSize.setValue(ui.optInt("shadow-size", 85));
+    setFontValue(cmbFontName, ui.optString("font-name", null));
+    setFontValue(cmbUiFontName, ui.optString("ui-font-name", null));
+    setFontValue(cmbWinrateFontName, ui.optString("winrate-font-name", null));
     txtBackgroundPath.setEnabled(false);
     btnBackgroundPath.setEnabled(false);
     txtBackgroundPath.setText("/assets/background.jpg");
@@ -6337,42 +6334,32 @@ public class ConfigDialog2 extends JDialog {
     btnWhiteStonePath.setEnabled(false);
     txtWhiteStonePath.setText("/assets/white0.png");
     lblWinrateLineColor.setColor(
-        Theme.array2Color(
-            Lizzie.config.uiConfig.optJSONArray("winrate-line-color"), new Color(100, 180, 255)));
+        Theme.array2Color(ui.optJSONArray("winrate-line-color"), new Color(100, 180, 255)));
     lblWinrateMissLineColor.setColor(
-        Theme.array2Color(
-            Lizzie.config.uiConfig.optJSONArray("winrate-miss-line-color"), Color.blue.darker()));
+        Theme.array2Color(ui.optJSONArray("winrate-miss-line-color"), Color.blue.darker()));
     lblBlunderBarColor.setColor(
-        Theme.array2Color(
-            Lizzie.config.uiConfig.optJSONArray("blunder-bar-color"),
-            new Color(255, 204, 255, 170)));
+        Theme.array2Color(ui.optJSONArray("blunder-bar-color"), new Color(255, 204, 255, 170)));
     lblScoreMeanLineColor.setColor(
-        Theme.array2Color(
-            Lizzie.config.uiConfig.optJSONArray("scoremean-line-color"), new Color(255, 0, 255)));
-    setStoneIndicatorType(Lizzie.config.uiConfig.optInt("stone-indicator-type", 1));
-    chkShowCommentNodeColor.setSelected(
-        Lizzie.config.uiConfig.optBoolean("show-comment-node-color", true));
+        Theme.array2Color(ui.optJSONArray("scoremean-line-color"), new Color(255, 0, 255)));
+    setStoneIndicatorType(ui.optInt("stone-indicator-type", 1));
+    chkShowCommentNodeColor.setSelected(ui.optBoolean("show-comment-node-color", true));
     lblCommentNodeColor.setColor(
-        Theme.array2Color(Lizzie.config.uiConfig.optJSONArray("comment-node-color"), Color.BLUE));
+        Theme.array2Color(ui.optJSONArray("comment-node-color"), Color.BLUE));
     lblCommentBackgroundColor.setColor(
-        Theme.array2Color(
-            Lizzie.config.uiConfig.optJSONArray("comment-background-color"),
-            new Color(0, 0, 0, 200)));
+        Theme.array2Color(ui.optJSONArray("comment-background-color"), new Color(0, 0, 0, 200)));
     lblCommentFontColor.setColor(
-        Theme.array2Color(Lizzie.config.uiConfig.optJSONArray("comment-font-color"), Color.WHITE));
+        Theme.array2Color(ui.optJSONArray("comment-font-color"), Color.WHITE));
 
-    Color BestCl =
-        Theme.array2Color(Lizzie.config.uiConfig.optJSONArray("best-move-color"), Color.CYAN);
+    Color BestCl = Theme.array2Color(ui.optJSONArray("best-move-color"), Color.CYAN);
     lblBestMoveColor.setColor(new Color(BestCl.getRed(), BestCl.getGreen(), BestCl.getBlue(), 240));
-    txtCommentFontSize.setText(
-        String.valueOf(Lizzie.config.uiConfig.optInt("comment-font-size", 0)));
-    txtBackgroundFilter.setText(
-        String.valueOf(Lizzie.config.uiConfig.optInt("background-filter", 20)));
-    chkUseScoreDiff.setSelected(
-        Lizzie.config.uiConfig.optBoolean("use-scorediff-in-variation-tree", true));
+    txtCommentFontSize.setText(String.valueOf(ui.optInt("comment-font-size", 0)));
+    chkCoordinateBold.setSelected(ui.optBoolean("coordinate-bold", false));
+    cmbCoordinateSize.setSelectedIndex(
+        CoordinateLabels.sizeIndex(ui.optInt("coordinate-size", 100)));
+    txtBackgroundFilter.setText(String.valueOf(ui.optInt("background-filter", 20)));
+    chkUseScoreDiff.setSelected(ui.optBoolean("use-scorediff-in-variation-tree", true));
     txtPercentScoreDiff.setText(
-        String.valueOf(
-            Lizzie.config.uiConfig.optDouble("scorediff-in-variation-tree-factor", 0.5) * 100));
+        String.valueOf(ui.optDouble("scorediff-in-variation-tree-factor", 0.5) * 100));
     txtPercentScoreDiff.setEnabled(chkUseScoreDiff.isSelected());
     Theme defTheme = new Theme("");
     tblBlunderNodes.setModel(
@@ -6394,80 +6381,73 @@ public class ConfigDialog2 extends JDialog {
   }
 
   private void writeDefaultTheme() {
-    Lizzie.config.uiConfig.put("use-pure-stone", chkPureStone.isSelected());
-    Lizzie.config.uiConfig.put("use-pure-board", chkPureBoard.isSelected());
-    Lizzie.config.uiConfig.put(
-        "pure-board-color", Theme.color2ArrayNoAlpha(lblPureBoardColor.getColor()));
-    Lizzie.config.uiConfig.put("use-pure-background", chkPureBackground.isSelected());
-    Lizzie.config.uiConfig.put(
-        "pure-background-color", Theme.color2ArrayNoAlpha(lblPureBackgroundColor.getColor()));
-    Lizzie.config.uiConfig.put("winrate-stroke-width", spnWinrateStrokeWidth.getValue());
-    Lizzie.config.uiConfig.put("score-lead-stroke-width", spnScoreLeadStrokeWidth.getValue());
-    Lizzie.config.uiConfig.put("minimum-blunder-bar-width", spnMinimumBlunderBarWidth.getValue());
-    Lizzie.config.uiConfig.put("shadow-size", spnShadowSize.getValue());
-    Lizzie.config.uiConfig.put("show-stone-shadow", chkShowStoneShaow.isSelected());
-    Lizzie.config.uiConfig.put("font-name", getFontItemName(cmbFontName));
-    Lizzie.config.uiConfig.put("ui-font-name", getFontItemName(cmbUiFontName));
-    Lizzie.config.uiConfig.put("winrate-font-name", getFontItemName(cmbWinrateFontName));
-    Lizzie.config.uiConfig.put(
-        "winrate-line-color", Theme.color2Array(lblWinrateLineColor.getColor()));
-    Lizzie.config.uiConfig.put(
-        "winrate-miss-line-color", Theme.color2Array(lblWinrateMissLineColor.getColor()));
-    Lizzie.config.uiConfig.put(
-        "blunder-bar-color", Theme.color2Array(lblBlunderBarColor.getColor()));
-    Lizzie.config.uiConfig.put(
-        "scoremean-line-color", Theme.color2Array(lblScoreMeanLineColor.getColor()));
+    JSONObject ui = Lizzie.config.uiConfig;
+    ui.put("use-pure-stone", chkPureStone.isSelected());
+    ui.put("use-pure-board", chkPureBoard.isSelected());
+    ui.put("pure-board-color", Theme.color2ArrayNoAlpha(lblPureBoardColor.getColor()));
+    ui.put("use-pure-background", chkPureBackground.isSelected());
+    ui.put("pure-background-color", Theme.color2ArrayNoAlpha(lblPureBackgroundColor.getColor()));
+    ui.put("winrate-stroke-width", spnWinrateStrokeWidth.getValue());
+    ui.put("score-lead-stroke-width", spnScoreLeadStrokeWidth.getValue());
+    ui.put("minimum-blunder-bar-width", spnMinimumBlunderBarWidth.getValue());
+    ui.put("shadow-size", spnShadowSize.getValue());
+    ui.put("show-stone-shadow", chkShowStoneShaow.isSelected());
+    ui.put("font-name", getFontItemName(cmbFontName));
+    ui.put("ui-font-name", getFontItemName(cmbUiFontName));
+    ui.put("winrate-font-name", getFontItemName(cmbWinrateFontName));
+    ui.put("winrate-line-color", Theme.color2Array(lblWinrateLineColor.getColor()));
+    ui.put("winrate-miss-line-color", Theme.color2Array(lblWinrateMissLineColor.getColor()));
+    ui.put("blunder-bar-color", Theme.color2Array(lblBlunderBarColor.getColor()));
+    ui.put("scoremean-line-color", Theme.color2Array(lblScoreMeanLineColor.getColor()));
     Lizzie.config.stoneIndicatorType = getStoneIndicatorType();
-    Lizzie.config.uiConfig.put("stone-indicator-type", Lizzie.config.stoneIndicatorType);
-    Lizzie.config.uiConfig.put("show-comment-node-color", chkShowCommentNodeColor.isSelected());
-    Lizzie.config.uiConfig.put(
-        "comment-node-color", Theme.color2Array(lblCommentNodeColor.getColor()));
-    Lizzie.config.uiConfig.put(
-        "comment-background-color", Theme.color2Array(lblCommentBackgroundColor.getColor()));
-    Lizzie.config.uiConfig.put(
-        "comment-font-color", Theme.color2Array(lblCommentFontColor.getColor()));
-    Lizzie.config.uiConfig.put("best-move-color", Theme.color2Array(lblBestMoveColor.getColor()));
-    Lizzie.config.uiConfig.put("comment-font-size", txtFieldIntValue(txtCommentFontSize));
-    Lizzie.config.uiConfig.put("background-filter", txtFieldIntValue(txtBackgroundFilter));
+    ui.put("stone-indicator-type", Lizzie.config.stoneIndicatorType);
+    ui.put("show-comment-node-color", chkShowCommentNodeColor.isSelected());
+    ui.put("comment-node-color", Theme.color2Array(lblCommentNodeColor.getColor()));
+    ui.put("comment-background-color", Theme.color2Array(lblCommentBackgroundColor.getColor()));
+    ui.put("comment-font-color", Theme.color2Array(lblCommentFontColor.getColor()));
+    ui.put("best-move-color", Theme.color2Array(lblBestMoveColor.getColor()));
+    ui.put("comment-font-size", txtFieldIntValue(txtCommentFontSize));
+    ui.put("coordinate-bold", chkCoordinateBold.isSelected());
+    ui.put("coordinate-size", CoordinateLabels.SIZES[cmbCoordinateSize.getSelectedIndex()]);
+    ui.put("background-filter", txtFieldIntValue(txtBackgroundFilter));
     if (txtFieldIntValue(txtBackgroundFilter) != Lizzie.frame.filter20.getRadius()) {
       Lizzie.frame.testFilter(txtFieldIntValue(txtBackgroundFilter));
     }
-    Lizzie.config.uiConfig.put(
+    ui.put(
         "blunder-winrate-thresholds",
         ((BlunderNodeTableModel) tblBlunderNodes.getModel()).getThresholdArray());
-    Lizzie.config.uiConfig.put(
+    ui.put(
         "blunder-node-colors",
         ((BlunderNodeTableModel) tblBlunderNodes.getModel()).getColorArray());
 
-    if (!Lizzie.config.uiConfig.optString("font-name").isEmpty()) {
-      if (Lizzie.config.uiConfig.getString("font-name").equals("Lizzie默认")
-          || Lizzie.config.uiConfig.getString("font-name").equals("Lizzie Default"))
+    if (!ui.optString("font-name").isEmpty()) {
+      if (ui.getString("font-name").equals("Lizzie默认")
+          || ui.getString("font-name").equals("Lizzie Default"))
         Lizzie.config.fontName = "SansSerif";
-      else Lizzie.config.fontName = Lizzie.config.uiConfig.optString("font-name");
+      else Lizzie.config.fontName = ui.optString("font-name");
     }
 
-    if (!Lizzie.config.uiConfig.optString("ui-font-name").isEmpty()
-        && (Lizzie.config.uiConfig.getString("ui-font-name").equals("Lizzie默认")
-            || Lizzie.config.uiConfig.getString("ui-font-name").equals("Lizzie Default"))) {
+    if (!ui.optString("ui-font-name").isEmpty()
+        && (ui.getString("ui-font-name").equals("Lizzie默认")
+            || ui.getString("ui-font-name").equals("Lizzie Default"))) {
       if (Lizzie.config.isChinese)
         LizzieFrame.uiFont = new Font("Microsoft YaHei", Font.TRUETYPE_FONT, 12);
       else
         LizzieFrame.uiFont =
             new Font(resourceBundle.getString("FontList.systemDefault"), Font.TRUETYPE_FONT, 12);
-    } else if (!Lizzie.config.uiConfig.optString("ui-font-name").isEmpty()) {
-      LizzieFrame.uiFont =
-          new Font(Lizzie.config.uiConfig.optString("ui-font-name"), Font.PLAIN, 12);
+    } else if (!ui.optString("ui-font-name").isEmpty()) {
+      LizzieFrame.uiFont = new Font(ui.optString("ui-font-name"), Font.PLAIN, 12);
     }
-    Lizzie.config.uiConfig.put("use-scorediff-in-variation-tree", chkUseScoreDiff.isSelected());
-    Lizzie.config.uiConfig.put(
+    ui.put("use-scorediff-in-variation-tree", chkUseScoreDiff.isSelected());
+    ui.put(
         "scorediff-in-variation-tree-factor",
         Utils.parseTextToDouble(
                 txtPercentScoreDiff, Lizzie.config.scoreDiffInVariationTreeFactor * 100)
             / 100.0);
 
-    if (!Lizzie.config.uiConfig.optString("winrate-font-name").isEmpty()
-        && (Lizzie.config.uiConfig.getString("winrate-font-name").equals("Lizzie默认")
-            || Lizzie.config.uiConfig.getString("winrate-font-name").equals("Lizzie Default"))) {
+    if (!ui.optString("winrate-font-name").isEmpty()
+        && (ui.getString("winrate-font-name").equals("Lizzie默认")
+            || ui.getString("winrate-font-name").equals("Lizzie Default"))) {
       try {
         LizzieFrame.winrateFont =
             Font.createFont(
@@ -6478,9 +6458,8 @@ public class ConfigDialog2 extends JDialog {
       } catch (IOException | FontFormatException e) {
         e.printStackTrace();
       }
-    } else if (!Lizzie.config.uiConfig.optString("winrate-font-name").isEmpty()) {
-      LizzieFrame.winrateFont =
-          new Font(Lizzie.config.uiConfig.optString("winrate-font-name"), Font.PLAIN, 12);
+    } else if (!ui.optString("winrate-font-name").isEmpty()) {
+      LizzieFrame.winrateFont = new Font(ui.optString("winrate-font-name"), Font.PLAIN, 12);
     }
   }
 
