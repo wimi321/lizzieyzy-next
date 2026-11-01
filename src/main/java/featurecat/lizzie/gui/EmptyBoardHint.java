@@ -13,8 +13,9 @@ import java.awt.RenderingHints;
 import java.util.ResourceBundle;
 
 /**
- * One line on the main board while no game is open, saying how to open or start one. It goes as
- * soon as a stone is on the board or a game is loaded.
+ * One line on the main board for someone who has never opened a game, saying how to open or start
+ * one. It goes as soon as a stone is on the board, a game is loaded, or the engine shows its
+ * analysis of the empty board, and it never covers that analysis.
  */
 final class EmptyBoardHint {
   private static final Color PILL = new Color(20, 22, 26, 170);
@@ -34,13 +35,33 @@ final class EmptyBoardHint {
     return true;
   }
 
-  /** The main board's call: the hint shows while the open game is empty. */
+  /** An empty game with nothing else on the board yet: no analysis of the empty position either. */
+  static boolean shouldShow(BoardHistoryList history) {
+    return isEmptyGame(history) && history.getStart().getData().getPlayouts() <= 0;
+  }
+
+  /** Whether the main board paints the hint. */
+  static boolean shows(boolean mainBoard, boolean firstUse, BoardHistoryList history) {
+    return mainBoard && firstUse && shouldShow(history);
+  }
+
+  /**
+   * The main board's call.
+   *
+   * @param firstUse whether no game was ever opened; people who have opened one know the way
+   */
   static void paintOnMainBoard(
-      Graphics2D g, boolean mainBoard, int boardX, int boardY, int boardWidth, int boardHeight) {
+      Graphics2D g,
+      boolean mainBoard,
+      boolean firstUse,
+      int boardX,
+      int boardY,
+      int boardWidth,
+      int boardHeight) {
     Board board = Lizzie.board;
     paint(
         g,
-        mainBoard && board != null && isEmptyGame(board.getHistory()),
+        board != null && shows(mainBoard, firstUse, board.getHistory()),
         Lizzie.resourceBundle,
         LizzieFrame.uiFont,
         boardX,
