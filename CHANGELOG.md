@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Opening a game record keeps analysis off when the user had turned it off: no foreground analysis and no automatic quick analysis start, so the record's saved analysis is not replaced. Analysis that was running before the record was opened still resumes, and a pause caused by an engine failure still ends with its game.
+
 - The AI Coach setup sheet shows what the chosen opponent rank roughly equals on Fox/Tygem and as a real-world amateur grade, and opens a full KataGo rank table with the current opponent highlighted. The community-compiled table is a guide for picking an opponent, not a rating.
 
 - Passing again after stepping back now enters the existing pass variation instead of creating a duplicate branch, even when that variation already carries analysis comments. Stones already did this; passes now match original LizzieYzy too.

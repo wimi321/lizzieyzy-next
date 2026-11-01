@@ -3045,7 +3045,7 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void newKifuLoadStartsFreshContextEvenWhenSharedCleanupFails() throws Exception {
+  void newKifuLoadStartsFreshContextEvenWhenSharedCleanupFailsAndStaysPaused() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       Lizzie.config = configWithAutoQuickAnalyze();
@@ -3080,7 +3080,7 @@ class LizzieFrameRegressionTest {
       drainEdt();
 
       assertEquals(1, newContexts.get());
-      assertFalse(frame.isUserAnalysisPaused());
+      assertTrue(frame.isUserAnalysisPaused(), "the user's pause carries over to the new game");
       assertFalse((boolean) getField(frame, "analysisControlCleanupInProgress"));
       assertEquals(0, leelaz.ponderCount);
     } finally {
@@ -3284,7 +3284,7 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void loadingANewKifuAfterPauseCanStartAFreshAutomaticQuickAnalysis() throws Exception {
+  void loadingANewKifuAfterPauseKeepsAnalysisOff() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       Lizzie.config = configWithAutoQuickAnalyze();
@@ -3304,13 +3304,72 @@ class LizzieFrameRegressionTest {
       SwingUtilities.invokeAndWait(frame::togglePonderMannul);
       engine.completeExit();
       drainEdt();
+      int requestsBeforeLoad = engine.automaticRequests;
       Lizzie.board = boardWith(historyWithUnanalyzedMove());
       frame.startNewKifuAnalysisContextAfterSuccessfulLoad();
 
-      SwingUtilities.invokeAndWait(() -> assertTrue(frame.ensureAnalysisResumedAfterLoad()));
-      assertAutomaticRequestRunning(frame);
-
+      // Opening a game must not overwrite its saved analysis when the user had turned analysis off.
+      SwingUtilities.invokeAndWait(() -> assertFalse(frame.ensureAnalysisResumedAfterLoad()));
+      drainEdt();
+      assertTrue(frame.isUserAnalysisPaused());
+      assertEquals(requestsBeforeLoad, engine.automaticRequests, "no automatic quick analysis");
+      assertEquals(0, leelaz.ponderCount);
       assertTrue(Lizzie.config.autoQuickAnalyzeOnLoad);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void aPauseAfterAFailureEndsWithItsGame() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      EngineManager.isEmpty = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+      Lizzie.frame = frame;
+      // A failed engine sync pauses analysis without the user asking for it.
+      setField(frame, "userAnalysisPaused", true);
+
+      SwingUtilities.invokeAndWait(frame::startNewKifuAnalysisContextAfterSuccessfulLoad);
+
+      assertFalse(frame.isUserAnalysisPaused());
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void resumingBeforeOpeningAGameLetsItsAnalysisStart() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      AnalysisSyncBoard board = analysisSyncBoardWith(historyWithUnanalyzedMove());
+      Lizzie.board = board;
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.automatic = true;
+      engine.reusable = true;
+      frame.analysisEngine = engine;
+      Lizzie.frame = frame;
+      startAutomaticQuickAnalysis(frame);
+
+      SwingUtilities.invokeAndWait(frame::togglePonderMannul);
+      engine.completeExit();
+      drainEdt();
+      SwingUtilities.invokeAndWait(frame::togglePonderMannul);
+      drainEdt();
+      assertFalse(frame.isUserAnalysisPaused());
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      frame.startNewKifuAnalysisContextAfterSuccessfulLoad();
+
+      assertFalse(frame.isUserAnalysisPaused());
+      SwingUtilities.invokeAndWait(() -> assertTrue(frame.ensureAnalysisResumedAfterLoad()));
       SwingUtilities.invokeAndWait(() -> frame.runAfterAutomaticQuickAnalysisReleased(() -> {}));
     } finally {
       env.close();
@@ -4251,6 +4310,7 @@ class LizzieFrameRegressionTest {
   }
 
   private static final class ResourceTrackingAnalysisEngine extends AnalysisEngine {
+    private int automaticRequests;
     private boolean shared;
     private boolean localDedicated;
     private boolean analysisInProgress;
@@ -4277,6 +4337,7 @@ class LizzieFrameRegressionTest {
 
     @Override
     public int startAutomaticQuickAnalysisRequest(Object useIdentity) {
+      automaticRequests++;
       analysisInProgress = true;
       requestLifecycleInProgress = true;
       lastShowProgressDialog = false;

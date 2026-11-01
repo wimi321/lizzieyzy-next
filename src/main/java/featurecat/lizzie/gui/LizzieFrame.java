@@ -339,6 +339,8 @@ public class LizzieFrame extends JFrame {
   private BoardHistoryNode automaticQuickAnalysisRoot;
   private AutomaticQuickAnalysisEngineAdapter automaticQuickAnalysisAdapter;
   private volatile boolean userAnalysisPaused;
+  // Set and cleared only by the user's own pause and resume; a game opened later stays paused.
+  private volatile boolean analysisOffByUser;
   private volatile BoardHistoryNode userCancelledQuickAnalysisRoot;
   private volatile boolean pendingForegroundResumeAfterCleanup;
   private volatile boolean analysisControlCleanupInProgress;
@@ -4530,14 +4532,7 @@ public class LizzieFrame extends JFrame {
     if (deferKifuOpenUntilAutomaticQuickAnalysisRestored(() -> openFileWithAna(isFlashMode))) {
       return;
     }
-    //   boolean ponder = false;
-    //  double komi = Lizzie.board.getHistory().getGameInfo().getKomi();
-    //    if (Lizzie.leelaz.isPondering()) {
-    //      ponder = true;
-    //      Lizzie.leelaz.togglePonder();
-    //    }
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
-    // JFrame frame = new JFrame();
     this.setAlwaysOnTop(false);
     File[] files =
         chooseKifuFiles(
@@ -13862,6 +13857,7 @@ public class LizzieFrame extends JFrame {
 
   private void recordUserAnalysisPause(BoardHistoryNode cancelledRoot) {
     userAnalysisPaused = true;
+    analysisOffByUser = true;
     if (readBoard != null) readBoard.invalidatePendingSyncAnalysisResume();
     pendingForegroundResumeAfterCleanup = false;
     userCancelledQuickAnalysisRoot = cancelledRoot;
@@ -13869,6 +13865,7 @@ public class LizzieFrame extends JFrame {
 
   private void resumeFromAnalysisControl() {
     userAnalysisPaused = false;
+    analysisOffByUser = false;
     if (analysisControlCleanupInProgress) {
       pendingForegroundResumeAfterCleanup = true;
       return;
@@ -17901,7 +17898,8 @@ public class LizzieFrame extends JFrame {
 
   private void clearUserAnalysisPauseForNewKifuLoadContext() {
     analysisControlCleanupGeneration++;
-    userAnalysisPaused = false;
+    // A pause after a failure belongs to the old game; one the user chose carries over.
+    userAnalysisPaused = analysisOffByUser;
     pendingForegroundResumeAfterCleanup = false;
     analysisControlCleanupInProgress = false;
     userCancelledQuickAnalysisRoot = null;
