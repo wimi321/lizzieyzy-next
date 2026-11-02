@@ -29,6 +29,7 @@ import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.analysis.ReadBoardTrackingEligibilityAdapter;
 import featurecat.lizzie.analysis.ReadBoardUpdateInstaller;
 import featurecat.lizzie.analysis.ReadBoardUpdateRequest;
+import featurecat.lizzie.analysis.RulePreset;
 import featurecat.lizzie.analysis.SessionRulesSynchronizer;
 import featurecat.lizzie.analysis.TrackingAnalysisController;
 import featurecat.lizzie.analysis.WholeGameAnalysisOptions;
@@ -3769,13 +3770,13 @@ public class LizzieFrame extends JFrame {
             if (!Lizzie.config.genmoveGameNoTime) sendAiTime(true, Lizzie.leelaz, true);
             clearWRNforGame(true);
             if (Lizzie.config.kataVisitsPlayoutsSettings) {
+              Leelaz engine = Lizzie.leelaz;
               if (Lizzie.config.kataVisits > 0)
-                Lizzie.leelaz.sendCommand("kata-set-param maxVisits " + Lizzie.config.kataVisits);
-              else Lizzie.leelaz.sendCommand("kata-set-param maxVisits 1125899906842624");
+                engine.sendCommand("kata-set-param maxVisits " + Lizzie.config.kataVisits);
+              else engine.sendCommand("kata-set-param maxVisits 1125899906842624");
               if (Lizzie.config.kataPlayouts > 0)
-                Lizzie.leelaz.sendCommand(
-                    "kata-set-param maxPlayouts " + Lizzie.config.kataPlayouts);
-              else Lizzie.leelaz.sendCommand("kata-set-param maxPlayouts 1125899906842624");
+                engine.sendCommand("kata-set-param maxPlayouts " + Lizzie.config.kataPlayouts);
+              else engine.sendCommand("kata-set-param maxPlayouts 1125899906842624");
             }
             if (isHandicapGame) {
               Lizzie.board.getHistory().getData().blackToPlay = false;
@@ -8984,7 +8985,23 @@ public class LizzieFrame extends JFrame {
     if (matchRulesCaptionBounds == null || !matchRulesCaptionBounds.contains(x, y)) {
       return false;
     }
-    return inspectMatchRules();
+    if (inspectMatchRules()) return true;
+    if (EngineGamePresentation.current().playing()) return false;
+    showRulesQuickMenu(matchRulesCaptionBounds);
+    return true;
+  }
+
+  /** The rules caption's menu, which switches the rules and the komi in one click. */
+  void showRulesQuickMenu(Rectangle caption) {
+    Leelaz engine = Lizzie.leelaz;
+    String reason = rulesUnavailableReason(engine);
+    if (reason != null) {
+      Utils.showMsg(Lizzie.resourceBundle.getString(reason));
+      return;
+    }
+    RulesQuickSwitch.menuFor(
+            engine, Lizzie.board, Lizzie.config, this, Lizzie.resourceBundle, Utils::showMsg)
+        .show(mainPanel, Utils.zoomIn(caption.x), Utils.zoomIn(caption.y + caption.height));
   }
 
   public void inspectMatchRulesOrSetRules() {
@@ -9111,14 +9128,14 @@ public class LizzieFrame extends JFrame {
               : Math.max((float) (min(width * 0.4, height * 0.85) * 0.2), 11f));
     else setPanelFont(g, Math.max(11f, (float) (height * 0.18)));
     Font panelFont = g.getFont();
+    double komi = Lizzie.board.getHistory().getGameInfo().getKomi();
     drawStringMid(
         g,
         posX - strokeRadius + width / 2,
         posY + height * 7 / 8,
         uiFont,
         Font.PLAIN,
-        InfoPanelText.komi(
-            Lizzie.resourceBundle, Lizzie.board.getHistory().getGameInfo().getKomi()),
+        InfoPanelText.komi(Lizzie.resourceBundle, komi),
         panelFont.getSize(),
         width * 2 / 10,
         0);
@@ -9143,7 +9160,7 @@ public class LizzieFrame extends JFrame {
     if (!usingSpecificRues && leela != null && leela.isKatago && !EngineManager.isEmpty) {
       KataGoRules.Summary summary = leela.rulesSummary;
       if (summary != null) {
-        moveOrRules = Lizzie.resourceBundle.getString(summary.labelKey());
+        moveOrRules = Lizzie.resourceBundle.getString(RulePreset.captionKey(summary, komi));
         usingSpecificRues = true;
       }
     }
@@ -10530,33 +10547,6 @@ public class LizzieFrame extends JFrame {
       refresh();
     }
   }
-
-  /**
-   * Create comment cached image
-   *
-   * @param forceRefresh
-   * @param w
-   * @param h
-   */
-  //  public void createCommentImage(boolean forceRefresh, int w, int h, boolean isLoadingEngine) {
-  //    if (forceRefresh || cachedCommentImage.getWidth() != w || cachedCommentImage.getHeight() !=
-  // h) {
-  //      if (w > 0 && h > 0) {
-  //        commentScrollPane.setSize(w, h);
-  //        cachedCommentImage =
-  //            new BufferedImage(
-  //                commentScrollPane.getWidth(), commentScrollPane.getHeight(), TYPE_INT_ARGB);
-  //        Graphics2D g2 = cachedCommentImage.createGraphics();
-  //        commentScrollPane.doLayout();
-  //        commentScrollPane.addNotify();
-  //        commentScrollPane.validate();
-  //        if (isLoadingEngine) commentScrollPane.getVerticalScrollBar().setValue(9999);
-  //        //   commentPos = commentScrollPane.getVerticalScrollBar().getValue();
-  //        commentScrollPane.printAll(g2);
-  //        g2.dispose();
-  //      }
-  //    }
-  //  }
 
   private void setComment(boolean needReaddText) {
     if (!SwingUtilities.isEventDispatchThread()) {
