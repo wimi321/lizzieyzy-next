@@ -26,7 +26,6 @@ import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
-import java.util.Locale;
 import javax.imageio.ImageIO;
 import javax.swing.JButton;
 import javax.swing.JComponent;
@@ -341,18 +340,21 @@ public class ScoreResult extends JDialog {
               + "="
               + whiteAll);
     }
-    scoreResult.setText(
-        (blackAll >= whiteAll
-                ? Lizzie.resourceBundle.getString("ScoreResult.blackWin")
-                : Lizzie.resourceBundle.getString("ScoreResult.whiteWin"))
-            + String.format(Locale.ENGLISH, "%.1f", Math.abs(blackAll - whiteAll))
-            + Lizzie.resourceBundle.getString("ScoreResult.points"));
-    if (blackAll >= whiteAll) {
-      scoreResult.setBackground(Color.BLACK);
-      scoreResult.setForeground(Color.WHITE);
-    } else {
-      scoreResult.setBackground(AppleStyleSupport.validFieldBackground());
-      scoreResult.setForeground(Color.BLACK);
+    CountVerdict verdict = new CountVerdict(blackAll, whiteAll);
+    scoreResult.setText(verdict.text(Lizzie.resourceBundle));
+    switch (verdict.outcome()) {
+      case BLACK -> {
+        scoreResult.setBackground(Color.BLACK);
+        scoreResult.setForeground(Color.WHITE);
+      }
+      case WHITE -> {
+        scoreResult.setBackground(AppleStyleSupport.validFieldBackground());
+        scoreResult.setForeground(Color.BLACK);
+      }
+      case DRAW -> {
+        scoreResult.setBackground(Color.GRAY);
+        scoreResult.setForeground(Color.WHITE);
+      }
     }
     setLblRule();
     relayoutAfterTextChange();
