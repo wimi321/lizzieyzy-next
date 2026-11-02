@@ -799,17 +799,20 @@ public class IndependentMainBoard extends JFrame {
   }
 
   private void onClickedForManul(int x, int y) {
+    LizzieFrame frame = Lizzie.frame;
+    if (boardRenderer.isOnPlayerName(x, y)) {
+      frame.togglePlayerNameWinrates();
+      return;
+    }
     Optional<int[]> boardCoordinates = boardRenderer.convertScreenToCoordinates(x, y);
     if (boardCoordinates.isPresent()) {
       int[] coords = boardCoordinates.get();
       if (Lizzie.board.isSetupMode()) {
-        Lizzie.frame.handleSetupBoardClick(coords, false);
+        frame.handleSetupBoardClick(coords, false);
       } else {
-        if (Lizzie.frame.blackorwhite == 0) Lizzie.board.placeForManual(coords[0], coords[1]);
-        if (Lizzie.frame.blackorwhite == 1)
-          Lizzie.board.placeForManual(coords[0], coords[1], Stone.BLACK);
-        if (Lizzie.frame.blackorwhite == 2)
-          Lizzie.board.placeForManual(coords[0], coords[1], Stone.WHITE);
+        if (frame.blackorwhite == 0) Lizzie.board.placeForManual(coords[0], coords[1]);
+        if (frame.blackorwhite == 1) Lizzie.board.placeForManual(coords[0], coords[1], Stone.BLACK);
+        if (frame.blackorwhite == 2) Lizzie.board.placeForManual(coords[0], coords[1], Stone.WHITE);
       }
     }
   }
@@ -849,6 +852,10 @@ public class IndependentMainBoard extends JFrame {
   private void onClicked(int x, int y) {
     cancelPendingSuggestionHoverPreview();
     if (Lizzie.frame.isContributing) return;
+    if (boardRenderer.isOnPlayerName(x, y)) {
+      Lizzie.frame.togglePlayerNameWinrates();
+      return;
+    }
     // Check for board click
     Optional<int[]> boardCoordinates;
     boardCoordinates = boardRenderer.convertScreenToCoordinates(x, y);

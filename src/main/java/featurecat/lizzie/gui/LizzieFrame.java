@@ -9396,7 +9396,7 @@ public class LizzieFrame extends JFrame {
    * @param y y coordinate
    */
   public void onClickedForManul(int x, int y) {
-    if (tryInspectMatchRulesAt(x, y)) {
+    if (tryInspectMatchRulesAt(x, y) || togglePlayerNameWinratesAt(x, y)) {
       return;
     }
     if (isTrialActive()) {
@@ -9471,8 +9471,20 @@ public class LizzieFrame extends JFrame {
     }
   }
 
+  /** Shows or hides the live win rates beside the players' names under the board. */
+  void togglePlayerNameWinrates() {
+    NameWinrates.toggle(Lizzie.config.uiConfig);
+    refresh();
+  }
+
+  private boolean togglePlayerNameWinratesAt(int x, int y) {
+    if (boardRenderer == null || !boardRenderer.isOnPlayerName(x, y)) return false;
+    togglePlayerNameWinrates();
+    return true;
+  }
+
   public void onClicked(int x, int y) {
-    if (tryInspectMatchRulesAt(x, y)) {
+    if (tryInspectMatchRulesAt(x, y) || togglePlayerNameWinratesAt(x, y)) {
       return;
     }
     clearSuggestionPreviewBeforeBoardClick();
@@ -13614,18 +13626,6 @@ public class LizzieFrame extends JFrame {
         tree_CENTER_DIAM);
     g.dispose();
   }
-
-  //  private Color reverseColor(Color color) {
-  //    // System.out.println("color=="+color);
-  //    int r = color.getRed();
-  //    int g = color.getGreen();
-  //    int b = color.getBlue();
-  //    int r_ = 255 - r;
-  //    int g_ = 255 - g;
-  //    int b_ = 255 - b;
-  //    Color newColor = new Color(r_, g_, b_);
-  //    return newColor;
-  //  }
 
   private void setTreeMaxLimit() {
     if (varTreeMaxX >= Lizzie.config.maxTreeWidth) {
@@ -18350,19 +18350,19 @@ public class LizzieFrame extends JFrame {
     contributeEngine = new ContributeEngine();
     Lizzie.frame.openContributeView();
     if (Lizzie.config.contributeShowEstimate) {
-      savedIsHiddenKataEstimate = Lizzie.config.isHiddenKataEstimate;
-      savedShowKataGoEstimate = Lizzie.config.showKataGoEstimate;
-      savedShowKataGoEstimateOnMainbord = Lizzie.config.showKataGoEstimateOnMainbord;
-      savedShowKataGoEstimateOnSubbord = Lizzie.config.showKataGoEstimateOnSubbord;
+      Config config = Lizzie.config;
+      savedIsHiddenKataEstimate = config.isHiddenKataEstimate;
+      savedShowKataGoEstimate = config.showKataGoEstimate;
+      savedShowKataGoEstimateOnMainbord = config.showKataGoEstimateOnMainbord;
+      savedShowKataGoEstimateOnSubbord = config.showKataGoEstimateOnSubbord;
 
-      Lizzie.config.isHiddenKataEstimate = false;
-      Lizzie.config.showKataGoEstimate = true;
-      if (!Lizzie.config.showKataGoEstimateOnMainbord
-          && !Lizzie.config.showKataGoEstimateOnSubbord) {
-        Lizzie.config.showKataGoEstimateOnMainbord = true;
-        Lizzie.config.showKataGoEstimateOnSubbord = true;
-      } else if (!Lizzie.config.showKataGoEstimateOnMainbord && !Lizzie.config.showSubBoard) {
-        Lizzie.config.showKataGoEstimateOnMainbord = true;
+      config.isHiddenKataEstimate = false;
+      config.showKataGoEstimate = true;
+      if (!config.showKataGoEstimateOnMainbord && !config.showKataGoEstimateOnSubbord) {
+        config.showKataGoEstimateOnMainbord = true;
+        config.showKataGoEstimateOnSubbord = true;
+      } else if (!config.showKataGoEstimateOnMainbord && !config.showSubBoard) {
+        config.showKataGoEstimateOnMainbord = true;
       }
     }
   }

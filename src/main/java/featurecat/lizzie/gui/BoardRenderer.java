@@ -66,6 +66,8 @@ public class BoardRenderer {
   private int boardWSize, boardHSize;
   public boolean emptyName = true;
   public boolean changedName = false;
+  // Where the players' names were last drawn; a click there shows or hides their win rates.
+  private Rectangle playerNameBounds;
   private boolean cachedShowCoords = false;
   private String cachedBoardStyle = "";
 
@@ -266,6 +268,7 @@ public class BoardRenderer {
 
   /** Draw a go board */
   public void draw(Graphics2D g) {
+    playerNameBounds = null;
     drawGoban(g);
     if (Lizzie.board != null && Lizzie.board.isSetupMode()) {
       clearBranch();
@@ -791,7 +794,8 @@ public class BoardRenderer {
   }
 
   private void drawName(Graphics2D g0) {
-    featurecat.lizzie.analysis.GameInfo info = Lizzie.board.getHistory().getGameInfo();
+    featurecat.lizzie.rules.BoardHistoryList history = Lizzie.board.getHistory();
+    featurecat.lizzie.analysis.GameInfo info = history.getGameInfo();
     String black = info.getPlayerBlack();
     String white = info.getPlayerWhite();
     if (black.length() == 0 && white.length() == 0) {
@@ -815,9 +819,18 @@ public class BoardRenderer {
     Font blackFont = new Font(isKoreanName(black) ? "Malgun Gothic" : fontName, Font.PLAIN, size);
     Font whiteFont = new Font(isKoreanName(white) ? "Malgun Gothic" : fontName, Font.PLAIN, size);
     FontMetrics blackMetrics = g0.getFontMetrics(blackFont);
-    int maxWidth = (int) (squareWidth * Board.boardWidth * 0.43);
+    FontMetrics whiteMetrics = g0.getFontMetrics(whiteFont);
+    boolean winrates = NameWinrates.shown(Lizzie.config.uiConfig);
+    int maxWidth =
+        (int) (squareWidth * Board.boardWidth * 0.43)
+            - (winrates ? blackMetrics.stringWidth(NameWinrates.WIDEST) : 0);
     black = BoardNamePlate.fit(black, blackMetrics, maxWidth);
-    white = BoardNamePlate.fit(white, g0.getFontMetrics(whiteFont), maxWidth);
+    white = BoardNamePlate.fit(white, whiteMetrics, maxWidth);
+    if (winrates) {
+      WinrateReading reading = WinrateReading.of(history.getCurrentHistoryNode());
+      black = NameWinrates.black(black, reading);
+      white = NameWinrates.white(white, reading);
+    }
     EngineGameSnapshot snapshot = EngineGamePresentation.current();
     if (EngineGamePresentation.showLiveBatchScores(snapshot)) {
       black = black + "  " + EngineGamePresentation.blackWins(snapshot);
@@ -828,21 +841,29 @@ public class BoardRenderer {
     int center = x + boardWidth / 2;
     int top = y + boardHeight - scaledMarginHeight;
     int baseline = top + stoneRadius * 13 / 8 + (blackMetrics.getHeight() + 2) / 4;
+    int blackLeft = center - blackMetrics.stringWidth(black) - scaledMarginWidth * 4 / 5;
+    int whiteLeft = center + scaledMarginWidth * 4 / 5 + 1;
     BoardNamePlate.paintStones(
         g0,
         center - stoneRadius * 9 / 10,
         center - stoneRadius * 3 / 10,
         top + stoneRadius,
         stoneRadius * 5 / 4,
-        Lizzie.board.getHistory().isBlacksTurn());
-    BoardNamePlate.paintBlackName(
-        g0,
-        blackFont,
-        black,
-        center - blackMetrics.stringWidth(black) - scaledMarginWidth * 4 / 5,
-        baseline);
-    BoardNamePlate.paintWhiteName(
-        g0, whiteFont, white, center + scaledMarginWidth * 4 / 5 + 1, baseline);
+        history.isBlacksTurn());
+    BoardNamePlate.paintBlackName(g0, blackFont, black, blackLeft, baseline);
+    BoardNamePlate.paintWhiteName(g0, whiteFont, white, whiteLeft, baseline);
+    playerNameBounds =
+        BoardNamePlate.hitBox(
+            blackLeft,
+            whiteLeft + whiteMetrics.stringWidth(white),
+            baseline,
+            blackMetrics.getAscent(),
+            blackMetrics.getDescent());
+  }
+
+  /** Whether (x, y) is on the players' names as last drawn. */
+  boolean isOnPlayerName(int x, int y) {
+    return playerNameBounds != null && playerNameBounds.contains(x, y);
   }
 
   public void reDrawGobanAnyway() {
@@ -1659,27 +1680,28 @@ public class BoardRenderer {
             stoneRadius,
             hover[0],
             hover[1]);
+    featurecat.lizzie.Config config = Lizzie.config;
     VariationPreviewGenerator.Style style =
         new VariationPreviewGenerator.Style(
             false,
             false,
-            Lizzie.config.removeDeadChainInVariation,
+            config.removeDeadChainInVariation,
             shouldShowPreviousBestMoves(),
-            Lizzie.config.usePureStone,
+            config.usePureStone,
             isFancyBoard,
-            Lizzie.config.showStoneHighlight,
-            Lizzie.config.showHoverGlow,
+            config.showStoneHighlight,
+            config.showHoverGlow,
             Lizzie.frame.isTrying,
-            Lizzie.config.showPvVisitsAllMove,
-            Lizzie.config.showPvVisitsLastMove,
-            Lizzie.config.pvVisitsLimit,
+            config.showPvVisitsAllMove,
+            config.showPvVisitsLastMove,
+            config.pvVisitsLimit,
             maxBranchMoves(false),
             maxBranchMoves(true),
             0,
             LizzieFrame.uiFont,
-            Lizzie.config.usePureStone ? null : getScaleStone(true, stoneRadius * 2 + 1),
-            Lizzie.config.usePureStone ? null : getScaleStone(false, stoneRadius * 2 + 1),
-            Lizzie.config.showStoneShadow ? cachedShadow : null,
+            config.usePureStone ? null : getScaleStone(true, stoneRadius * 2 + 1),
+            config.usePureStone ? null : getScaleStone(false, stoneRadius * 2 + 1),
+            config.showStoneShadow ? cachedShadow : null,
             cachedStoneCenter,
             paint,
             noFancyColor,
@@ -1695,9 +1717,7 @@ public class BoardRenderer {
         geometry,
         style,
         new VariationPreviewState.Mode(
-            Lizzie.config.extraMode,
-            Lizzie.config.noRefreshOnMouseMove,
-            Lizzie.config.autoReplayBranch),
+            config.extraMode, config.noRefreshOnMouseMove, config.autoReplayBranch),
         this::drawBranch,
         result -> {
           branch = result.branch();
@@ -3077,22 +3097,6 @@ public class BoardRenderer {
           Color color =
               new Color(hsbColor.getRed(), hsbColor.getGreen(), hsbColor.getBlue(), (int) alpha);
           if (!branchOpt.isPresent()) {
-            //            if (isFancyBoard) {
-            //              g.setPaint(paint);
-            //              Composite comp = g.getComposite();
-            //              if (percentPlayouts < 0.05) {
-            //                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 0.8f));
-            //              }
-            //              fillCircle(g, suggestionX, suggestionY, stoneRadius + 1);
-            //              g.setComposite(comp);
-            //            } else {
-            //              g.setColor(noFancyColor);
-            //              Composite comp = g.getComposite();
-            //              if (percentPlayouts < 0.05)
-            //                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 0.8f));
-            //              fillCircle(g, suggestionX, suggestionY, stoneRadius + 1);
-            //              g.setComposite(comp);
-            //            }
             g.setColor(color);
             fillCircle(g, suggestionX, suggestionY, stoneRadius + 1);
             float alphaCircle = 48 + 48 * alphaRatio;
@@ -4712,16 +4716,4 @@ public class BoardRenderer {
       Lizzie.frame.refresh();
     }
   }
-
-  //  private Color reverseColor(Color color) {
-  //    // System.out.println("color=="+color);
-  //    int r = color.getRed();
-  //    int g = color.getGreen();
-  //    int b = color.getBlue();
-  //    int r_ = 255 - r;
-  //    int g_ = 255 - g;
-  //    int b_ = 255 - b;
-  //    Color newColor = new Color(r_, g_, b_);
-  //    return newColor;
-  //  }
 }
