@@ -6,6 +6,8 @@ All notable maintenance updates to this fork are documented here.
 
 - Clicking the rules caption at the top left of the main window opens a menu that switches the rules and the komi in one click: the Chinese Weiqi Association's 2027 trial rules (围棋竞赛规则（2027试行版）, in force from 2027-01-01: komi 3.5 stones, 7 points, so a game can be drawn), the 2002 Chinese rules (3¾ stones, 7.5 points), Japanese, ancient Chinese, Tromp-Taylor and Ing rules, and the full rules dialog. Chinese rules with komi 7 are shown as 中国规则2027; in a handicap game only the rules change.
 
+- The count window (数子结果) shows a draw as 和棋 when the totals are equal, as they can be with a whole-point komi such as the 7 points of the 2027 Chinese rules, instead of calling it a win for Black by 0 points; margins drop a trailing ".0" (黑胜4目).
+
 - 显示 → 黑白胜率大字 opens a window of its own with Black's and White's win rates in large figures, on a black and a white card or as glowing seven-segment digits (right click to switch, or to keep the window on top). It follows the main board's position and remembers its style and place.
 
 - Theme settings can enlarge and embolden the board coordinates (线条与字体 → 棋盘坐标: standard, large or extra large, and bold). Larger labels widen the board margin just enough to stay clear of the stones on the edge lines; the default look is unchanged.
