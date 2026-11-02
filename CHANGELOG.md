@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- 显示 → 黑白胜率大字 opens a window of its own with Black's and White's win rates in large figures, on a black and a white card or as glowing seven-segment digits (right click to switch, or to keep the window on top). It follows the main board's position and remembers its style and place.
+
 - Theme settings can enlarge and embolden the board coordinates (线条与字体 → 棋盘坐标: standard, large or extra large, and bold). Larger labels widen the board margin just enough to stay clear of the stones on the edge lines; the default look is unchanged.
 
 - The empty-board hint ("打开棋谱、把 SGF 拖进来，或新建对局") only appears for someone who has never opened a game, and it steps aside as soon as the engine shows its analysis of the empty board instead of covering the candidates in the centre.

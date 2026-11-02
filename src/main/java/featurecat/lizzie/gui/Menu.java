@@ -403,7 +403,6 @@ public class Menu extends JMenuBar {
 
           @Override
           public void actionPerformed(ActionEvent e) {
-            // TODO Auto-generated method stub
             Lizzie.frame.showTempGamePanel();
           }
         });
@@ -420,7 +419,6 @@ public class Menu extends JMenuBar {
 
           @Override
           public void actionPerformed(ActionEvent e) {
-            // TODO Auto-generated method stub
             Lizzie.frame.saveMainBoardToClipboard();
           }
         });
@@ -434,7 +432,6 @@ public class Menu extends JMenuBar {
 
           @Override
           public void actionPerformed(ActionEvent e) {
-            // TODO Auto-generated method stub
             Lizzie.frame.copySubBoard();
           }
         });
@@ -447,7 +444,6 @@ public class Menu extends JMenuBar {
         new ActionListener() {
           @Override
           public void actionPerformed(ActionEvent e) {
-            // TODO Auto-generated method stub
             Lizzie.frame.copySgf();
           }
         });
@@ -461,7 +457,6 @@ public class Menu extends JMenuBar {
         new ActionListener() {
           @Override
           public void actionPerformed(ActionEvent e) {
-            // TODO Auto-generated method stub
             Lizzie.frame.pasteSgf();
           }
         });
@@ -473,7 +468,6 @@ public class Menu extends JMenuBar {
         new ActionListener() {
           @Override
           public void actionPerformed(ActionEvent e) {
-            // TODO Auto-generated method stub
             Lizzie.config.readKomi = !Lizzie.config.readKomi;
             Lizzie.config.uiConfig.put("read-komi", Lizzie.config.readKomi);
           }
@@ -505,7 +499,6 @@ public class Menu extends JMenuBar {
 
           @Override
           public void actionPerformed(ActionEvent e) {
-            // TODO Auto-generated method stub
             System.exit(0);
           }
         });
@@ -518,7 +511,6 @@ public class Menu extends JMenuBar {
 
           @Override
           public void actionPerformed(ActionEvent e) {
-            // TODO Auto-generated method stub
             Lizzie.shutdown();
           }
         });
@@ -656,6 +648,11 @@ public class Menu extends JMenuBar {
           }
         });
     viewMenu.add(makeAutoPlay);
+
+    final JFontMenuItem bigWinrate =
+        new JFontMenuItem(resourceBundle.getString("Menu.bigWinrateWindow")); // 黑白胜率大字
+    bigWinrate.addActionListener(e -> Lizzie.frame.toggleBigWinrateWindow());
+    viewMenu.add(bigWinrate);
 
     final JFontCheckBoxMenuItem nextMoveHintNone =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.nextMoveHintNone")); // ("不显示");
@@ -3174,7 +3171,8 @@ public class Menu extends JMenuBar {
         new ActionListener() {
           @Override
           public void actionPerformed(ActionEvent e) {
-            if (!Lizzie.frame.playCurrentVariation()) Lizzie.frame.playBestMove();
+            LizzieFrame frame = Lizzie.frame;
+            if (!frame.playCurrentVariation()) frame.playBestMove();
           }
         });
     gameMenu.add(playBestMove);
