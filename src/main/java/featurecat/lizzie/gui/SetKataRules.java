@@ -6,7 +6,6 @@ import featurecat.lizzie.analysis.EngineRulesResult;
 import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.KataGoRules;
 import featurecat.lizzie.analysis.Leelaz;
-import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.util.Utils;
 import java.awt.Dimension;
 import java.awt.Toolkit;
@@ -278,44 +277,20 @@ public class SetKataRules extends JDialog {
       return;
     }
     KataGoRules requested = rulesFromEditor();
-    boolean autoLoad = chkbxAutoLoadRules.isSelected();
-    JSONObject candidateUi = new JSONObject(Lizzie.config.uiConfig.toString());
-    candidateUi.put("auto-load-kata-rules", autoLoad);
-    if (autoLoad) {
-      candidateUi.put("kata-rules", requested.toGtpArgument());
-    }
+    ManualRulesSelection selection =
+        new ManualRulesSelection(Lizzie.config, () -> Lizzie.board, () -> Lizzie.frame);
     try {
-      Lizzie.config.saveConfigSections(candidateUi, Lizzie.config.leelazConfig);
+      selection.saveStartupRules(requested, chkbxAutoLoadRules.isSelected());
     } catch (IOException failure) {
       Utils.showMsg(resourceBundle.getString("Lizzie.save.error") + failure.getLocalizedMessage());
       return;
     }
-    Lizzie.config.autoLoadKataRules = autoLoad;
-    if (autoLoad) {
-      Lizzie.config.kataRules = requested.toGtpArgument();
-    }
-    Lizzie.board.clearBestMovesAfter(Lizzie.board.getHistory().getStart());
-    BoardHistoryList history = Lizzie.board.getHistory();
-    BoardHistoryList.ManualRulesIntent manualIntent = history.beginManualRulesIntent();
-    BoardHistoryList.SessionRulesTarget previousTarget = manualIntent.previousTarget();
-    Object engineIncarnation = engine.engineIncarnationToken();
-    long primaryGeneration = Lizzie.capturePrimaryEngineGeneration(engine);
     synchronized (this) {
       requestedManualRules = requested;
     }
-    if (Lizzie.frame != null) {
-      Lizzie.frame.retireImportedRulesForManualSelection(history, previousTarget);
-    }
     manualMismatchOperation = null;
-    rulesOperation = engine.applyEngineRulesOperation(requested);
+    rulesOperation = selection.apply(engine, requested, this, () -> {});
     manualRulesOperation = rulesOperation;
-    watchManualRulesCompletion(
-        manualRulesOperation,
-        requested,
-        history,
-        manualIntent,
-        engineIncarnation,
-        primaryGeneration);
     watchEngineRulesStatus();
     refreshStatus();
   }
@@ -368,50 +343,6 @@ public class SetKataRules extends JDialog {
     jo = result.observed().toJson();
     applyJsonToEditor(jo);
     return true;
-  }
-
-  private void watchManualRulesCompletion(
-      Leelaz.EngineRulesOperation operation,
-      KataGoRules requested,
-      BoardHistoryList history,
-      BoardHistoryList.ManualRulesIntent manualIntent,
-      Object engineIncarnation,
-      long primaryGeneration) {
-    Thread completion =
-        new Thread(
-            () -> {
-              try {
-                EngineRulesResult result = operation.await(31_000L);
-                if (result != null
-                    && result.isConfirmed()
-                    && result.observed() != null
-                    && result.observed().semanticallyEquals(requested)
-                    && isCurrentEngine()
-                    && engine.isCurrentEngineIncarnationToken(engineIncarnation)
-                    && Lizzie.board != null
-                    && Lizzie.capturePrimaryEngineGeneration(engine) == primaryGeneration
-                    && Lizzie.board.getHistory() == history) {
-                  synchronized (SetKataRules.this) {
-                    BoardHistoryList.SessionRulesTarget published;
-                    synchronized (history) {
-                      published =
-                          history
-                              .publishManualRulesIfCurrent(manualIntent, result.observed())
-                              .orElse(null);
-                    }
-                    if (published != null && Lizzie.frame != null) {
-                      Lizzie.frame.synchronizeManualRulesAfterSelection(
-                          history, published, manualIntent, engine, primaryGeneration);
-                    }
-                  }
-                }
-              } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-              }
-            },
-            "lizzie-set-kata-rules-completion");
-    completion.setDaemon(true);
-    completion.start();
   }
 
   private void clearManualRulesRequest() {
