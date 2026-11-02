@@ -29,13 +29,11 @@ public final class HumanSlTrainingPreferences {
     TrainingMode mode = enumValue(saved, "mode", TrainingMode.class, defaults.mode).choice();
     OpponentPreset opponent =
         enumValue(saved, "opponent-preset", OpponentPreset.class, defaults.opponentPreset);
-    boolean danRank = saved.optBoolean("dan-rank", defaults.danRank);
-    int rank = saved.optInt("rank", defaults.rank);
+    CoachLevel level = savedLevel(saved, defaults.level);
     if (opponent != OpponentPreset.RANK) {
-      // The 职业棋风 and 网络 9 段 presets are gone; the strongest rank comes closest to both.
+      // The 职业棋风 and 网络 9 段 presets are gone; 9 dan, their strongest old rank, takes over.
       opponent = OpponentPreset.RANK;
-      rank = 9;
-      danRank = true;
+      level = CoachLevel.DAN_9;
     }
     HumanSlTrainingConfig.PlayerColor color =
         enumValue(
@@ -55,7 +53,7 @@ public final class HumanSlTrainingPreferences {
         HumanSlTrainingConfig.builder()
             .mode(mode)
             .opponentPreset(opponent)
-            .rank(rank, danRank)
+            .level(level)
             .playerColor(color)
             .pace(pace)
             .handicap(handicap)
@@ -73,14 +71,31 @@ public final class HumanSlTrainingPreferences {
     JSONObject saved = new JSONObject();
     saved.put("mode", config.mode.name());
     saved.put("opponent-preset", config.opponentPreset.name());
-    saved.put("rank", config.rank);
-    saved.put("dan-rank", config.danRank);
+    saved.put("level", config.level.name());
+    // Older versions read the number alone; they get the plain level of it, at most 9 dan.
+    saved.put("rank", config.level.dan() ? Math.min(9, config.level.rank()) : config.level.rank());
+    saved.put("dan-rank", config.level.dan());
     saved.put("player-color", config.playerColor.name());
     saved.put("pace", config.pace.name());
     saved.put("handicap", config.handicap);
     saved.put("komi", config.komi);
     saved.put("advanced-visible", advancedVisible);
     uiConfig.put(UI_CONFIG_KEY, saved);
+  }
+
+  /**
+   * The saved level, or for settings from before the levels the plain level of the saved number: 3
+   * dan stays 3 dan, and kyu ranks weaker than 10 kyu become 10 kyu.
+   */
+  static CoachLevel savedLevel(JSONObject saved, CoachLevel fallback) {
+    if (saved.has("level")) {
+      return CoachLevel.named(saved.optString("level", ""), fallback);
+    }
+    if (!saved.has("rank")) {
+      return fallback;
+    }
+    return CoachLevel.forRank(
+        saved.optInt("rank", fallback.rank()), saved.optBoolean("dan-rank", true));
   }
 
   /**

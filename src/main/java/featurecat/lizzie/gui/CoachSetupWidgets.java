@@ -282,16 +282,20 @@ final class CoachSetupWidgets {
     }
   }
 
-  /** 20 kyu to 9 dan on one track: click, drag or the arrow keys. */
+  /** The opponent's level on one track: click, drag or the arrow keys. */
   static final class RankSlider extends Control {
-    private static final int[] TICKS = {0, 5, 10, 15, 20, 24, 28};
     private final int stops;
+    private final int[] ticks;
     private final IntConsumer onChange;
     private int value;
 
-    RankSlider(int stops, IntConsumer onChange) {
+    /**
+     * @param ticks the stops that get a mark on the track, and a label below it
+     */
+    RankSlider(int stops, int[] ticks, IntConsumer onChange) {
       super(javax.accessibility.AccessibleRole.SLIDER);
       this.stops = stops;
+      this.ticks = ticks.clone();
       this.onChange = onChange;
       setFocusable(true);
       setOpaque(false);
@@ -383,7 +387,7 @@ final class CoachSetupWidgets {
         g.fillRoundRect(left, 19, right - left, 6, 6, 6);
         g.setColor(p.accent());
         g.fillRoundRect(left, 19, thumb - left, 6, 6, 6);
-        for (int tick : TICKS) {
+        for (int tick : ticks) {
           g.setColor(tick <= value ? new Color(255, 255, 255, 216) : p.border());
           g.fillRoundRect(xOf(tick) - 1, 17, 2, 10, 2, 2);
         }
@@ -405,8 +409,8 @@ final class CoachSetupWidgets {
       }
     }
 
-    static int[] ticks() {
-      return TICKS.clone();
+    int[] ticks() {
+      return ticks.clone();
     }
   }
 

@@ -1,9 +1,9 @@
 package featurecat.lizzie.gui;
 
+import featurecat.lizzie.training.CoachLevel;
 import featurecat.lizzie.training.HumanSlTrainingConfig;
 import featurecat.lizzie.training.HumanThinkTime;
 import featurecat.lizzie.training.OpponentPreset;
-import featurecat.lizzie.training.RankScale;
 import featurecat.lizzie.training.TrainingMode;
 import java.awt.BasicStroke;
 import java.awt.Cursor;
@@ -21,10 +21,10 @@ import javax.swing.JButton;
 import javax.swing.JPanel;
 
 /**
- * The settings of the AI Coach setup sheet, top to bottom: the opponent's strength on one scale
- * from 20 kyu to 9 dan, the training mode as three cards, colour and AI 思考时间 side by side, and the
- * handicap, komi and starting position under 更多设置. The labels and values are drawn here; the
- * controls are {@link CoachSetupWidgets}.
+ * The settings of the AI Coach setup sheet, top to bottom: the opponent's strength on one scale of
+ * {@link CoachLevel}s, named by Fox rank from 17-18K to 10D, the training mode as three cards,
+ * colour and AI 思考时间 side by side, and the handicap, komi and starting position under 更多设置. The
+ * labels and values are drawn here; the controls are {@link CoachSetupWidgets}.
  */
 final class CoachSetupForm extends JPanel {
   static final int WIDTH = 648;
@@ -34,6 +34,18 @@ final class CoachSetupForm extends JPanel {
   private static final int ROW = 60;
   private static final double KOMI = 7.5;
   private static final double HANDICAP_KOMI = 0.5;
+
+  /** The labelled stops: 17-18K, 7-8K, 1D, 3D, 5D, 7D, 9D and 10D. */
+  static final int[] TICKS = {
+    CoachLevel.KYU_10.ordinal(),
+    CoachLevel.KYU_5.ordinal(),
+    CoachLevel.DAN_1.ordinal(),
+    CoachLevel.DAN_3.ordinal(),
+    CoachLevel.DAN_5.ordinal(),
+    CoachLevel.DAN_7.ordinal(),
+    CoachLevel.DAN_9.ordinal(),
+    CoachLevel.DAN_11.ordinal()
+  };
 
   private final BinaryOperator<String> text;
   private final Runnable onResize;
@@ -71,7 +83,8 @@ final class CoachSetupForm extends JPanel {
     this.fromCurrentAvailable = fromCurrentAvailable;
     moreHeader = new MoreHeader();
     setOpaque(false);
-    slider = new CoachSetupWidgets.RankSlider(RankScale.STOPS, value -> rankChanged());
+    slider =
+        new CoachSetupWidgets.RankSlider(CoachLevel.values().length, TICKS, value -> rankChanged());
     slider.getAccessibleContext().setAccessibleName(t("HumanSlTraining.strength", "Opponent"));
     weaker =
         new CoachSetupWidgets.SheetButton(
@@ -87,11 +100,12 @@ final class CoachSetupForm extends JPanel {
         new CoachRankTable.Link(
             t(
                 "HumanSlTraining.rankTable.tip",
-                "Compare KataGo ranks with Fox / Tygem and real-world grades"));
+                "Compare KataGo levels with Fox / Tygem and real-world grades, and pick one"));
+    rankTable.setText(t("HumanSlTraining.rankTable", "Rank table"));
     rankTable.addActionListener(
         event ->
             CoachRankTable.show(
-                this, text, RankScale.rank(slider.value()), RankScale.dan(slider.value())));
+                this, text, level(), picked -> slider.setValue(picked.ordinal(), true)));
     weaker.addActionListener(event -> slider.setValue(slider.value() - 1, true));
     stronger.addActionListener(event -> slider.setValue(slider.value() + 1, true));
     for (TrainingMode choice : TrainingMode.CHOICES) {
@@ -159,13 +173,13 @@ final class CoachSetupForm extends JPanel {
     add(moreStones);
     add(fromCurrent);
     selectMode(mode);
-    slider.setValue(RankScale.index(3, true), false);
+    slider.setValue(CoachLevel.DEFAULT.ordinal(), false);
     updateMoreControls();
   }
 
   /** Shows the settings of the last game. */
   void restore(HumanSlTrainingConfig config, boolean moreVisible) {
-    slider.setValue(RankScale.index(config.rank, config.danRank), false);
+    slider.setValue(config.level.ordinal(), false);
     selectMode(config.mode.choice());
     color.select(colorIndex(config.playerColor), false);
     pace.select(config.pace.ordinal(), false);
@@ -180,7 +194,7 @@ final class CoachSetupForm extends JPanel {
     return HumanSlTrainingConfig.builder()
         .mode(mode)
         .opponentPreset(OpponentPreset.RANK)
-        .rank(RankScale.rank(slider.value()), RankScale.dan(slider.value()))
+        .level(level())
         .playerColor(handicap > 0 ? HumanSlTrainingConfig.PlayerColor.BLACK : playerColor())
         .pace(HumanThinkTime.Pace.values()[pace.selected()])
         .moveTimeSeconds(10)
@@ -217,11 +231,7 @@ final class CoachSetupForm extends JPanel {
 
   private void rankChanged() {
     weaker.setEnabled(isEnabled() && slider.value() > 0);
-    stronger.setEnabled(isEnabled() && slider.value() < RankScale.STOPS - 1);
-    rankTable.setText(
-        CoachRankTable.summary(
-            text, RankScale.rank(slider.value()), RankScale.dan(slider.value())));
-    revalidate();
+    stronger.setEnabled(isEnabled() && slider.value() < CoachLevel.values().length - 1);
     repaint();
   }
 
@@ -298,12 +308,9 @@ final class CoachSetupForm extends JPanel {
     }
   }
 
-  String rankLabel(int index) {
-    return MessageFormat.format(
-        RankScale.dan(index)
-            ? t("HumanSlTraining.rank.danValue", "{0} dan")
-            : t("HumanSlTraining.rank.kyuValue", "{0} kyu"),
-        RankScale.rank(index));
+  /** The opponent the slider points at. */
+  CoachLevel level() {
+    return CoachLevel.at(slider.value());
   }
 
   private String paceHint() {
@@ -401,21 +408,19 @@ final class CoachSetupForm extends JPanel {
       CoachSetupWidgets.Palette p = CoachSetupWidgets.Palette.current();
       int width = getWidth();
       sectionLabel(g, t("HumanSlTraining.strength", "Opponent strength"), 0, strengthTop);
-      String rank = rankLabel(slider.value());
+      String rank = CoachLevelText.fox(text, level());
       g.setFont(CoachSetupWidgets.font(rank, Font.BOLD, 34f));
       FontMetrics big = g.getFontMetrics();
       int baseline = strengthTop + LABEL + 10 + big.getAscent() - 2;
       g.setColor(p.text());
       g.drawString(rank, 0, baseline);
-      String habit =
-          MessageFormat.format(
-              t("CoachPanel.imitates", "Plays like a {0} player"), rankLabel(slider.value()));
-      g.setFont(CoachSetupWidgets.font(habit, Font.PLAIN, 14f));
+      String detail = CoachLevelText.detail(text, level());
+      g.setFont(CoachSetupWidgets.font(detail, Font.PLAIN, 14f));
       g.setColor(p.muted());
-      g.drawString(habit, big.stringWidth(rank) + 12, baseline);
+      g.drawString(detail, big.stringWidth(rank) + 12, baseline);
       int ticksTop = strengthTop + LABEL + 10 + RANK_TEXT + 10 + 44 - 4;
-      for (int tick : CoachSetupWidgets.RankSlider.ticks()) {
-        String label = rankLabel(tick);
+      for (int tick : slider.ticks()) {
+        String label = CoachLevel.at(tick).fox();
         g.setFont(CoachSetupWidgets.font(label, Font.PLAIN, 12f));
         FontMetrics small = g.getFontMetrics();
         int x = slider.getX() + slider.xOf(tick) - small.stringWidth(label) / 2;
