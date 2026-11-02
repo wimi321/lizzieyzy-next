@@ -668,6 +668,18 @@ public class Theme {
     return config.optInt(key, uiConfig.optInt(key, defaultValue));
   }
 
+  /** Whether the coordinates around the board are bold. */
+  public boolean coordinateBold() {
+    String key = "coordinate-bold";
+    return config.optBoolean(key, uiConfig != null && uiConfig.optBoolean(key, false));
+  }
+
+  /** The coordinates around the board, in percent of their usual size. */
+  public int coordinateSize() {
+    String key = "coordinate-size";
+    return config.optInt(key, uiConfig == null ? 100 : uiConfig.optInt(key, 100));
+  }
+
   public Color morandiSuggestionColor(int level) {
     if (!Lizzie.config.useMorandiColors) {
       return null;
