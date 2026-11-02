@@ -44,9 +44,9 @@ class FunctionSearchTest {
             "FunctionSearch.category.sync",
             "FunctionSearch.category.view"),
         FunctionCatalog.categoryKeys());
-    assertEquals(76, FunctionCatalog.configSettingTargets().size());
+    assertEquals(77, FunctionCatalog.configSettingTargets().size());
     assertEquals(
-        76,
+        77,
         FunctionCatalog.configSettingTargets().stream()
             .map(FunctionCatalog.ConfigSettingTarget::id)
             .distinct()
@@ -67,6 +67,10 @@ class FunctionSearchTest {
         FunctionCatalog.entries().stream()
             .filter(entry -> entry.id().equals("engine.rules"))
             .count());
+    assertEquals(
+        FunctionCatalog.TargetType.SETTING,
+        FunctionCatalog.entry("config.theme.coordinates").targetType(),
+        "the board coordinates row of the theme settings can be searched");
   }
 
   @Test

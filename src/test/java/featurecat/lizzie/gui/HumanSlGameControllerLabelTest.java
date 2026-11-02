@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.training.CoachLevel;
 import featurecat.lizzie.training.HumanSlTrainingConfig;
 import featurecat.lizzie.training.OpponentPreset;
 import java.util.Locale;
@@ -11,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 class HumanSlGameControllerLabelTest {
   @Test
-  void rankOpponentUsesLocalizedDanLabel() {
+  void theOpponentGoesByItsLocalizedFoxRank() {
     ResourceBundle previous = Lizzie.resourceBundle;
     try {
       Lizzie.resourceBundle =
@@ -21,18 +22,18 @@ class HumanSlGameControllerLabelTest {
               null,
               HumanSlTrainingConfig.builder()
                   .opponentPreset(OpponentPreset.RANK)
-                  .rank(3, true)
+                  .level(CoachLevel.STRONG_DAN_3)
                   .build(),
               null);
 
-      assertEquals("3段", controller.opponentLabel());
+      assertEquals("野狐 3-4D", controller.opponentLabel());
     } finally {
       Lizzie.resourceBundle = previous;
     }
   }
 
   @Test
-  void rankOpponentUsesLocalizedKyuLabel() {
+  void anOlderKyuRankBecomesTheWeakestLevelInEnglish() {
     ResourceBundle previous = Lizzie.resourceBundle;
     try {
       Lizzie.resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US);
@@ -45,7 +46,7 @@ class HumanSlGameControllerLabelTest {
                   .build(),
               null);
 
-      assertEquals("12 kyu", controller.opponentLabel());
+      assertEquals("Fox 17-18K", controller.opponentLabel());
     } finally {
       Lizzie.resourceBundle = previous;
     }

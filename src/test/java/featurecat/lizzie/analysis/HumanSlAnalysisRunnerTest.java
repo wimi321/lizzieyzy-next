@@ -686,6 +686,127 @@ class HumanSlAnalysisRunnerTest {
   }
 
   @Test
+  void chooseMove_aKyuLevelSamplesItsPreAlphaZeroPolicyFromTwoSymmetries() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      boardWithHistory(history);
+      FakeProcess process =
+          new FakeProcess(
+              request ->
+                  new JSONObject()
+                      .put("id", request.getString("id"))
+                      .put("humanPolicy", new JSONObject().put("B2", 0.6)));
+      HumanSlAnalysisRunner runner =
+          new HumanSlAnalysisRunner(List.of("katago", "analysis"), ignored -> process);
+
+      java.util.Optional<HumanMoveChoice> choice =
+          runner.chooseMove(
+              history.getCurrentHistoryNode(),
+              featurecat.lizzie.training.CoachLevel.KYU_10.play(),
+              Duration.ofSeconds(1));
+
+      assertEquals("B2", choice.orElseThrow().move());
+      assertEquals(1, process.sentRequests.size());
+      JSONObject probe = process.sentRequests.get(0);
+      assertEquals(1, probe.getInt("maxVisits"));
+      assertEquals(
+          "preaz_20k", probe.getJSONObject("overrideSettings").getString("humanSLProfile"));
+      assertEquals(2, probe.getJSONObject("overrideSettings").getInt("rootNumSymmetriesToSample"));
+      runner.close();
+    }
+  }
+
+  @Test
+  void chooseMove_aDanLevelSearchesWithItsConfigAndPlaysGenmovesChoice() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      boardWithHistory(history);
+      // Players of the rank mostly answer at B2, but the search finds C3 0.2 utility better.
+      FakeProcess process =
+          new FakeProcess(
+              request ->
+                  new JSONObject()
+                      .put("id", request.getString("id"))
+                      .put("humanPolicy", new JSONObject().put("B2", 0.9).put("C3", 0.1))
+                      .put("rootInfo", new JSONObject().put("winrate", 0.55).put("scoreLead", 1.5))
+                      .put(
+                          "moveInfos",
+                          new JSONArray()
+                              .put(searchedMove("B2", -0.2, 300, 0))
+                              .put(searchedMove("C3", 0.0, 100, 1))));
+      HumanSlAnalysisRunner runner =
+          new HumanSlAnalysisRunner(List.of("katago", "analysis"), ignored -> process);
+
+      HumanMoveChoice choice =
+          runner
+              .chooseMove(
+                  history.getCurrentHistoryNode(),
+                  featurecat.lizzie.training.CoachLevel.DAN_11.play(),
+                  Duration.ofSeconds(1))
+              .orElseThrow();
+
+      assertEquals("C3", choice.move(), "11 dan's lambda of 0.01 lets KataGo decide");
+      assertEquals(0.9, choice.topHumanProbability(), 1e-12);
+      assertEquals(0.55, choice.aiWinrate(), 1e-12);
+      assertEquals(1, process.sentRequests.size(), "one search, no extra probe or verification");
+      JSONObject search = process.sentRequests.get(0);
+      JSONObject settings = search.getJSONObject("overrideSettings");
+      assertEquals(400, search.getInt("maxVisits"));
+      assertTrue(search.getBoolean("includePolicy"));
+      assertFalse(search.has("allowMoves"));
+      assertEquals("rank_9d", settings.getString("humanSLProfile"));
+      assertEquals(400, settings.getInt("maxVisits"));
+      assertEquals(0.01, settings.getDouble("humanSLChosenMovePiklLambda"), 1e-12);
+      assertEquals(1.0, settings.getDouble("humanSLRootExploreProbWeightless"), 1e-12);
+      assertEquals(8, settings.getInt("numSearchThreads"));
+      assertEquals(0.0, settings.getDouble("wideRootNoise"), 1e-12);
+      assertEquals("SIDETOMOVE", settings.getString("reportAnalysisWinratesAs"));
+      assertTrue(settings.has("maxTime"), "the search still stops within the move budget");
+      runner.close();
+    }
+  }
+
+  @Test
+  void chooseMove_aDanLevelPassesInTheEndgameWhenItsSearchPrefersTo() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = endgameHistory();
+      boardWithHistory(history);
+      FakeProcess process =
+          new FakeProcess(
+              request ->
+                  new JSONObject()
+                      .put("id", request.getString("id"))
+                      .put("humanPolicy", new JSONObject().put("C3", 0.9).put("pass", 0.1))
+                      .put(
+                          "moveInfos",
+                          new JSONArray()
+                              .put(searchedMove("pass", 0.1, 50, 0))
+                              .put(searchedMove("C3", 0.0, 10, 1))));
+      HumanSlAnalysisRunner runner =
+          new HumanSlAnalysisRunner(List.of("katago", "analysis"), ignored -> process);
+
+      java.util.Optional<HumanMoveChoice> choice =
+          runner.chooseMove(
+              history.getCurrentHistoryNode(),
+              featurecat.lizzie.training.CoachLevel.DAN_5.play(),
+              Duration.ofSeconds(1));
+
+      assertEquals("pass", choice.orElseThrow().move());
+      assertEquals(1, process.sentRequests.size());
+      runner.close();
+    }
+  }
+
+  private static JSONObject searchedMove(String move, double utility, int visits, int order) {
+    return new JSONObject()
+        .put("move", move)
+        .put("utility", utility)
+        .put("visits", visits)
+        .put("playSelectionValue", (double) visits)
+        .put("order", order);
+  }
+
+  @Test
   void mayPass_onlyAfterTheOpponentPassedOrOnceFortyPercentOfTheBoardIsPlayed() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       Stone[] empty = new Stone[BOARD_AREA];

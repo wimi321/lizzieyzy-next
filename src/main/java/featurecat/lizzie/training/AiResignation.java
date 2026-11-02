@@ -35,7 +35,17 @@ public final class AiResignation {
         MIN_BOARD_SHARE);
   }
 
-  /** Explicit thresholds; {@link #forProfile} is what games use. */
+  /**
+   * The resign settings of the level's config: a policy level fights on like
+   * gtp_human5k_example.cfg, a search level gives up like gtp_human9d_search_example.cfg.
+   */
+  public static AiResignation forPlay(HumanSlPlaySettings play) {
+    return play.searches()
+        ? of(0.01, 20.0, 10, MIN_BOARD_SHARE)
+        : of(0.005, 40.0, 20, MIN_BOARD_SHARE);
+  }
+
+  /** Explicit thresholds; games use {@link #forPlay}, or {@link #forProfile} for a bare profile. */
   public static AiResignation of(
       double maxWinrate, double minPointsBehind, int turnsNeeded, double minBoardShare) {
     return new AiResignation(maxWinrate, minPointsBehind, turnsNeeded, minBoardShare);

@@ -7,12 +7,16 @@ the player's own moves. This page describes how it works and where the code is.
 
 `NewHumanSlGameDialog` hosts `CoachSetupForm`, one sheet drawn by `CoachSetupWidgets`:
 
-- **对手棋力**: one scale from 20 级 to 9 段 (`RankScale`, 29 stops).
+- **对手棋力**: 31 levels (`CoachLevel`), named by Fox rank from 野狐 17-18K to 10D. Beside the
+  Fox rank are the KataGo level (10 级 to 11 段, with the 强 half steps from 强1段 to 强10段) and
+  the real-world grade, which also tell apart the levels that share a Fox rank. 等级对照表 opens
+  the whole community table (`CoachRankTable`); a click on a row, or Enter, picks that level.
 - **训练方式**: 边下边提醒 (default), 实战后复盘 or 边下边分析 (`TrainingMode.CHOICES`).
 - **执棋**: 执黑, 执白 or 随机. With a handicap the player always takes Black and receives the
   stones, and komi is 0.5.
 - **AI 思考时间**: 自然, 快 or 慢 (`HumanThinkTime.Pace`). It only paces the AI's replies. The
-  move is chosen the same way, with the same 10-second search budget, at every pace.
+  move is chosen the same way, with the same search budget, at every pace: 10 seconds a move, and
+  20 for 强10段 and 11段.
 - **更多设置**: 让子, 贴目 and 从当前局面开始.
 
 The last game's choices are saved (`HumanSlTrainingPreferences`). The dialog checks the HumanSL
@@ -21,17 +25,33 @@ model off the event thread (`HumanSlModelCheck`) and downloads it into a resumab
 
 ## The opponent
 
-`HumanSlAnalysisRunner.chooseHumanMove` picks the AI's move with KataGo's analysis engine and the
-HumanSL model:
+`HumanSlAnalysisRunner.chooseMove` picks the AI's move with KataGo's analysis engine and the
+HumanSL model. Each level plays with the settings of the `gtp_human*_example.cfg` config the rank
+table was measured with (`HumanSlPlaySettings`):
 
-- **Up to 5 段:** the move is sampled straight from the HumanSL policy of the rank
-  (`HumanPolicySampler`), as KataGo recommends for imitating a rank. Repeated openings get
-  different replies, and the AI makes the mistakes players of the rank make.
-- **6 to 9 段:** human candidates are verified with search (`HumanLikeMoveSelector`).
-- **Passing:** from 40% of the board on, or after the player passed, a 40-visit search decides
-  whether the AI passes.
-- **Resigning:** the AI resigns after a rank-scaled run of hopeless turns (`AiResignation`).
+- **10 级 to 1 级** (野狐 17-18K to 1K): the move is sampled straight from the HumanSL policy of a
+  pre-AlphaZero profile, `preaz_20k` to `preaz_7k`, from two root symmetries
+  (`HumanPolicySampler`), as `gtp_human5k_example.cfg` plays. Repeated openings get different
+  replies, and the AI makes the mistakes players of the rank make.
+- **1 段 to 11 段** (野狐 1D to 10D): one search with the level's config: a `rank_` profile from
+  `rank_5k` to `rank_9d`, 60 to 400 visits, its PiKL lambda, human exploration and temperatures.
+  The analysis engine never chooses a move, so `HumanSlChosenMove` works out the move genmove
+  would choose, after KataGo's `getPlaySelectionValues`: every legal move's human odds times
+  exp((utility − best utility) / lambda), with moves the search did not reach at the average
+  utility; the pass keeps the share the search gives it; then the temperature sharpens the
+  result. A lower lambda lets KataGo, not the human model, decide. The search keeps genmove's
+  `wideRootNoise` of 0, which the analysis engine would otherwise raise. A search stops at its
+  visits or at the move budget; 强10段 and 11段, with 200 and 400 visits, get twice the budget
+  (`moveTimeFactor`). On an Apple Silicon Mac with the B11 network, 11段's 400 visits take about
+  11 seconds and 强10段's 200 between 5 and 9.
+- **Passing:** from 40% of the board on, or after the player passed. A kyu level asks a 40-visit
+  search; a dan level passes when its own search prefers to.
+- **Resigning:** as in the configs: a kyu level after 20 turns below 0.5% and 40 points behind, a
+  dan level after 10 turns below 1% and 20 points behind (`AiResignation`).
 - **Ending:** two passes end the game, and KataGo counts it (`GameResult`).
+
+`chooseHumanMove` still plays a bare profile for older callers: raw policy up to 5 段, search
+verification of human candidates above (`HumanLikeMoveSelector`).
 
 `HumanThinkTime` paces each reply by how obvious it is for players of the rank.
 

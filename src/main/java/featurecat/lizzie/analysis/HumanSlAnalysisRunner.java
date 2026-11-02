@@ -6,6 +6,7 @@ import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
+import featurecat.lizzie.training.HumanSlPlaySettings;
 import featurecat.lizzie.training.PositionReview;
 import featurecat.lizzie.util.CommandLaunchHelper;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
@@ -313,46 +314,18 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     Duration effectiveTimeout = timeout == null ? Duration.ofSeconds(30) : timeout;
     long deadlineNanos = System.nanoTime() + Math.max(1L, effectiveTimeout.toNanos());
     try {
-      String probeId = "humansl-policy-" + nextRequestId.getAndIncrement();
-      JSONObject probe =
-          buildHumanSlRequest(probeId, positionNode, profile, POLICY_PROBE_VISITS, rootSymmetries);
-      JSONObject probeResponse = requestHumanMove(probe, remainingRequestTime(deadlineNanos));
-      Object policy = extractHumanPolicy(probeResponse);
-      if (policy == null) {
+      if (HumanPolicySampler.playsRawPolicy(profile)) {
+        return choosePolicyMove(positionNode, profile, rootSymmetries, allowPass, deadlineNanos);
+      }
+      PolicyProbe probe =
+          probePolicy(positionNode, profile, rootSymmetries, allowPass, deadlineNanos);
+      if (probe == null) {
         return Optional.empty();
       }
-      List<HumanLikeMoveSelector.Candidate> selectableMoves =
-          policyMoves(
-              policy, Board.boardWidth, Board.boardHeight, positionNode.getData().stones, false);
-      List<HumanLikeMoveSelector.Candidate> policyMovesIncludingPass =
-          policyMoves(
-              policy,
-              Board.boardWidth,
-              Board.boardHeight,
-              positionNode.getData().stones,
-              allowPass);
-      double topShare = HumanPolicySampler.topShare(selectableMoves);
-      if (HumanPolicySampler.playsRawPolicy(profile)) {
-        SearchView view = allowPass ? passCheck(positionNode, deadlineNanos) : SearchView.NONE;
-        if (view.passEnds(positionNode)) {
-          return Optional.of(view.choice("pass", topShare));
-        }
-        if (allowPass
-            && view.topMove() != null
-            && HumanPolicySampler.passShare(policyMovesIncludingPass) >= HUMAN_PASS_SHARE) {
-          // Players of this rank would pass, but KataGo still sees a point that matters, such as a
-          // dame or a needed connection. What is left of the human policy here is noise.
-          return Optional.of(view.choice(view.topMove(), topShare));
-        }
-        String sampled =
-            HumanPolicySampler.sample(
-                selectableMoves,
-                positionNode.getData().moveNumber,
-                Board.boardWidth,
-                Board.boardHeight,
-                ThreadLocalRandom.current().nextDouble());
-        return Optional.ofNullable(sampled).map(move -> view.choice(move, topShare));
-      }
+      JSONObject probeResponse = probe.response();
+      List<HumanLikeMoveSelector.Candidate> selectableMoves = probe.selectableMoves();
+      List<HumanLikeMoveSelector.Candidate> policyMovesIncludingPass = probe.movesIncludingPass();
+      double topShare = probe.topShare();
       LinkedHashSet<String> verificationMoves = new LinkedHashSet<String>();
       addVerificationMoves(
           verificationMoves,
@@ -454,6 +427,165 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
           withStartupDiagnostics(usefulMessage(e, "HumanSL move request failed.")));
       return Optional.empty();
     }
+  }
+
+  /**
+   * Chooses the AI's move at an AI 陪练 level. A policy level samples the raw HumanSL policy of its
+   * profile, as gtp_human5k_example.cfg plays; a search level searches with the level's settings
+   * and plays the move KataGo's genmove would choose with them, see {@link HumanSlChosenMove}.
+   */
+  public Optional<HumanMoveChoice> chooseMove(
+      BoardHistoryNode positionNode, HumanSlPlaySettings play, Duration timeout) {
+    if (positionNode == null || play == null) {
+      return Optional.empty();
+    }
+    if (!ensureStarted()) {
+      return Optional.empty();
+    }
+    int generation = activeProcessGeneration;
+    boolean allowPass = mayPass(positionNode);
+    Duration effectiveTimeout = timeout == null ? Duration.ofSeconds(30) : timeout;
+    long deadlineNanos = System.nanoTime() + Math.max(1L, effectiveTimeout.toNanos());
+    try {
+      return play.searches()
+          ? chooseSearchedMove(positionNode, play, allowPass, deadlineNanos)
+          : choosePolicyMove(
+              positionNode,
+              play.profile(),
+              HumanSlPlaySettings.ROOT_SYMMETRIES,
+              allowPass,
+              deadlineNanos);
+    } catch (TimeoutException | IOException e) {
+      stopActiveProcess(
+          generation,
+          false,
+          withStartupDiagnostics(usefulMessage(e, "HumanSL move request failed.")));
+      return Optional.empty();
+    }
+  }
+
+  /** The human policy of one visit, as the moves the AI may play and the share of the top one. */
+  private record PolicyProbe(
+      JSONObject response,
+      List<HumanLikeMoveSelector.Candidate> selectableMoves,
+      List<HumanLikeMoveSelector.Candidate> movesIncludingPass,
+      double topShare) {}
+
+  private PolicyProbe probePolicy(
+      BoardHistoryNode positionNode,
+      String profile,
+      int rootSymmetries,
+      boolean allowPass,
+      long deadlineNanos)
+      throws IOException, TimeoutException {
+    String probeId = "humansl-policy-" + nextRequestId.getAndIncrement();
+    JSONObject probe =
+        buildHumanSlRequest(probeId, positionNode, profile, POLICY_PROBE_VISITS, rootSymmetries);
+    JSONObject response = requestHumanMove(probe, remainingRequestTime(deadlineNanos));
+    Object policy = extractHumanPolicy(response);
+    if (policy == null) {
+      return null;
+    }
+    Stone[] stones = positionNode.getData().stones;
+    List<HumanLikeMoveSelector.Candidate> selectable =
+        policyMoves(policy, Board.boardWidth, Board.boardHeight, stones, false);
+    return new PolicyProbe(
+        response,
+        selectable,
+        policyMoves(policy, Board.boardWidth, Board.boardHeight, stones, allowPass),
+        HumanPolicySampler.topShare(selectable));
+  }
+
+  /**
+   * Samples the raw HumanSL policy, as KataGo recommends for imitating a rank up to mid-high dan;
+   * KataGo's own search only decides when to pass.
+   */
+  private Optional<HumanMoveChoice> choosePolicyMove(
+      BoardHistoryNode positionNode,
+      String profile,
+      int rootSymmetries,
+      boolean allowPass,
+      long deadlineNanos)
+      throws IOException, TimeoutException {
+    PolicyProbe probe =
+        probePolicy(positionNode, profile, rootSymmetries, allowPass, deadlineNanos);
+    if (probe == null) {
+      return Optional.empty();
+    }
+    double topShare = probe.topShare();
+    SearchView view = allowPass ? passCheck(positionNode, deadlineNanos) : SearchView.NONE;
+    if (view.passEnds(positionNode)) {
+      return Optional.of(view.choice("pass", topShare));
+    }
+    if (allowPass
+        && view.topMove() != null
+        && HumanPolicySampler.passShare(probe.movesIncludingPass()) >= HUMAN_PASS_SHARE) {
+      // Players of this rank would pass, but KataGo still sees a point that matters, such as a
+      // dame or a needed connection. What is left of the human policy here is noise.
+      return Optional.of(view.choice(view.topMove(), topShare));
+    }
+    String sampled =
+        HumanPolicySampler.sample(
+            probe.selectableMoves(),
+            positionNode.getData().moveNumber,
+            Board.boardWidth,
+            Board.boardHeight,
+            ThreadLocalRandom.current().nextDouble());
+    return Optional.ofNullable(sampled).map(move -> view.choice(move, topShare));
+  }
+
+  /** One search with the level's settings, then the move genmove would choose from it. */
+  private Optional<HumanMoveChoice> chooseSearchedMove(
+      BoardHistoryNode positionNode,
+      HumanSlPlaySettings play,
+      boolean allowPass,
+      long deadlineNanos)
+      throws IOException, TimeoutException {
+    String id = "humansl-play-" + nextRequestId.getAndIncrement();
+    JSONObject response =
+        requestHumanMove(
+            buildHumanSlPlayRequest(id, positionNode, play), remainingRequestTime(deadlineNanos));
+    Object policy = extractHumanPolicy(response);
+    if (policy == null) {
+      return Optional.empty();
+    }
+    Stone[] stones = positionNode.getData().stones;
+    double topShare =
+        HumanPolicySampler.topShare(
+            policyMoves(policy, Board.boardWidth, Board.boardHeight, stones, false));
+    SearchView view = SearchView.of(response);
+    if (allowPass && view.passEnds(positionNode)) {
+      return Optional.of(view.choice("pass", topShare));
+    }
+    String move =
+        HumanSlChosenMove.choose(
+            response.optJSONArray("moveInfos"),
+            policyMoves(policy, Board.boardWidth, Board.boardHeight, stones, allowPass),
+            play,
+            positionNode.getData().moveNumber,
+            Board.boardWidth,
+            Board.boardHeight,
+            allowPass,
+            ThreadLocalRandom.current().nextDouble());
+    return Optional.ofNullable(move).map(chosen -> view.choice(chosen, topShare));
+  }
+
+  /** An analysis query that searches with every setting of a search level. */
+  static JSONObject buildHumanSlPlayRequest(
+      String id, BoardHistoryNode positionNode, HumanSlPlaySettings play) {
+    JSONObject request =
+        AnalysisRequestBuilder.buildRequest(
+            id, positionNode, play.maxVisits(), false, false, false);
+    request.put("includePolicy", true);
+    JSONObject overrideSettings = request.optJSONObject("overrideSettings");
+    if (overrideSettings == null) {
+      overrideSettings = new JSONObject();
+    }
+    for (Map.Entry<String, Object> setting : play.searchOverrides().entrySet()) {
+      overrideSettings.put(setting.getKey(), setting.getValue());
+    }
+    request.put("overrideSettings", overrideSettings);
+    return request;
   }
 
   /**

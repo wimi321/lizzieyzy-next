@@ -353,6 +353,12 @@ final class ConfigSettingTargets {
               "ConfigDialog2.modern.theme.winrateFontSub",
               "view"),
           target(
+              "config.theme.coordinates",
+              SettingSection.THEME,
+              "ConfigDialog2.modern.theme.coordinates",
+              "ConfigDialog2.modern.theme.coordinatesSub",
+              "view"),
+          target(
               "config.theme.background-image",
               SettingSection.THEME,
               "ConfigDialog2.modern.theme.backgroundImage",
