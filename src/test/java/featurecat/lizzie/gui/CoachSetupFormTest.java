@@ -5,10 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.training.CoachLevel;
 import featurecat.lizzie.training.HumanSlTrainingConfig;
 import featurecat.lizzie.training.HumanThinkTime;
 import featurecat.lizzie.training.OpponentPreset;
-import featurecat.lizzie.training.RankReference;
 import featurecat.lizzie.training.TrainingMode;
 import java.awt.Component;
 import java.awt.Rectangle;
@@ -35,7 +35,8 @@ class CoachSetupFormTest {
   void aNewSheetStartsAtThreeDanInLiveFeedbackAtTheNaturalPace() {
     HumanSlTrainingConfig config = form(false).config();
 
-    assertEquals("rank_3d", config.humanSlProfile());
+    assertEquals(CoachLevel.DAN_3, config.level);
+    assertEquals("rank_3k", config.humanSlProfile(), "3 dan is rank_3k with search");
     assertEquals(TrainingMode.LIVE_FEEDBACK, config.mode);
     assertEquals(HumanThinkTime.Pace.NATURAL, config.pace);
     assertEquals(OpponentPreset.RANK, config.opponentPreset);
@@ -49,7 +50,7 @@ class CoachSetupFormTest {
     HumanSlTrainingConfig saved =
         HumanSlTrainingConfig.builder()
             .mode(TrainingMode.POST_GAME_REVIEW)
-            .rank(12, false)
+            .level(CoachLevel.STRONG_DAN_4)
             .playerColor(HumanSlTrainingConfig.PlayerColor.WHITE)
             .pace(HumanThinkTime.Pace.SLOW)
             .build();
@@ -57,7 +58,7 @@ class CoachSetupFormTest {
     form.restore(saved, true);
     HumanSlTrainingConfig config = form.config();
 
-    assertEquals("rank_12k", config.humanSlProfile());
+    assertEquals(CoachLevel.STRONG_DAN_4, config.level);
     assertEquals(TrainingMode.POST_GAME_REVIEW, config.mode);
     assertEquals(HumanSlTrainingConfig.PlayerColor.WHITE, config.playerColor);
     assertEquals(HumanThinkTime.Pace.SLOW, config.pace);
@@ -87,11 +88,11 @@ class CoachSetupFormTest {
     CoachSetupWidgets.RankSlider slider = componentOf(form, CoachSetupWidgets.RankSlider.class);
 
     press(slider, KeyEvent.VK_RIGHT);
-    assertEquals("rank_4d", form.config().humanSlProfile());
+    assertEquals(CoachLevel.STRONG_DAN_3, form.config().level, "the 强 half step comes next");
     press(slider, KeyEvent.VK_END);
-    assertEquals("rank_9d", form.config().humanSlProfile());
+    assertEquals(CoachLevel.DAN_11, form.config().level);
     press(slider, KeyEvent.VK_HOME);
-    assertEquals("rank_20k", form.config().humanSlProfile());
+    assertEquals(CoachLevel.KYU_10, form.config().level);
   }
 
   @Test
@@ -149,36 +150,67 @@ class CoachSetupFormTest {
   }
 
   @Test
-  void theRankTableLinkFollowsTheSliderAndFallsBackBelowTenKyu() {
+  void everyLevelOfTheTableCanBeChosenOnTheSlider() {
     CoachSetupForm form = form(false);
     CoachSetupWidgets.RankSlider slider = componentOf(form, CoachSetupWidgets.RankSlider.class);
-    CoachRankTable.Link link = componentOf(form, CoachRankTable.Link.class);
 
-    assertEquals("≈ Fox/Tygem 3D · Amateur 3 dan", link.getText());
-    press(slider, KeyEvent.VK_END);
-    assertEquals("≈ Fox/Tygem 9D · Amateur 6 dan", link.getText());
-    press(slider, KeyEvent.VK_HOME);
-    assertEquals("Rank table", link.getText(), "the table stops at 10 kyu");
+    for (CoachLevel level : CoachLevel.values()) {
+      slider.setValue(level.ordinal(), true);
+      assertEquals(level, form.config().level);
+    }
+    assertEquals("Rank table", componentOf(form, CoachRankTable.Link.class).getText());
   }
 
   @Test
-  void theRankTablePicksOutTheChosenOpponentAndUsesTheLocalizedNames() {
-    CoachRankTable.Sheet sheet = new CoachRankTable.Sheet((key, fallback) -> fallback, 3, true);
-    RankReference.Row picked = RankReference.ROWS.get(sheet.highlightedRow());
-    assertEquals("3D", picked.fox());
-    assertEquals(
-        -1, new CoachRankTable.Sheet((key, fallback) -> fallback, 15, false).highlightedRow());
+  void theTicksAreLabelledWithFoxRanks() {
+    CoachSetupWidgets.RankSlider slider =
+        componentOf(form(false), CoachSetupWidgets.RankSlider.class);
+    List<String> labels = new ArrayList<>();
+    for (int tick : slider.ticks()) {
+      labels.add(CoachLevel.at(tick).fox());
+    }
 
+    assertEquals(List.of("17-18K", "7-8K", "1D", "3D", "5D", "7D", "9D", "10D"), labels);
+  }
+
+  @Test
+  void theRankTablePicksOutTheChosenOpponentAndAClickPlaysARow() {
+    List<CoachLevel> picked = new ArrayList<>();
+    CoachRankTable.Sheet sheet =
+        new CoachRankTable.Sheet((key, fallback) -> fallback, CoachLevel.DAN_3, picked::add);
+    List<CoachLevel> rows = CoachRankTable.Sheet.strongestFirst();
+
+    assertEquals(CoachLevel.DAN_11, rows.get(0));
+    assertEquals(CoachLevel.DAN_3, rows.get(sheet.highlightedRow()));
+    assertEquals(-1, sheet.rowAt(5), "the header is not a row");
+
+    int strongTenRow = rows.indexOf(CoachLevel.STRONG_DAN_10);
+    sheet.pick(sheet.rowAt((strongTenRow + 1) * 26 + 13));
+    assertEquals(List.of(CoachLevel.STRONG_DAN_10), picked);
+  }
+
+  @Test
+  void theOpponentGoesByItsFoxRankWithTheKataGoLevelBeside() {
     java.util.Map<String, String> zh =
         java.util.Map.of(
+            "HumanSlTraining.level.fox", "野狐 {0}",
+            "HumanSlTraining.level.detail", "KataGo {0} · 约{1}",
             "HumanSlTraining.rank.danValue", "{0}段",
             "HumanSlTraining.rankTable.strong", "强{0}",
-            "HumanSlTraining.rankTable.amateurDan", "业余{0}段");
+            "HumanSlTraining.rankTable.amateurDan", "业余{0}段",
+            "HumanSlTraining.rankTable.topAmateur", "业余顶尖");
     java.util.function.BinaryOperator<String> text =
         (key, fallback) -> zh.getOrDefault(key, fallback);
-    RankReference.Row strongEight = RankReference.ROWS.get(5);
-    assertEquals("强8段", CoachRankTable.rank(text, strongEight));
-    assertEquals("业余5段", CoachRankTable.grade(text, strongEight));
+
+    assertEquals("野狐 8-9D", CoachLevelText.fox(text, CoachLevel.STRONG_DAN_8));
+    assertEquals("强8段", CoachLevelText.kataGo(text, CoachLevel.STRONG_DAN_8));
+    assertEquals("业余5段", CoachLevelText.grade(text, CoachLevel.STRONG_DAN_8));
+    // 9 dan and 强9段 share a Fox rank; the detail tells them apart.
+    assertEquals(
+        CoachLevelText.fox(text, CoachLevel.DAN_9),
+        CoachLevelText.fox(text, CoachLevel.STRONG_DAN_9));
+    assertEquals("KataGo 9段 · 约业余6段", CoachLevelText.detail(text, CoachLevel.DAN_9));
+    assertEquals("KataGo 强9段 · 约业余顶尖", CoachLevelText.detail(text, CoachLevel.STRONG_DAN_9));
   }
 
   @Test

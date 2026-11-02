@@ -15,7 +15,7 @@ class HumanSlTrainingPreferencesTest {
     HumanSlTrainingConfig selected =
         HumanSlTrainingConfig.builder()
             .mode(TrainingMode.LIVE_ANALYSIS)
-            .rank(12, false)
+            .level(CoachLevel.STRONG_DAN_7)
             .playerColor(PlayerColor.WHITE)
             .pace(HumanThinkTime.Pace.SLOW)
             .handicap(2)
@@ -29,8 +29,7 @@ class HumanSlTrainingPreferencesTest {
     assertEquals(42, ui.getInt("unrelated-setting"));
     assertEquals(TrainingMode.LIVE_ANALYSIS, restored.config().mode);
     assertEquals(OpponentPreset.RANK, restored.config().opponentPreset);
-    assertEquals(12, restored.config().rank);
-    assertFalse(restored.config().danRank);
+    assertEquals(CoachLevel.STRONG_DAN_7, restored.config().level);
     assertEquals(PlayerColor.WHITE, restored.config().playerColor);
     assertEquals(HumanThinkTime.Pace.SLOW, restored.config().pace);
     assertEquals(10, restored.config().moveTimeSeconds, "the search budget is not a setting");
@@ -47,8 +46,7 @@ class HumanSlTrainingPreferencesTest {
 
     assertEquals(TrainingMode.LIVE_FEEDBACK, restored.config().mode);
     assertEquals(OpponentPreset.RANK, restored.config().opponentPreset);
-    assertEquals(3, restored.config().rank);
-    assertTrue(restored.config().danRank);
+    assertEquals(CoachLevel.DAN_3, restored.config().level);
     assertEquals(PlayerColor.RANDOM, restored.config().playerColor);
     assertEquals(10, restored.config().moveTimeSeconds);
     assertEquals(0, restored.config().handicap);
@@ -106,8 +104,36 @@ class HumanSlTrainingPreferencesTest {
       HumanSlTrainingConfig config = HumanSlTrainingPreferences.load(ui).config();
 
       assertEquals(OpponentPreset.RANK, config.opponentPreset, preset);
-      assertEquals("rank_9d", config.humanSlProfile(), preset);
+      assertEquals(CoachLevel.DAN_9, config.level, preset);
     }
+  }
+
+  @Test
+  void aRankSavedBeforeTheLevelsBecomesThePlainLevelOfThatNumber() {
+    assertEquals(CoachLevel.DAN_3, levelAfterSaving(3, true));
+    assertEquals(CoachLevel.DAN_9, levelAfterSaving(9, true));
+    assertEquals(CoachLevel.KYU_5, levelAfterSaving(5, false));
+    assertEquals(CoachLevel.KYU_10, levelAfterSaving(10, false));
+    assertEquals(
+        CoachLevel.KYU_10, levelAfterSaving(15, false), "the weakest level replaces 11-20 kyu");
+  }
+
+  @Test
+  void olderVersionsStillFindTheNumberOfTheLevel() {
+    JSONObject ui = new JSONObject();
+    HumanSlTrainingPreferences.store(
+        ui, HumanSlTrainingConfig.builder().level(CoachLevel.DAN_11).build(), false);
+    JSONObject saved = ui.getJSONObject(HumanSlTrainingPreferences.UI_CONFIG_KEY);
+
+    assertEquals("DAN_11", saved.getString("level"));
+    assertEquals(9, saved.getInt("rank"), "older versions only know up to 9 dan");
+    assertTrue(saved.getBoolean("dan-rank"));
+  }
+
+  private static CoachLevel levelAfterSaving(int rank, boolean dan) {
+    JSONObject saved = new JSONObject().put("rank", rank).put("dan-rank", dan);
+    JSONObject ui = new JSONObject().put(HumanSlTrainingPreferences.UI_CONFIG_KEY, saved);
+    return HumanSlTrainingPreferences.load(ui).config().level;
   }
 
   @Test
@@ -145,8 +171,7 @@ class HumanSlTrainingPreferencesTest {
 
     assertEquals(TrainingMode.LIVE_FEEDBACK, restored.config().mode);
     assertEquals(OpponentPreset.RANK, restored.config().opponentPreset);
-    assertEquals(20, restored.config().rank);
-    assertFalse(restored.config().danRank);
+    assertEquals(CoachLevel.KYU_10, restored.config().level);
     assertEquals(PlayerColor.RANDOM, restored.config().playerColor);
     assertEquals(10, restored.config().moveTimeSeconds);
     assertEquals(9, restored.config().handicap);

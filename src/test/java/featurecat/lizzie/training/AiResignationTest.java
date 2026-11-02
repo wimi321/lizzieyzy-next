@@ -35,6 +35,22 @@ class AiResignationTest {
   }
 
   @Test
+  void aLevelResignsLikeTheConfigItWasTunedWith() {
+    AiResignation kyu = AiResignation.forPlay(CoachLevel.KYU_1.play());
+    assertEquals(20, kyu.turnsNeeded());
+    assertEquals(40.0, kyu.minPointsBehind(), 1e-12);
+    assertEquals(0.005, kyu.maxWinrate(), 1e-12);
+
+    // Every search level, from 1 dan up, used resignThreshold -0.98 for 10 turns and 20 points.
+    for (CoachLevel level : new CoachLevel[] {CoachLevel.DAN_1, CoachLevel.DAN_11}) {
+      AiResignation search = AiResignation.forPlay(level.play());
+      assertEquals(10, search.turnsNeeded(), level.name());
+      assertEquals(20.0, search.minPointsBehind(), 1e-12);
+      assertEquals(0.01, search.maxWinrate(), 1e-12);
+    }
+  }
+
+  @Test
   void resignsOnlyAfterEnoughHopelessTurnsInARow() {
     AiResignation nineDan = AiResignation.forProfile("rank_9d");
 

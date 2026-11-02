@@ -1,6 +1,7 @@
 package featurecat.lizzie.training;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
 /** Immutable configuration for one AI coaching game. */
@@ -13,8 +14,7 @@ public final class HumanSlTrainingConfig {
 
   public final TrainingMode mode;
   public final OpponentPreset opponentPreset;
-  public final int rank;
-  public final boolean danRank;
+  public final CoachLevel level;
   public final PlayerColor playerColor;
   public final HumanThinkTime.Pace pace;
 
@@ -28,11 +28,7 @@ public final class HumanSlTrainingConfig {
   private HumanSlTrainingConfig(Builder builder) {
     mode = Objects.requireNonNull(builder.mode, "mode");
     opponentPreset = Objects.requireNonNull(builder.opponentPreset, "opponentPreset");
-    rank =
-        builder.danRank
-            ? Math.max(1, Math.min(9, builder.rank))
-            : Math.max(1, Math.min(20, builder.rank));
-    danRank = builder.danRank;
+    level = Objects.requireNonNull(builder.level, "level");
     playerColor = Objects.requireNonNull(builder.playerColor, "playerColor");
     pace = Objects.requireNonNull(builder.pace, "pace");
     moveTimeSeconds = Math.max(2, builder.moveTimeSeconds);
@@ -46,7 +42,14 @@ public final class HumanSlTrainingConfig {
   }
 
   public String humanSlProfile() {
-    return opponentPreset.profileFor(rank, danRank);
+    return opponentPreset == OpponentPreset.RANK
+        ? level.play().profile()
+        : opponentPreset.profileFor(level.rank(), level.dan());
+  }
+
+  /** How the AI plays its moves; empty for the retired presets, which still pick by profile. */
+  public Optional<HumanSlPlaySettings> play() {
+    return opponentPreset == OpponentPreset.RANK ? Optional.of(level.play()) : Optional.empty();
   }
 
   public int analysisVisits() {
@@ -71,8 +74,7 @@ public final class HumanSlTrainingConfig {
   public static final class Builder {
     private TrainingMode mode = TrainingMode.LIVE_FEEDBACK;
     private OpponentPreset opponentPreset = OpponentPreset.RANK;
-    private int rank = 3;
-    private boolean danRank = true;
+    private CoachLevel level = CoachLevel.DEFAULT;
     private PlayerColor playerColor = PlayerColor.RANDOM;
     private HumanThinkTime.Pace pace = HumanThinkTime.Pace.NATURAL;
     private int moveTimeSeconds = 10;
@@ -90,9 +92,14 @@ public final class HumanSlTrainingConfig {
       return this;
     }
 
+    public Builder level(CoachLevel value) {
+      level = value;
+      return this;
+    }
+
+    /** The plain level of that number, as older settings and callers name it. */
     public Builder rank(int value, boolean isDan) {
-      rank = value;
-      danRank = isDan;
+      level = CoachLevel.forRank(value, isDan);
       return this;
     }
 
