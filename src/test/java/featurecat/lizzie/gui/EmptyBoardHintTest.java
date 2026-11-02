@@ -38,6 +38,27 @@ class EmptyBoardHintTest {
   }
 
   @Test
+  void theEnginesAnalysisOfTheEmptyBoardTakesOverFromTheHint() {
+    BoardHistoryList fresh = new BoardHistoryList(BoardData.empty(19, 19));
+    assertTrue(EmptyBoardHint.shouldShow(fresh));
+
+    fresh.getStart().getData().setPlayoutsForce(120);
+
+    assertTrue(EmptyBoardHint.isEmptyGame(fresh), "still no game");
+    assertFalse(EmptyBoardHint.shouldShow(fresh), "the candidates are not covered");
+  }
+
+  @Test
+  void onlySomeoneWhoNeverOpenedAGameSeesItOnTheMainBoard() {
+    BoardHistoryList fresh = new BoardHistoryList(BoardData.empty(19, 19));
+
+    assertTrue(EmptyBoardHint.shows(true, true, fresh));
+    assertFalse(EmptyBoardHint.shows(true, false, fresh), "a game was opened before");
+    assertFalse(EmptyBoardHint.shows(false, true, fresh), "not the main board");
+    assertFalse(EmptyBoardHint.shows(true, true, null));
+  }
+
+  @Test
   void hintIsPaintedOnlyWhenShown() {
     Font font = new Font(Font.SANS_SERIF, Font.PLAIN, 14);
     assertTrue(painted(render(true, font)) > 0, "the hint is drawn on an empty board");

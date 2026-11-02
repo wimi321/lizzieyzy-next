@@ -278,7 +278,7 @@ public class BoardRenderer {
     if (Board.boardWidth <= 3) {
       int oriStoneRadius = stoneRadius;
       stoneRadius = stoneRadius / 2;
-      if (!Lizzie.config.isThinkingMode() || (Lizzie.config.isThinkingMode() && boardIndex != 2)) {
+      if (!Lizzie.config.isThinkingMode() || boardIndex != 2) {
         if (showHeatmap && !Lizzie.frame.isAnaPlayingAgainstLeelaz && !Lizzie.leelaz.isZen)
           drawRawWinrate(g);
         else if (showPolicy
@@ -418,7 +418,13 @@ public class BoardRenderer {
     }
     cachedShowCoords = showCoordinates();
     EmptyBoardHint.paintOnMainBoard(
-        g, !isIndependBoard && boardIndex == 0, x, y, boardWidth, boardHeight);
+        g,
+        !isIndependBoard && boardIndex == 0,
+        Lizzie.config.recentFilePaths,
+        x,
+        y,
+        boardWidth,
+        boardHeight);
   }
 
   private void drawLastMoveMark(Graphics2D g, BoardHistoryNode mouseOnNode) {
@@ -690,15 +696,6 @@ public class BoardRenderer {
   public Optional<String> bestMoveCoordinateName() {
     return bestMoves.isEmpty() ? Optional.empty() : Optional.of(bestMoves.get(0).coordinate);
   }
-
-  /** Calculate good values for boardLength, scaledMargin, availableLength, and squareLength */
-  //  public int[] availableLength(int boardWidth, int boardHeight, boolean showCoordinates) {
-  //    int[] calculatedPixelMargins = calculatePixelMargins(boardWidth, boardHeight,
-  // showCoordinates);
-  //    return (calculatedPixelMargins != null && calculatedPixelMargins.length >= 6)
-  //        ? calculatedPixelMargins
-  //        : new int[] {boardWidth, 0, boardWidth, boardHeight, 0, boardHeight};
-  //  }
 
   /** Calculate good values for boardLength, scaledMargin, availableLength, and squareLength */
   public void setupSizeParameters(boolean isBigMargin) {
