@@ -7,6 +7,7 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +48,17 @@ class BoardNamePlateTest {
   void theSideToMoveHasItsStoneOnTop() {
     assertEquals(Color.BLACK.getRGB(), overlapPixel(true), "black to move: black stone on top");
     assertEquals(Color.WHITE.getRGB(), overlapPixel(false), "white to move: white stone on top");
+  }
+
+  @Test
+  void aClickAnywhereFromBlacksNameToWhitesHitsTheNames() {
+    Rectangle box = BoardNamePlate.hitBox(40, 300, 130, 20, 6);
+
+    assertEquals(new Rectangle(40, 110, 260, 26), box);
+    assertTrue(box.contains(45, 125), "Black's name");
+    assertTrue(box.contains(170, 125), "the stones between the names");
+    assertTrue(box.contains(295, 133), "White's name");
+    assertTrue(!box.contains(170, 100), "above the type");
   }
 
   @Test

@@ -5,6 +5,7 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.Shape;
 import java.awt.font.TextLayout;
 import java.awt.geom.AffineTransform;
@@ -66,6 +67,14 @@ final class BoardNamePlate {
       end = name.offsetByCodePoints(end, -1);
     }
     return name.substring(0, end).trim() + ELLIPSIS;
+  }
+
+  /**
+   * Where a click lands on the names: from the start of Black's name to the end of White's, the
+   * stones between them included, from the top of the type to the bottom.
+   */
+  static Rectangle hitBox(int blackLeft, int whiteRight, int baseline, int ascent, int descent) {
+    return new Rectangle(blackLeft, baseline - ascent, whiteRight - blackLeft, ascent + descent);
   }
 
   /** A name as glyph outlines, which keeps every glyph of mixed-script names on macOS. */
