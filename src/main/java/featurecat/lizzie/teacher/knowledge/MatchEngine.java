@@ -677,7 +677,11 @@ public final class MatchEngine {
             3,
             reasons,
             "shape");
-    List<String> answerMoves = problem.correctMoves.stream().map(m -> m.move).toList();
+    // The answer points of a placeholder diagram say nothing about the board.
+    List<String> answerMoves =
+        problem.positionVerified
+            ? problem.correctMoves.stream().map(m -> m.move).toList()
+            : List.of();
     double answerOverlap = sequenceOverlap(answerMoves, features.allPoints, reasons);
     score += answerOverlap * 12;
     LocalShapeGeometryMatcher.GeometryMatchResult geo = geometryMatch(problem, query);

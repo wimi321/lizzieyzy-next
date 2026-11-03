@@ -209,6 +209,24 @@ final class TeacherBoardContext {
         }
       }
     }
+    StringBuilder shapes = new StringBuilder();
+    for (Line line : lines) {
+      if (line.frames().size() < 2) continue;
+      Frame first = line.frames().get(1);
+      MoveShapes.describe(stones, width, height, first.move(), "B".equals(first.color()))
+          .ifPresent(
+              shape ->
+                  shapes
+                      .append(line.label().equals("recorded") ? "Recorded " : "Candidate ")
+                      .append(first.move())
+                      .append(": ")
+                      .append(shape)
+                      .append('\n'));
+    }
+    if (shapes.length() > 0) {
+      text.append("Move shapes (from the stones alone; other moves have no listed name):\n")
+          .append(shapes);
+    }
     if (!knowledge.isBlank()) text.append("Position-specific knowledge:\n").append(knowledge);
     return text.toString();
   }
