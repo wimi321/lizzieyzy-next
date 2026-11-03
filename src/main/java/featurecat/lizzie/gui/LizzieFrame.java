@@ -5585,7 +5585,7 @@ public class LizzieFrame extends JFrame {
   }
 
   protected void showPositionSyncFailure(RuntimeException failure) {
-    EngineFollowController.presentSnapshotPreparationFailure(failure);
+    EngineFollowController.presentPermanentRestoreFailure(failure);
   }
 
   /** Called only by the admitted local restart owner, before publishing its new primary. */

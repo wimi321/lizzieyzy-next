@@ -100,7 +100,7 @@ final class KifuEngineSyncCoordinator {
     try {
       result = request.synchronize();
     } catch (RuntimeException failure) {
-      if (ExactSnapshotEngineRestore.isSnapshotPreparationFailure(failure)) {
+      if (ExactSnapshotEngineRestore.isPermanentFailure(failure)) {
         terminalFailure = failure;
         result = AttemptResult.PERMANENT_FAILURE;
       } else {
