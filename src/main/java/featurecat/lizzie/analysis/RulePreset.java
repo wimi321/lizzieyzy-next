@@ -143,6 +143,19 @@ public enum RulePreset {
     return chosen(config).map(preset -> (float) preset.komi).orElse(otherwise);
   }
 
+  /**
+   * The komi of an even game under the rules KataGo plays now ({@code config.currentKataGoRules}):
+   * that of the rule set they are, such as 7 for the 2027 rules or 6.5 for the Japanese, else the
+   * current game's {@code komi}, or after a handicap game the komi new games start with.
+   */
+  public static double evenGameKomi(Config config, double komi, boolean handicapGame) {
+    KataGoRules rules =
+        config == null ? null : KataGoRules.parse(config.currentKataGoRules).orElse(null);
+    return of(rules, komi, chosen(config))
+        .map(RulePreset::komi)
+        .orElseGet(() -> handicapGame ? newGameKomi(config, 7.5f) : komi);
+  }
+
   private boolean hasRules(KataGoRules observed, KataGoRules.Summary observedSummary) {
     // A named KataGo rule set is recognised by its summary, which allows its close variants.
     return summary == KataGoRules.Summary.OTHER
