@@ -1,6 +1,7 @@
 package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.AppLocale;
@@ -242,6 +243,44 @@ public class EngineFollowControllerTest {
               new ExactSnapshotEngineRestore.Failure(
                   ExactSnapshotEngineRestore.FailureCategory.SNAPSHOT_PREPARATION,
                   ExactSnapshotEngineRestore.UNSUPPORTED_SNAPSHOT_TRANSPORT_DETAIL)));
+    } finally {
+      Lizzie.resourceBundle = previousResourceBundle;
+    }
+  }
+
+  @Test
+  void positionsTheEngineCannotRepresentAreExplainedInTheActiveLocale() {
+    var previousResourceBundle = Lizzie.resourceBundle;
+    try {
+      Lizzie.resourceBundle = AppLocale.SIMPLIFIED_CHINESE.loadBundle();
+
+      assertEquals(
+          "此引擎无法恢复当前局面：当前轮到白方下，但没有可重放的实际着手，而此引擎无法得知该谁下。" + "请改用在本机直接运行的引擎，或不经远程算力的 KataGo。",
+          EngineFollowController.unsupportedPositionMessage(
+              new ExactSnapshotEngineRestore.Failure(
+                  ExactSnapshotEngineRestore.FailureCategory.UNSUPPORTED_REMOTE_POSITION,
+                  ExactSnapshotEngineRestore.WHITE_TO_PLAY_WITHOUT_TAIL_DETAIL)));
+      assertEquals(
+          "此引擎无法恢复当前局面：此引擎不支持 set_free_handicap，无法摆出让子。请改用在本机直接运行的引擎，或 KataGo。",
+          EngineFollowController.unsupportedPositionMessage(
+              new ExactSnapshotEngineRestore.Failure(
+                  ExactSnapshotEngineRestore.FailureCategory.UNSUPPORTED_REMOTE_POSITION,
+                  ExactSnapshotEngineRestore.NO_HANDICAP_RESTORE_DETAIL)));
+      assertEquals(
+          null,
+          EngineFollowController.unsupportedPositionMessage(
+              new ExactSnapshotEngineRestore.Failure(
+                  ExactSnapshotEngineRestore.FailureCategory.SNAPSHOT_PREPARATION,
+                  ExactSnapshotEngineRestore.UNSUPPORTED_SNAPSHOT_TRANSPORT_DETAIL)));
+      assertTrue(
+          ExactSnapshotEngineRestore.isPermanentFailure(
+              new ExactSnapshotEngineRestore.Failure(
+                  ExactSnapshotEngineRestore.FailureCategory.UNSUPPORTED_REMOTE_POSITION,
+                  ExactSnapshotEngineRestore.WHITE_TO_PLAY_WITHOUT_TAIL_DETAIL)));
+      assertFalse(
+          ExactSnapshotEngineRestore.isPermanentFailure(
+              new ExactSnapshotEngineRestore.Failure(
+                  ExactSnapshotEngineRestore.FailureCategory.TIMEOUT, "slow engine")));
     } finally {
       Lizzie.resourceBundle = previousResourceBundle;
     }

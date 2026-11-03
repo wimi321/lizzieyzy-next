@@ -3,7 +3,7 @@
   "max_unlisted_file_lines": 2000,
   "max_lines": {
     "src/main/java/featurecat/lizzie/analysis/Leelaz.java": 25535,
-    "src/main/java/featurecat/lizzie/gui/LizzieFrame.java": 18508,
+    "src/main/java/featurecat/lizzie/gui/LizzieFrame.java": 18499,
     "src/main/java/featurecat/lizzie/analysis/EngineManager.java": 15754,
     "src/main/java/featurecat/lizzie/gui/Menu.java": 10925,
     "src/main/java/featurecat/lizzie/gui/MoveListFrame.java": 8313,
@@ -25,15 +25,15 @@
     "src/main/java/featurecat/lizzie/logging/DiagnosticBundleExporter.java": 2668,
     "src/main/java/featurecat/lizzie/analysis/PlayerStrengthEstimator.java": 2171,
     "src/main/java/featurecat/lizzie/search/FunctionCatalog.java": 2154,
-    "src/main/java/featurecat/lizzie/gui/NewHumanSlGameDialog.java": 1654
+    "src/main/java/featurecat/lizzie/gui/NewHumanSlGameDialog.java": 1652
   },
   "max_static_references": {
-    "Lizzie.config": 6739,
+    "Lizzie.config": 6733,
     "Lizzie.frame": 3207,
     "Lizzie.board": 1938,
-    "Lizzie.leelaz": 1056,
+    "Lizzie.leelaz": 1054,
     "Lizzie.leelaz2": 115,
-    "Lizzie.engineManager": 151
+    "Lizzie.engineManager": 148
   },
   "max_cross_package_references": {
     "featurecat.lizzie.analysis -> featurecat.lizzie.gui": 35,
