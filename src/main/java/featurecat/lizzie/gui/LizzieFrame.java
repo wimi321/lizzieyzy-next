@@ -8775,28 +8775,24 @@ public class LizzieFrame extends JFrame {
           0,
           false);
     } else {
-      if (validLastWinrate && validWinrate)
-        text =
-            MainWindowTitle.join(
-                "  ",
-                text,
-                MoveStatusText.previousMove(
-                    Lizzie.resourceBundle,
-                    Lizzie.board.getData().lastMoveMatchCandidteNo,
-                    100 - lastWR - curWR,
-                    isKataStyle ? (-lastScore) - curScore : null));
-
-      drawString(
+      Double scoreChange = isKataStyle ? (-lastScore) - curScore : null;
+      MoveStatusLine.draw(
           g,
+          uiFont,
           posX,
           posY + height * 17 / 20,
-          uiFont,
-          Font.PLAIN,
-          text,
           height / 4,
           width * 20 / 21,
-          0,
-          false);
+          Math.round(Config.frameFontSize * Lizzie.javaScaleFactor) + 4,
+          text,
+          validLastWinrate && validWinrate
+              ? MoveStatusText.previousMove(
+                  Lizzie.resourceBundle,
+                  Lizzie.board.getData().lastMoveMatchCandidteNo,
+                  100 - lastWR - curWR,
+                  scoreChange)
+              : "",
+          scoreChange != null ? scoreChange : 100 - lastWR - curWR);
     }
 
     if (validWinrate || validLastWinrate) {
