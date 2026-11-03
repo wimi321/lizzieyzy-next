@@ -4504,6 +4504,10 @@ public class Menu extends JMenuBar {
           }
         });
 
+    ToolbarParameterToggles parameterToggles =
+        new ToolbarParameterToggles(Lizzie.config, resourceBundle, this::updateMenuStatusForEngine);
+    parameterToggles.addTo(customTopToolBar);
+
     final JFontCheckBoxMenuItem showTimeLimitController =
         new JFontCheckBoxMenuItem(
             resourceBundle.getString("Menu.showTimeLimitController")); // ("单步分析时限(秒)");
@@ -4645,36 +4649,23 @@ public class Menu extends JMenuBar {
         new MenuListener() {
 
           public void menuSelected(MenuEvent e) {
-            if (Lizzie.config.showEditbar) playMoveTools.setSelected(true);
-            else playMoveTools.setSelected(false);
-            if (Lizzie.config.showForceMenu) allowAvoidTools.setSelected(true);
-            else allowAvoidTools.setSelected(false);
-            if (Lizzie.config.showRuleMenu) showRuleMenu.setSelected(true);
-            else showRuleMenu.setSelected(false);
-            if (Lizzie.config.showTsumeGoMenu) showTsumeGoMenu.setSelected(true);
-            else showTsumeGoMenu.setSelected(false);
-            if (Lizzie.config.showParamMenu) showParamMenu.setSelected(true);
-            else showParamMenu.setSelected(false);
-            if (Lizzie.config.showGobanMenu) showGobanMenu.setSelected(true);
-            else showGobanMenu.setSelected(false);
-            if (Lizzie.config.showSaveLoadMenu) showSaveLoadMenu.setSelected(true);
-            else showSaveLoadMenu.setSelected(false);
-            if (Lizzie.config.showDoubleMenuBtn) showDoubleMenuBtn.setSelected(true);
-            else showDoubleMenuBtn.setSelected(false);
-            if (Lizzie.config.showDoubleMenuGameControl) showGameController.setSelected(true);
-            else showGameController.setSelected(false);
-            if (Lizzie.config.showDoubleMenuVar) showCandidateController.setSelected(true);
-            else showCandidateController.setSelected(false);
-            if (Lizzie.config.showTimeControlInMenu) showTimeLimitController.setState(true);
-            else showTimeLimitController.setState(false);
-            if (Lizzie.config.showPlayoutControlInMenu) showPlayoutLimitController.setState(true);
-            else showPlayoutLimitController.setState(false);
-            if (Lizzie.config.showDoubleMenuMoveInfo) showCandidateInfoController.setSelected(true);
-            else showCandidateInfoController.setSelected(false);
-            if (Lizzie.config.showBasicBtn) showBasicBtn.setSelected(true);
-            else showBasicBtn.setSelected(false);
-            if (Lizzie.config.showAnalyzeController) showAnalyzeController.setState(true);
-            else showAnalyzeController.setState(false);
+            Config config = Lizzie.config;
+            playMoveTools.setSelected(config.showEditbar);
+            allowAvoidTools.setSelected(config.showForceMenu);
+            showRuleMenu.setSelected(config.showRuleMenu);
+            showTsumeGoMenu.setSelected(config.showTsumeGoMenu);
+            showParamMenu.setSelected(config.showParamMenu);
+            showGobanMenu.setSelected(config.showGobanMenu);
+            showSaveLoadMenu.setSelected(config.showSaveLoadMenu);
+            showDoubleMenuBtn.setSelected(config.showDoubleMenuBtn);
+            showGameController.setSelected(config.showDoubleMenuGameControl);
+            showCandidateController.setSelected(config.showDoubleMenuVar);
+            parameterToggles.sync();
+            showTimeLimitController.setState(config.showTimeControlInMenu);
+            showPlayoutLimitController.setState(config.showPlayoutControlInMenu);
+            showCandidateInfoController.setSelected(config.showDoubleMenuMoveInfo);
+            showBasicBtn.setSelected(config.showBasicBtn);
+            showAnalyzeController.setState(config.showAnalyzeController);
           }
 
           @Override
