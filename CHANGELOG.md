@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- AI commentary names moves the way players do, 挂角, 点三三, 扳, 断, 拆二, instead of reading out coordinates. The evidence sent to the model now names the shape of the played move and of each candidate from the stones alone (capture, atari, connection, wedge, cut, hane, extension, attachment, an empty corner, 3-3 invasion, corner approach and enclosure, side extension, diagonal move, jumps and knight's moves, invasion), and the model is asked to use those names, give a coordinate at most once, and not name shapes that are not listed. Moves whose shape the stones do not settle get no name.
+
 - Clicking the rules caption at the top left of the main window opens a menu that switches the rules and the komi in one click: the Chinese Weiqi Association's 2027 trial rules (围棋竞赛规则（2027试行版）, in force from 2027-01-01: komi 3.5 stones, 7 points, so a game can be drawn), the 2002 Chinese rules (3¾ stones, 7.5 points), Japanese, ancient Chinese, Tromp-Taylor and Ing rules, and the full rules dialog. Chinese rules with komi 7 are shown as 中国规则2027; in a handicap game only the rules change.
 
 - The count window (数子结果) shows a draw as 和棋 when the totals are equal, as they can be with a whole-point komi such as the 7 points of the 2027 Chinese rules, instead of calling it a win for Black by 0 points; margins drop a trailing ".0" (黑胜4目).

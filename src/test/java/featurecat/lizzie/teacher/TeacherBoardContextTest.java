@@ -45,6 +45,17 @@ class TeacherBoardContextTest {
   }
 
   @Test
+  void factsNameTheShapeOfEachLinesFirstMove() {
+    TeacherEvidence.Position position = TeacherEvidence.current(position()).orElseThrow();
+
+    String facts = position.board.facts();
+
+    assertTrue(facts.contains("Move shapes"), facts);
+    assertTrue(facts.contains("Candidate A18: capture (提子) of W A19"), facts);
+    assertTrue(TeacherVerifier.verify("A18 提子，吃掉 A19。", position).ok());
+  }
+
+  @Test
   void truncatesIllegalVariationAndPromptNeverIncludesItsSuffix() {
     BoardHistoryNode node = position();
     node.getData().bestMoves.get(0).variation = List.of("A18", "A18", "T1");

@@ -63,6 +63,22 @@ class TeacherPromptBuilderTest {
   }
 
   @Test
+  void everyLanguageIsAskedToNameMovesFromTheListedShapesOnly() {
+    var position = TeacherEvidence.current(TeacherBoardContextTest.position()).orElseThrow();
+
+    String chinese =
+        TeacherPromptBuilder.forPosition(position, Locale.SIMPLIFIED_CHINESE, null).get(0).content;
+    String english = TeacherPromptBuilder.forPosition(position, Locale.US, null).get(0).content;
+
+    assertTrue(chinese.contains("用招法名称讲棋"), chinese);
+    assertTrue(chinese.contains("没有列出、知识库也没有的招法不要自己命名"), chinese);
+    for (String system : List.of(chinese, english)) {
+      assertTrue(system.contains("when Move shapes lists a move, call it by that name"), system);
+      assertTrue(system.contains("Never name a shape that is not listed"), system);
+    }
+  }
+
+  @Test
   void playedMoveWarningUsesARealLineBreak() {
     TeacherEvidence.Position position =
         new TeacherEvidence.Position(
