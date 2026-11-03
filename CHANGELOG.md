@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- 工具栏 → 顶部工具栏 → 自定义内容 can show or hide the PDA (激进度) and the breadth (广度, WRN) field of the top toolbar one at a time; before, only the engine parameter dialog's "Set In Toolbar" boxes could. It can also add a 候选点上限 field to the toolbar's 限制 group: how many candidates the board shows (0 for all), the setting of the same name in the settings, applied as it is typed; it is hidden by default. The breadth field is no longer labelled "warning" in Japanese and Korean (探索幅, 탐색 폭).
+
 - AI commentary no longer calls an ordinary move a life-and-death or tesuji problem it is not ("角上盘角曲四：做活分支" for an opening move). The bundled training problems are placeholder diagrams whose stones are not real positions, so matching them against the board found chance resemblances, labelled them exact, and fed the model the diagrams' coordinates. Problems are matched on the board only when their diagram is marked as a real position; they are still suggested as practice by topic.
 
 - A pasted or opened position that the engine cannot set up now stops with an explanation instead of waiting forever: a White-to-play setup with no moves to replay, on an engine that cannot be told whose turn it is (such as Remote Compute), or a handicap setup on an engine without set_free_handicap. The game stays open and analysis stays paused; 继续分析 tries again, for example after switching to KataGo or to an engine run directly on this computer.
