@@ -73,6 +73,26 @@ class TeacherEvidenceTest {
   }
 
   @Test
+  void trainingProblemsWhoseStonesAreNotOneLocalShapeAreNotMatchedOnTheBoard() {
+    // 角上盘角曲四：做活分支 has C3 E3 E5 D2 around its answer F4, but also K11, L10 and R17 far
+    // away: the stones are not a bent four, so finding the first four on a board means nothing.
+    BoardHistoryNode parent = new BoardHistoryNode(BoardData.empty(19, 19));
+    place(parent, "C3", Stone.BLACK);
+    place(parent, "E3", Stone.WHITE);
+    place(parent, "E5", Stone.BLACK);
+    place(parent, "D2", Stone.WHITE);
+    place(parent, "Q16", Stone.BLACK);
+    place(parent, "R16", Stone.WHITE);
+    parent.getData().bestMoves =
+        List.of(move("F4", 55.0, 1.0, 900, 2), move("D4", 54.0, 0.8, 600, 2));
+
+    String knowledge = TeacherEvidence.knowledgeMatchText(parent);
+
+    assertFalse(knowledge.contains("盘角曲四"), knowledge);
+    assertFalse(knowledge.contains("扑入"), knowledge);
+  }
+
+  @Test
   void knowledgeRequiresMultipleIndependentSignalsOrStrongGeometry() {
     featurecat.lizzie.teacher.knowledge.MatchEngine.KnowledgeMatch weaklyGrounded =
         knowledgeMatch("strong", List.of("phase:opening", "sequence-overlap:1"));
@@ -124,6 +144,11 @@ class TeacherEvidenceTest {
         0,
         50.0,
         0);
+  }
+
+  private static void place(BoardHistoryNode node, String coordinate, Stone stone) {
+    int[] xy = Board.asCoordinates(coordinate).orElseThrow();
+    node.getData().stones[Board.getIndex(xy[0], xy[1])] = stone;
   }
 
   private static BoardHistoryNode append(BoardHistoryNode parent, BoardData data) {
