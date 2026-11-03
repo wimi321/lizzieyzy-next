@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- AI commentary names moves the way players do, 挂角, 点三三, 扳, 断, 拆二, instead of reading out coordinates. The evidence sent to the model now names the shape of the played move and of each candidate from the stones alone (capture, atari, connection, wedge, cut, hane, extension, attachment, an empty corner, 3-3 invasion, corner approach and enclosure, side extension, diagonal move, jumps and knight's moves, invasion), and the model is asked to use those names, give a coordinate at most once, and not name shapes that are not listed. Moves whose shape the stones do not settle get no name.
+
 - What the last move changed stands out above the win-rate graph: "上一手(#3) -0.3% -1.9目" is drawn in bold, green for a gain and red for a loss, and up to half again as large as the rest of the line when the panel has room (it no longer stays at the frame font size on a large graph). The lead beside it keeps its size; on a narrow panel the lead shrinks first.
 
 - 工具栏 → 顶部工具栏 → 自定义内容 can show or hide the PDA (激进度) and the breadth (广度, WRN) field of the top toolbar one at a time; before, only the engine parameter dialog's "Set In Toolbar" boxes could. It can also add a 候选点上限 field to the toolbar's 限制 group: how many candidates the board shows (0 for all), the setting of the same name in the settings, applied as it is typed; it is hidden by default. The breadth field is no longer labelled "warning" in Japanese and Korean (探索幅, 탐색 폭).
