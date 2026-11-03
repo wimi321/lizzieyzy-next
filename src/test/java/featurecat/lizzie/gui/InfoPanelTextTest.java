@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.font.TextAttribute;
 import java.awt.image.BufferedImage;
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -54,6 +55,26 @@ class InfoPanelTextTest {
     assertTrue(paintedRight(withTurn, dotX + 12), "the side to move follows the dot");
     assertEquals(Color.RED.getRGB(), dotOnly.getRGB(leftmostPainted(dotOnly) + 5, 20));
     assertFalse(paintedRight(dotOnly, leftmostPainted(dotOnly) + 12), "only the dot when narrow");
+  }
+
+  @Test
+  void theRulesCaptionShrinksToStayBetweenTheStonesAndKeepsKerning() {
+    Graphics2D g = new BufferedImage(10, 10, BufferedImage.TYPE_INT_ARGB).createGraphics();
+    Font panel = new Font(Font.SANS_SERIF, Font.PLAIN, 17);
+
+    Font roomy = InfoPanelText.captionFont(g, panel, "中国规则2027", 400, 60);
+    assertEquals(17, roomy.getSize());
+    assertEquals(TextAttribute.KERNING_ON, roomy.getAttributes().get(TextAttribute.KERNING));
+
+    String caption = "2027, tie to 1st pass";
+    int room = 300 / 2 - 60 / 2 - 4;
+    assertTrue(g.getFontMetrics(panel).stringWidth(caption) > room);
+    Font fitted = InfoPanelText.captionFont(g, panel, caption, 300, 60);
+    assertTrue(fitted.getSize2D() < 17f);
+    assertTrue(g.getFontMetrics(fitted).stringWidth(caption) <= room + 2);
+
+    assertEquals(9f, InfoPanelText.captionFont(g, panel, caption, 60, 30).getSize2D());
+    g.dispose();
   }
 
   private static BufferedImage render(Font font, boolean analysing, String turn) {
