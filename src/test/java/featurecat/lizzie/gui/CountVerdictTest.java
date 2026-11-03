@@ -2,6 +2,7 @@ package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import featurecat.lizzie.rules.Stone;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,18 @@ class CountVerdictTest {
 
     assertEquals(CountVerdict.Outcome.DRAW, verdict.outcome());
     assertEquals("和棋", verdict.text(STRINGS));
+  }
+
+  @Test
+  void aDrawGoesToTheFirstPasserWhenTheRulesSaySo() {
+    CountVerdict black = new CountVerdict(184, 177 + 7.0, Stone.BLACK);
+    CountVerdict white = new CountVerdict(184, 177 + 7.0, Stone.WHITE);
+
+    assertEquals(CountVerdict.Outcome.BLACK, black.outcome());
+    assertEquals("黑胜（和棋，黑方最先放弃着手）", black.text(STRINGS));
+    assertEquals(CountVerdict.Outcome.WHITE, white.outcome());
+    assertEquals("白胜（和棋，白方最先放弃着手）", white.text(STRINGS));
+    assertEquals("黑胜4目", new CountVerdict(186, 175 + 7.0, Stone.WHITE).text(STRINGS));
   }
 
   @Test
@@ -38,9 +51,11 @@ class CountVerdictTest {
           Locale.KOREAN,
           Locale.forLanguageTag("th-TH")
         }) {
-      String draw =
-          new CountVerdict(7, 7).text(ResourceBundle.getBundle("l10n.DisplayStrings", locale));
-      assertEquals(false, draw.isBlank(), locale.toString());
+      ResourceBundle strings = ResourceBundle.getBundle("l10n.DisplayStrings", locale);
+      for (Stone drawWinner : new Stone[] {null, Stone.BLACK, Stone.WHITE}) {
+        String draw = new CountVerdict(7, 7, drawWinner).text(strings);
+        assertEquals(false, draw.isBlank(), locale + " " + drawWinner);
+      }
     }
   }
 }

@@ -32,7 +32,6 @@ final class CoachSetupForm extends JPanel {
   private static final int LABEL = 18;
   private static final int RANK_TEXT = 38;
   private static final int ROW = 60;
-  private static final double KOMI = 7.5;
   private static final double HANDICAP_KOMI = 0.5;
 
   /** The labelled stops: 17-18K, 7-8K, 1D, 3D, 5D, 7D, 9D and 10D. */
@@ -61,6 +60,7 @@ final class CoachSetupForm extends JPanel {
   private final CoachSetupWidgets.SheetButton moreStones;
   private final CoachSetupWidgets.Switch fromCurrent;
   private final boolean fromCurrentAvailable;
+  private final double evenKomi;
   private TrainingMode mode = TrainingMode.LIVE_FEEDBACK;
   private int handicap;
   private boolean more;
@@ -73,14 +73,15 @@ final class CoachSetupForm extends JPanel {
 
   /**
    * @param text looks up a localized string by key, with an English fallback
-   * @param fromCurrentAvailable whether the board has a position to start from
+   * @param context whether the board has a position to start from, and the komi of an even game
    * @param onResize called when 更多设置 opens or closes, so the dialog can fit it
    */
-  CoachSetupForm(BinaryOperator<String> text, boolean fromCurrentAvailable, Runnable onResize) {
+  CoachSetupForm(BinaryOperator<String> text, CoachSetupContext context, Runnable onResize) {
     super(null);
     this.text = text;
     this.onResize = onResize;
-    this.fromCurrentAvailable = fromCurrentAvailable;
+    this.fromCurrentAvailable = context.fromCurrentAvailable();
+    this.evenKomi = context.evenKomi();
     moreHeader = new MoreHeader();
     setOpaque(false);
     slider =
@@ -199,7 +200,7 @@ final class CoachSetupForm extends JPanel {
         .pace(HumanThinkTime.Pace.values()[pace.selected()])
         .moveTimeSeconds(10)
         .handicap(handicap)
-        .komi(handicap > 0 ? HANDICAP_KOMI : KOMI)
+        .komi(handicap > 0 ? HANDICAP_KOMI : evenKomi)
         .fromCurrentPosition(fromCurrent.isOn() && fromCurrentAvailable)
         .build();
   }
@@ -470,7 +471,7 @@ final class CoachSetupForm extends JPanel {
             t("HumanSlTraining.komi", "Komi"),
             t("HumanSlTraining.komi.note", "0.5 with a handicap"),
             true);
-        String komi = handicap > 0 ? "0.5" : "7.5";
+        String komi = komiText(handicap > 0 ? HANDICAP_KOMI : evenKomi);
         g.setColor(p.text());
         g.drawString(
             komi,
@@ -551,5 +552,12 @@ final class CoachSetupForm extends JPanel {
         g.dispose();
       }
     }
+  }
+
+  /** 7 or 7.5: the komi without a trailing ".0". */
+  static String komiText(double komi) {
+    return komi == Math.rint(komi)
+        ? String.valueOf((long) komi)
+        : String.format(java.util.Locale.ROOT, "%.1f", komi);
   }
 }

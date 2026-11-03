@@ -22,7 +22,6 @@ import featurecat.lizzie.analysis.ForegroundRestoreResult;
 import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.HumanSlStrengthPreparation;
 import featurecat.lizzie.analysis.HumanSlStrengthReuseSession;
-import featurecat.lizzie.analysis.KataGoRules;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.analysis.ReadBoard;
@@ -3599,25 +3598,24 @@ public class LizzieFrame extends JFrame {
   }
 
   private static DesktopTimeControl.Mode configuredTimeControlMode() {
+    Config config = Lizzie.config;
     return DesktopTimeControl.selectedMode(
-        Lizzie.config.advanceTimeSettings,
-        Lizzie.config.kataTimeSettings,
-        Lizzie.config.genmoveGameNoTime);
+        config.advanceTimeSettings, config.kataTimeSettings, config.genmoveGameNoTime);
   }
 
   private static void installPlayingAgainstHumanCountDown(
       String timeSettings, Leelaz engine, boolean needCountDown) {
     if (!needCountDown || engine == null) return;
-    Lizzie.engineManager.playingAgainstHumanEngineCountDown = new EngineCountDown();
-    if (!Lizzie.engineManager.playingAgainstHumanEngineCountDown.setEngineCountDown(
-        timeSettings, engine)) {
-      Lizzie.engineManager.playingAgainstHumanEngineCountDown = null;
+    EngineManager manager = Lizzie.engineManager;
+    manager.playingAgainstHumanEngineCountDown = new EngineCountDown();
+    if (!manager.playingAgainstHumanEngineCountDown.setEngineCountDown(timeSettings, engine)) {
+      manager.playingAgainstHumanEngineCountDown = null;
       Utils.showMsgNoModal(
           Lizzie.resourceBundle.getString("EngineManager.parseAdvcanceTimeSettingsFailed"));
       return;
     }
-    Lizzie.engineManager.playingAgainstHumanEngineCountDown.initialize(!Lizzie.frame.playerIsBlack);
-    Lizzie.engineManager.StartCountDown();
+    manager.playingAgainstHumanEngineCountDown.initialize(!Lizzie.frame.playerIsBlack);
+    manager.StartCountDown();
   }
 
   public static void sendAiTime(boolean needCountDown, Leelaz engine, boolean showTimeMsg) {
@@ -5587,7 +5585,7 @@ public class LizzieFrame extends JFrame {
   }
 
   protected void showPositionSyncFailure(RuntimeException failure) {
-    EngineFollowController.presentSnapshotPreparationFailure(failure);
+    EngineFollowController.presentPermanentRestoreFailure(failure);
   }
 
   /** Called only by the admitted local restart owner, before publishing its new primary. */
@@ -7468,19 +7466,6 @@ public class LizzieFrame extends JFrame {
               }
             }
 
-            //  if (firstTime) {
-            // toolbar.setAllUnfocuse();
-            //  firstTime = false;
-            //   }
-            // Optional<String> dynamicKomi = Lizzie.leelaz.getDynamicKomi();
-            // if (Lizzie.config.showDynamicKomi && dynamicKomi.isPresent()) {
-            // String text =Lizzie.resourceBundle.getString("LizzieFrame.display.dynamic-komi");
-            // drawPonderingState(g, text, dynamicKomiLabelX, dynamicKomiLabelY,
-            // dynamicKomiSize);
-            // drawPonderingState(g, dynamicKomi.get(), dynamicKomiX, dynamicKomiY,
-            // dynamicKomiSize);
-            // }
-
             // Todo: Make board move over when there is no space beside the board
             if (Lizzie.config.showCaptured) {
               if (Lizzie.config.showLargeSubBoard()
@@ -8999,8 +8984,15 @@ public class LizzieFrame extends JFrame {
       Utils.showMsg(Lizzie.resourceBundle.getString(reason));
       return;
     }
+    EngineManager manager = Lizzie.engineManager;
     RulesQuickSwitch.menuFor(
-            engine, Lizzie.board, Lizzie.config, this, Lizzie.resourceBundle, Utils::showMsg)
+            engine,
+            manager == null ? List.of(engine) : manager.engineList,
+            Lizzie.board,
+            Lizzie.config,
+            this,
+            Lizzie.resourceBundle,
+            Utils::showMsg)
         .show(mainPanel, Utils.zoomIn(caption.x), Utils.zoomIn(caption.y + caption.height));
   }
 
@@ -9158,13 +9150,14 @@ public class LizzieFrame extends JFrame {
               snapshot, Lizzie.board.getHistory().isBlacksTurn());
     else if (!usingSpecificRues) leela = Lizzie.leelaz;
     if (!usingSpecificRues && leela != null && leela.isKatago && !EngineManager.isEmpty) {
-      KataGoRules.Summary summary = leela.rulesSummary;
-      if (summary != null) {
-        moveOrRules = Lizzie.resourceBundle.getString(RulePreset.captionKey(summary, komi));
+      String captionKey = RulePreset.captionKey(leela.recentRulesLine, komi, Lizzie.config);
+      if (captionKey != null) {
+        moveOrRules = Lizzie.resourceBundle.getString(captionKey);
         usingSpecificRues = true;
       }
     }
     if (usingSpecificRues && !moveOrRules.isEmpty()) {
+      g.setFont(InfoPanelText.captionFont(g, panelFont, moveOrRules, width, bdiam + wdiam));
       int mw = g.getFontMetrics().stringWidth(moveOrRules);
       int textX = posX - strokeRadius + width / 2 - mw / 2;
       int textY = isSmallCap ? posY + height * 5 / 16 : posY + height * 3 / 10;
@@ -10687,8 +10680,6 @@ public class LizzieFrame extends JFrame {
             lastAutocomTime = currentTime;
             // Append the winrate to the comment
             if (Lizzie.leelaz != null && !Lizzie.board.isLoadingFile) {
-              // if (MoveData.getPlayouts(Lizzie.board.getHistory().getData().bestMoves) >
-              // Lizzie.board.getHistory().getData().getPlayouts())
               String comment = Lizzie.board.getHistory().getData().comment;
               //          if (Lizzie.leelaz.isPondering()
               //              || Lizzie.frame.isPlayingAgainstLeelaz

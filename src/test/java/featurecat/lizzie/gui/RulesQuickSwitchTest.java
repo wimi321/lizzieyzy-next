@@ -20,6 +20,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -40,7 +41,6 @@ class RulesQuickSwitchTest {
       game.setKomiNoMenu(7.5);
       BoardHistoryList history = Lizzie.board.getHistory();
       BoardHistoryList.SessionRulesTarget before = history.captureSessionRules();
-      String startupRules = Lizzie.config.kataRules;
 
       fixture.apply(RulePreset.CHINESE_2027);
 
@@ -59,7 +59,6 @@ class RulesQuickSwitchTest {
               .orElseThrow()
               .semanticallyEquals(KataGoRules.parse("chinese").orElseThrow()));
       assertTrue(fixture.messages.isEmpty(), fixture.messages.toString());
-      assertEquals(startupRules, Lizzie.config.kataRules, "startup rules stay without auto-load");
     }
   }
 
@@ -76,6 +75,32 @@ class RulesQuickSwitchTest {
       assertFalse(commands.contains(" komi "), commands);
       assertTrue(commands.contains(" kata-set-rules "), commands);
       assertEquals(0.5, game.getKomi());
+      assertEquals(7.0f, fixture.engine.orikomi, "new games still start with the komi");
+    }
+  }
+
+  @Test
+  void theDrawToFirstPassRuleSendsKataGosChineseRulesWithTheButton() throws Exception {
+    try (Fixture fixture = new Fixture()) {
+      GameInfo game = fixture.game();
+      game.setKomiNoMenu(7.5);
+      BoardHistoryList history = Lizzie.board.getHistory();
+      BoardHistoryList.SessionRulesTarget before = history.captureSessionRules();
+
+      fixture.apply(RulePreset.CHINESE_2027_DRAW_TO_FIRST_PASS);
+
+      String commands = fixture.output.toString();
+      assertTrue(commands.contains(" komi 7.0"), commands);
+      assertTrue(commands.contains("\"hasButton\":true"), commands);
+      fixture.confirm(CHINESE.replace("\"hasButton\":false", "\"hasButton\":true"));
+      await(() -> history.captureSessionRules() != before);
+      assertTrue(
+          history
+              .captureSessionRules()
+              .parsedRules()
+              .orElseThrow()
+              .semanticallyEquals(RulePreset.CHINESE_2027_DRAW_TO_FIRST_PASS.rules()));
+      assertTrue(fixture.messages.isEmpty(), fixture.messages.toString());
     }
   }
 
@@ -93,19 +118,33 @@ class RulesQuickSwitchTest {
   }
 
   @Test
-  void withStartupRulesOnTheChoiceBecomesTheStartupRules() throws Exception {
+  void theChoiceBecomesTheRulesNewGamesStartWith() throws Exception {
     try (Fixture fixture = new Fixture()) {
-      Lizzie.config.autoLoadKataRules = true;
+      Lizzie.config.autoLoadKataRules = false;
+      Lizzie.config.newGameKomi = 7.5;
+      Lizzie.config.newEngineGameKomi = 7.5;
 
       fixture.apply(RulePreset.CHINESE_2027);
 
       KataGoRules chinese = RulePreset.CHINESE_2027.rules();
+      assertTrue(Lizzie.config.autoLoadKataRules);
       assertTrue(
           KataGoRules.parse(Lizzie.config.kataRules).orElseThrow().semanticallyEquals(chinese));
+      JSONObject saved = Lizzie.config.uiConfig;
+      assertTrue(saved.getBoolean("auto-load-kata-rules"));
       assertTrue(
-          KataGoRules.parse(Lizzie.config.uiConfig.getString("kata-rules"))
+          KataGoRules.parse(saved.getString("kata-rules"))
               .orElseThrow()
               .semanticallyEquals(chinese));
+      assertEquals("CHINESE_2027", saved.getString(RulePreset.CHOSEN_KEY));
+      assertEquals(7.0, saved.getDouble("new-game-komi"));
+      assertEquals(7.0, saved.getDouble("new-engine-game-komi"));
+      assertEquals(7.0, Lizzie.config.newGameKomi);
+      assertEquals(7.0, Lizzie.config.newEngineGameKomi);
+      assertEquals(Optional.of(RulePreset.CHINESE_2027), RulePreset.chosen(Lizzie.config));
+      for (Leelaz engine : fixture.engines) {
+        assertEquals(7.0f, engine.orikomi, "a cleared board on any engine gets the komi");
+      }
     }
   }
 
@@ -140,6 +179,7 @@ class RulesQuickSwitchTest {
     final ByteArrayOutputStream output = new ByteArrayOutputStream();
     final List<String> messages = new CopyOnWriteArrayList<>();
     final Leelaz engine;
+    final List<Leelaz> engines;
 
     Fixture() throws Exception {
       Lizzie.resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US);
@@ -164,6 +204,10 @@ class RulesQuickSwitchTest {
           });
       engine = created[0];
       Lizzie.leelaz = engine;
+      Leelaz other = new Leelaz("");
+      other.orikomi = 7.5f;
+      engine.orikomi = 7.5f;
+      engines = List.of(engine, other);
     }
 
     GameInfo game() {
@@ -174,6 +218,7 @@ class RulesQuickSwitchTest {
       RulesQuickSwitch actions =
           new RulesQuickSwitch(
               engine,
+              engines,
               game(),
               Lizzie.config,
               new ManualRulesSelection(Lizzie.config, () -> Lizzie.board, () -> null),

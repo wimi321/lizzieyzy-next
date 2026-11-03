@@ -2,6 +2,7 @@ package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.FirstPassDraw;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
@@ -274,16 +275,17 @@ public class ScoreResult extends JDialog {
     saved_whiteCaptures = whiteCaptures;
     saved_komi = komi;
 
-    if (Lizzie.leelaz.recentRulesLine != null && Lizzie.leelaz.recentRulesLine.length() > 2) {
-      JSONObject jo = new JSONObject(new String(Lizzie.leelaz.recentRulesLine.substring(2)));
+    String rulesLine = Lizzie.leelaz.recentRulesLine;
+    BoardHistoryNode current = Lizzie.board.getHistory().getCurrentHistoryNode();
+    if (rulesLine != null && rulesLine.length() > 2) {
+      JSONObject jo = new JSONObject(new String(rulesLine.substring(2)));
       boolean whiteHandicapBonusN = false;
       boolean whiteHandicapBonusN1 = false;
       if (jo.optString("whiteHandicapBonus", "").contentEquals("N")) whiteHandicapBonusN = true;
       else if (jo.optString("whiteHandicapBonus", "").contentEquals("N-1"))
         whiteHandicapBonusN1 = true;
       if (whiteHandicapBonusN1 || whiteHandicapBonusN) {
-        int blackStoneForCalcHandicap =
-            countBlackHandicapStones(Lizzie.board.getHistory().getCurrentHistoryNode());
+        int blackStoneForCalcHandicap = countBlackHandicapStones(current);
         if (Lizzie.board.hasStartStone) {
           for (Movelist move : Lizzie.board.startStonelist) {
             if (!move.ispass) {
@@ -340,7 +342,9 @@ public class ScoreResult extends JDialog {
               + "="
               + whiteAll);
     }
-    CountVerdict verdict = new CountVerdict(blackAll, whiteAll);
+    CountVerdict verdict =
+        new CountVerdict(
+            blackAll, whiteAll, FirstPassDraw.drawWinner(rulesLine, current).orElse(null));
     scoreResult.setText(verdict.text(Lizzie.resourceBundle));
     switch (verdict.outcome()) {
       case BLACK -> {

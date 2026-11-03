@@ -59,6 +59,13 @@ public final class LocalShapeGeometryMatcher {
     public String teachingFailureExplanation;
     public List<String> patternCardIds = new ArrayList<>();
 
+    /**
+     * Whether initialStones and correctMoves are a real position. Unverified diagrams are
+     * placeholders for the teaching text, so their stones and answers are never looked for on a
+     * board.
+     */
+    public boolean positionVerified;
+
     public String teachingFailureExplanation() {
       return teachingFailureExplanation;
     }
@@ -366,6 +373,7 @@ public final class LocalShapeGeometryMatcher {
 
   /** 匹配单个 problem（对齐 localShapeGeometryMatch） */
   public static GeometryMatchResult match(ProblemEntry problem, KnowledgeMatchQuery query) {
+    if (!problem.positionVerified) return null;
     List<String> qAnchors =
         uniqueValidPoints(
             new ArrayList<>() {

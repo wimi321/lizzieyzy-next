@@ -106,7 +106,36 @@ public class EngineFollowController {
   }
 
   static boolean presentSnapshotPreparationFailureDetail(String detail) {
-    String message = snapshotPreparationFailureMessage(detail);
+    return show(snapshotPreparationFailureMessage(detail));
+  }
+
+  /**
+   * Explains a restore failure that only another engine or setup can fix: the snapshot cannot be
+   * prepared, or the engine cannot represent the position.
+   */
+  public static boolean presentPermanentRestoreFailure(Throwable failure) {
+    String message = unsupportedPositionMessage(failure);
+    return message == null ? presentSnapshotPreparationFailure(failure) : show(message);
+  }
+
+  static String unsupportedPositionMessage(Throwable failure) {
+    if (!(failure instanceof ExactSnapshotEngineRestore.Failure exactFailure)
+        || exactFailure.category()
+            != ExactSnapshotEngineRestore.FailureCategory.UNSUPPORTED_REMOTE_POSITION
+        || Lizzie.resourceBundle == null) {
+      return null;
+    }
+    String detail = failure.getMessage();
+    if (ExactSnapshotEngineRestore.WHITE_TO_PLAY_WITHOUT_TAIL_DETAIL.equals(detail)) {
+      detail = Lizzie.resourceBundle.getString("EngineFollow.unsupportedPosition.whiteToPlay");
+    } else if (ExactSnapshotEngineRestore.NO_HANDICAP_RESTORE_DETAIL.equals(detail)) {
+      detail = Lizzie.resourceBundle.getString("EngineFollow.unsupportedPosition.handicap");
+    }
+    return MessageFormat.format(
+        Lizzie.resourceBundle.getString("EngineFollow.unsupportedPosition"), detail);
+  }
+
+  private static boolean show(String message) {
     if (message == null) {
       return false;
     }
