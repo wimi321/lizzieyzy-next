@@ -125,6 +125,25 @@ class RulePresetTest {
   }
 
   @Test
+  void anEvenGameTakesTheKomiOfTheRulesKataGoPlaysNow() {
+    Config config = config();
+    config.currentKataGoRules = CHINESE.toResponseLine();
+    assertEquals(7.0, RulePreset.evenGameKomi(config, 7.0, false), "2027 rules");
+    assertEquals(7.5, RulePreset.evenGameKomi(config, 7.5, false), "2002 rules");
+    assertEquals(6.0, RulePreset.evenGameKomi(config, 6.0, false), "no rule set: the game's komi");
+    assertEquals(7.5, RulePreset.evenGameKomi(config, 0.5, true), "after a handicap game");
+
+    choose(config, RulePreset.CHINESE_2027);
+    assertEquals(7.0, RulePreset.evenGameKomi(config, 0.5, true), "the komi new games start with");
+    config.currentKataGoRules = RulePreset.CHINESE_2027_DRAW_TO_FIRST_PASS.rules().toResponseLine();
+    assertEquals(7.0, RulePreset.evenGameKomi(config, 7.5, false), "the button goes with komi 7");
+    config.currentKataGoRules = KataGoRules.parse("japanese").orElseThrow().toResponseLine();
+    assertEquals(6.5, RulePreset.evenGameKomi(config, 7.5, false));
+    config.currentKataGoRules = "";
+    assertEquals(7.5, RulePreset.evenGameKomi(config, 7.5, false), "before KataGo reports rules");
+  }
+
+  @Test
   void aConfigWithoutSettingsHasNoChosenRuleSet() {
     Config bare = ConfigTestHelper.createForTests(workDirectory);
     bare.uiConfig = null;

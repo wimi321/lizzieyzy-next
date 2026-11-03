@@ -25,13 +25,13 @@
     "src/main/java/featurecat/lizzie/logging/DiagnosticBundleExporter.java": 2668,
     "src/main/java/featurecat/lizzie/analysis/PlayerStrengthEstimator.java": 2171,
     "src/main/java/featurecat/lizzie/search/FunctionCatalog.java": 2154,
-    "src/main/java/featurecat/lizzie/gui/NewHumanSlGameDialog.java": 1654
+    "src/main/java/featurecat/lizzie/gui/NewHumanSlGameDialog.java": 1652
   },
   "max_static_references": {
-    "Lizzie.config": 6739,
+    "Lizzie.config": 6733,
     "Lizzie.frame": 3207,
     "Lizzie.board": 1938,
-    "Lizzie.leelaz": 1056,
+    "Lizzie.leelaz": 1054,
     "Lizzie.leelaz2": 115,
     "Lizzie.engineManager": 148
   },

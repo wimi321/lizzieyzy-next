@@ -2,7 +2,9 @@ package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.AnalysisRequestBuilder;
 import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.FirstPassDraw;
 import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.HumanMoveChoice;
 import featurecat.lizzie.analysis.HumanSlAnalysisRunner;
@@ -644,6 +646,11 @@ public final class HumanSlGameController {
           ? text("HumanSlGame.result.blackByResignation", "Black wins by resignation")
           : text("HumanSlGame.result.whiteByResignation", "White wins by resignation");
     }
+    if (result.wonOnDraw()) {
+      return result.blackWins()
+          ? text("HumanSlGame.result.blackWinsDraw", "Black wins: a draw, and Black passed first")
+          : text("HumanSlGame.result.whiteWinsDraw", "White wins: a draw, and White passed first");
+    }
     String pattern =
         result.blackWins()
             ? text("HumanSlGame.result.blackByPoints", "Black wins by {0} points")
@@ -670,6 +677,10 @@ public final class HumanSlGameController {
     gameExecutor.execute(
         () -> {
           OptionalDouble blackLead = runner.finalBlackScoreLead(finalNode, COUNT_TIMEOUT);
+          Stone firstPasser =
+              AnalysisRequestBuilder.sendsFirstPassDrawRule()
+                  ? FirstPassDraw.firstPasser(finalNode).orElse(null)
+                  : null;
           SwingUtilities.invokeLater(
               () -> {
                 if (finished || generation != requestGeneration.get()) {
@@ -678,7 +689,7 @@ public final class HumanSlGameController {
                 counting = false;
                 endGame(
                     blackLead.isPresent()
-                        ? GameResult.byScore(blackLead.getAsDouble(), gameKomi)
+                        ? GameResult.byScore(blackLead.getAsDouble(), gameKomi, firstPasser)
                         : GameResult.uncounted());
               });
         });
