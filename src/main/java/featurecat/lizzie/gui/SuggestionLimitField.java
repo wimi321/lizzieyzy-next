@@ -12,8 +12,8 @@ import javax.swing.event.DocumentListener;
 
 /**
  * The candidate limit field of the top toolbar's 限制 group: how many candidates the board shows, 0
- * for all, the setting the settings dialog calls 候选点上限. 自定义工具栏 shows or hides it, and it is hidden
- * by default. An edit takes effect at once and is saved like the dialog's.
+ * for all, the setting the settings dialog calls 候选点上限. 顶部工具栏 → 自定义内容 shows or hides it, and it is
+ * hidden by default. An edit takes effect at once and is saved like the dialog's.
  */
 final class SuggestionLimitField {
   static final String SHOWN_KEY = "show-suggestion-limit-in-menu";

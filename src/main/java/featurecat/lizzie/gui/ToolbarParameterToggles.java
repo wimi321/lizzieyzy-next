@@ -5,9 +5,9 @@ import java.util.ResourceBundle;
 import javax.swing.JMenu;
 
 /**
- * Shows or hides the PDA and the breadth (WRN) field of the top toolbar one at a time from 自定义工具栏.
- * They are the same choices as "Set In Toolbar" in the engine parameter dialog, which was the only
- * place to change them.
+ * Shows or hides the PDA and the breadth (WRN) field of the top toolbar one at a time from 顶部工具栏 →
+ * 自定义内容. They are the same choices as "Set In Toolbar" in the engine parameter dialog, which was
+ * the only place to change them.
  */
 final class ToolbarParameterToggles {
   private final Config config;

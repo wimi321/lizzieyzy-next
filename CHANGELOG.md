@@ -4,7 +4,7 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
-- 工具栏 → 自定义工具栏 can show or hide the PDA (激进度) and the breadth (广度, WRN) field of the top toolbar one at a time; before, only the engine parameter dialog's "Set In Toolbar" boxes could. It can also add a 候选点上限 field to the toolbar's 限制 group: how many candidates the board shows (0 for all), the setting of the same name in the settings, applied as it is typed; it is hidden by default. The breadth field is no longer labelled "warning" in Japanese and Korean (探索幅, 탐색 폭).
+- 工具栏 → 顶部工具栏 → 自定义内容 can show or hide the PDA (激进度) and the breadth (广度, WRN) field of the top toolbar one at a time; before, only the engine parameter dialog's "Set In Toolbar" boxes could. It can also add a 候选点上限 field to the toolbar's 限制 group: how many candidates the board shows (0 for all), the setting of the same name in the settings, applied as it is typed; it is hidden by default. The breadth field is no longer labelled "warning" in Japanese and Korean (探索幅, 탐색 폭).
 
 - AI commentary no longer calls an ordinary move a life-and-death or tesuji problem it is not ("角上盘角曲四：做活分支" for an opening move). The bundled training problems are placeholder diagrams whose stones are not real positions, so matching them against the board found chance resemblances, labelled them exact, and fed the model the diagrams' coordinates. Problems are matched on the board only when their diagram is marked as a real position; they are still suggested as practice by topic.
 
