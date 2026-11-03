@@ -53,6 +53,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import javax.swing.SwingUtilities;
+import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -1087,6 +1088,43 @@ class EngineManagerInitialStartupSynchronizationTest {
           EngineManager.EngineSwitchUiPhase.ACTIVE, manager.engineSwitchUiSnapshot(true).phase());
       assertEquals(1, EngineManager.currentEngineNo);
       assertFalse(EngineManager.isEmpty);
+    }
+  }
+
+  @Test
+  void enginesStartWithTheKomiOfTheRuleSetPickedFromTheRulesCaption() throws Exception {
+    try (StartupTestEnvironment env = StartupTestEnvironment.open()) {
+      Lizzie.config.uiConfig =
+          new JSONObject().put(RulePreset.CHOSEN_KEY, RulePreset.CHINESE_2027.name());
+      Lizzie.config.autoLoadKataRules = true;
+      Lizzie.config.kataRules = RulePreset.CHINESE_2027.rules().toGtpArgument();
+      StartupSyncLeelaz selected = new StartupSyncLeelaz();
+      StartupSyncLeelaz other = new StartupSyncLeelaz();
+      selected.delayReadyAfterStart = true;
+      Lizzie.board = boardWithHistory(emptyRootHistory(0));
+
+      EngineManager manager =
+          new EngineManager(
+              Lizzie.config,
+              0,
+              false,
+              new ArrayList<>(
+                  List.of(engineData(0, "selected", false), engineData(1, "other", false))),
+              command -> "selected".equals(command) ? selected : other);
+      Lizzie.engineManager = manager;
+
+      assertTrue(selected.startCompleted.await(2, TimeUnit.SECONDS));
+      assertEquals(7.0f, selected.orikomi, "the saved engine komi is 7.5");
+      assertEquals(7.0f, other.orikomi);
+      selected.publishReady();
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (manager.engineSwitchUiSnapshot(true).phase()
+              != EngineManager.EngineSwitchUiPhase.ACTIVE
+          && System.nanoTime() < deadline) {
+        Thread.sleep(10L);
+      }
+      assertEquals(
+          EngineManager.EngineSwitchUiPhase.ACTIVE, manager.engineSwitchUiSnapshot(true).phase());
     }
   }
 

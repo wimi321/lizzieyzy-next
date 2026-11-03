@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- The rules caption's menu offers the 2027 Chinese rules' two ways to break a draw where a game must have a winner (第九条): a draw goes to White, which counts like komi 7.5, or to the player who passed first, which is KataGo's button rule with komi 7; the caption names the one in use, and any rules caption too wide for the space between the two stones is drawn smaller. The rule set picked from the menu is now also the one new games start with: KataGo starts with its rules, a cleared board gets its komi on every engine, and the new-game dialogs offer that komi. It stays so until the startup rules are changed in the rules dialog.
+
 - Clicking the rules caption at the top left of the main window opens a menu that switches the rules and the komi in one click: the Chinese Weiqi Association's 2027 trial rules (围棋竞赛规则（2027试行版）, in force from 2027-01-01: komi 3.5 stones, 7 points, so a game can be drawn), the 2002 Chinese rules (3¾ stones, 7.5 points), Japanese, ancient Chinese, Tromp-Taylor and Ing rules, and the full rules dialog. Chinese rules with komi 7 are shown as 中国规则2027; in a handicap game only the rules change.
 
 - The count window (数子结果) shows a draw as 和棋 when the totals are equal, as they can be with a whole-point komi such as the 7 points of the 2027 Chinese rules, instead of calling it a win for Black by 0 points; margins drop a trailing ".0" (黑胜4目).

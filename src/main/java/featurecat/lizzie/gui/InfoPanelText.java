@@ -12,6 +12,7 @@ import java.util.ResourceBundle;
 /** The labelled figures of the game panel above the win-rate bar: "吻合度 54.4", "贴目 7.5". */
 final class InfoPanelText {
   static final Color SECONDARY_TEXT = new Color(0xB7, 0xBC, 0xC4);
+  private static final float MIN_CAPTION_SIZE = 9f;
 
   private InfoPanelText() {}
 
@@ -53,6 +54,23 @@ final class InfoPanelText {
     g.setColor(SECONDARY_TEXT);
     int baseline = centerY + (metrics.getAscent() - metrics.getDescent()) / 2;
     g.drawString(turn, left + dot + gap, baseline);
+  }
+
+  /**
+   * The font of the rules caption, which sits between the two stones at the top of a panel {@code
+   * width} wide: the panel font, made smaller when the caption would reach the stones, whose
+   * diameters add up to {@code stones}. It keeps kerning, so the digits of "中国规则2027" are drawn.
+   */
+  static Font captionFont(Graphics2D g, Font panelFont, String caption, int width, int stones) {
+    int size = panelFont.getSize();
+    int room = width / 2 - stones / 2 - 4;
+    Font font = FittedFont.fit(g, panelFont, Font.PLAIN, caption, size, room, size);
+    // fit rounds the size, which can leave the caption a few pixels too wide.
+    while (font.getSize2D() > MIN_CAPTION_SIZE
+        && g.getFontMetrics(font).stringWidth(caption) > room) {
+      font = font.deriveFont(font.getSize2D() - 1f);
+    }
+    return font.getSize2D() < MIN_CAPTION_SIZE ? font.deriveFont(MIN_CAPTION_SIZE) : font;
   }
 
   private static String format(ResourceBundle strings, String key, String value) {
