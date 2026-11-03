@@ -33,7 +33,16 @@ final class ManualRulesSelection {
    * changes nothing.
    */
   void saveStartupRules(KataGoRules requested, boolean autoLoad) throws IOException {
+    saveStartupRules(requested, autoLoad, new JSONObject());
+  }
+
+  /** Saves the startup rules and, in the same write, the ui settings in {@code alongside}. */
+  void saveStartupRules(KataGoRules requested, boolean autoLoad, JSONObject alongside)
+      throws IOException {
     JSONObject candidateUi = new JSONObject(config.uiConfig.toString());
+    for (String key : alongside.keySet()) {
+      candidateUi.put(key, alongside.get(key));
+    }
     candidateUi.put("auto-load-kata-rules", autoLoad);
     if (autoLoad) {
       candidateUi.put("kata-rules", requested.toGtpArgument());

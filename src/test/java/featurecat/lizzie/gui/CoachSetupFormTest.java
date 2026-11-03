@@ -25,7 +25,9 @@ class CoachSetupFormTest {
   private CoachSetupForm form(boolean fromCurrentAvailable) {
     CoachSetupForm form =
         new CoachSetupForm(
-            (key, fallback) -> fallback, fromCurrentAvailable, resizes::incrementAndGet);
+            (key, fallback) -> fallback,
+            new CoachSetupContext(fromCurrentAvailable, 7.5),
+            resizes::incrementAndGet);
     form.setSize(form.getPreferredSize());
     form.doLayout();
     return form;
@@ -42,6 +44,19 @@ class CoachSetupFormTest {
     assertEquals(OpponentPreset.RANK, config.opponentPreset);
     assertEquals(10, config.moveTimeSeconds);
     assertEquals(7.5, config.komi);
+  }
+
+  @Test
+  void anEvenGameUsesTheKomiOfTheMainWindowsRules() {
+    CoachSetupForm form =
+        new CoachSetupForm(
+            (key, fallback) -> fallback,
+            new CoachSetupContext(false, 7.0),
+            resizes::incrementAndGet);
+
+    assertEquals(7.0, form.config().komi, "the 2027 rules");
+    assertEquals("7", CoachSetupForm.komiText(7.0));
+    assertEquals("6.5", CoachSetupForm.komiText(6.5));
   }
 
   @Test

@@ -255,6 +255,7 @@ public final class JsonKnowledgeLoader {
           pe.teachingFailureExplanation = asStr(teaching.get("failureExplanation"));
         }
         pe.patternCardIds = asStrList(prob.get("patternCardIds"));
+        pe.positionVerified = Boolean.TRUE.equals(prob.get("positionVerified"));
         Object init = prob.get("initialStones");
         if (init instanceof List)
           for (Object st : (List<?>) init) {
