@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- What the last move changed stands out above the win-rate graph: "上一手(#3) -0.3% -1.9目" is drawn in bold, green for a gain and red for a loss, and up to half again as large as the rest of the line when the panel has room (it no longer stays at the frame font size on a large graph). The lead beside it keeps its size; on a narrow panel the lead shrinks first.
+
 - Clicking the rules caption at the top left of the main window opens a menu that switches the rules and the komi in one click: the Chinese Weiqi Association's 2027 trial rules (围棋竞赛规则（2027试行版）, in force from 2027-01-01: komi 3.5 stones, 7 points, so a game can be drawn), the 2002 Chinese rules (3¾ stones, 7.5 points), Japanese, ancient Chinese, Tromp-Taylor and Ing rules, and the full rules dialog. Chinese rules with komi 7 are shown as 中国规则2027; in a handicap game only the rules change.
 
 - The count window (数子结果) shows a draw as 和棋 when the totals are equal, as they can be with a whole-point komi such as the 7 points of the 2027 Chinese rules, instead of calling it a win for Black by 0 points; margins drop a trailing ".0" (黑胜4目).
