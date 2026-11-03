@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- A pass inside a variation no longer makes the variation's later moves fall back to the main line's move count: after the variation's moves 1 to 3 and a pass, the next stone is numbered 5 instead of its move number in the whole game. Passes now count within the variation the way moves do, also when an SGF file is loaded.
+
 - AI commentary names moves the way players do, 挂角, 点三三, 扳, 断, 拆二, instead of reading out coordinates. The evidence sent to the model now names the shape of the played move and of each candidate from the stones alone (capture, atari, connection, wedge, cut, hane, extension, attachment, an empty corner, 3-3 invasion, corner approach and enclosure, side extension, diagonal move, jumps and knight's moves, invasion), and the model is asked to use those names, give a coordinate at most once, and not name shapes that are not listed. Moves whose shape the stones do not settle get no name.
 
 - What the last move changed stands out above the win-rate graph: "上一手(#3) -0.3% -1.9目" is drawn in bold, green for a gain and red for a loss, and up to half again as large as the rest of the line when the panel has room (it no longer stays at the frame font size on a large graph). The lead beside it keeps its size; on a narrow panel the lead shrinks first.

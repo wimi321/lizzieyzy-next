@@ -157,6 +157,67 @@ class BoardPlayCaptureHistoryRegressionTest {
   }
 
   @Test
+  void aPassInsideAVariationKeepsNumberingItsMovesFromTheVariation() throws Exception {
+    try (RulesLayerTestHarness env = RulesLayerTestHarness.open(SIZE)) {
+      Lizzie.config.newMoveNumberInBranch = true;
+      Board board = env.board();
+      board.place(0, 0, Stone.BLACK);
+      board.place(1, 1, Stone.WHITE);
+      assertTrue(board.previousMove(false));
+
+      board.place(3, 3, Stone.WHITE); // a variation, numbered from 1
+      board.pass(Stone.BLACK);
+      board.place(4, 4, Stone.WHITE);
+      board.place(0, 4, Stone.BLACK);
+
+      int[] numbers = env.current().getData().moveNumberList;
+      assertEquals(1, numbers[Board.getIndex(3, 3)]);
+      assertEquals(3, numbers[Board.getIndex(4, 4)], "the pass was the variation's move 2");
+      assertEquals(4, numbers[Board.getIndex(0, 4)]);
+      assertEquals(4, board.moveNumberByCoord(new int[] {4, 4}), "the game's move 4");
+    }
+  }
+
+  @Test
+  void aPassAddedToTheHistoryInsideAVariationKeepsItsNumbering() throws Exception {
+    // The path of SGF loading and engine games.
+    try (RulesLayerTestHarness env = RulesLayerTestHarness.open(SIZE)) {
+      Lizzie.config.newMoveNumberInBranch = true;
+      BoardHistoryList history = env.board().getHistory();
+      history.place(0, 0, Stone.BLACK);
+      history.place(1, 1, Stone.WHITE);
+      assertTrue(history.previous().isPresent());
+
+      history.place(3, 3, Stone.WHITE);
+      history.pass(Stone.BLACK);
+      history.place(4, 4, Stone.WHITE);
+
+      assertEquals(
+          2, history.getCurrentHistoryNode().previous().orElseThrow().getData().moveMNNumber);
+      assertEquals(3, history.getData().moveNumberList[Board.getIndex(4, 4)]);
+    }
+  }
+
+  @Test
+  void aPassStartingAVariationAndPassesOnTheMainLineKeepTheirNumbers() throws Exception {
+    try (RulesLayerTestHarness env = RulesLayerTestHarness.open(SIZE)) {
+      Lizzie.config.newMoveNumberInBranch = true;
+      Board board = env.board();
+      board.place(0, 0, Stone.BLACK);
+      board.pass(Stone.WHITE);
+      board.place(2, 2, Stone.BLACK);
+      assertEquals(3, env.current().getData().moveNumberList[Board.getIndex(2, 2)]);
+
+      assertTrue(board.previousMove(false));
+      assertTrue(board.previousMove(false));
+      board.pass(Stone.WHITE, true); // a second pass, as a new variation
+      assertEquals(1, env.current().getData().moveMNNumber);
+      board.place(3, 3, Stone.BLACK);
+      assertEquals(2, env.current().getData().moveNumberList[Board.getIndex(3, 3)]);
+    }
+  }
+
+  @Test
   void replayingTheNextPassWalksHistoryInsteadOfForking() throws Exception {
     try (RulesLayerTestHarness env = RulesLayerTestHarness.open(SIZE)) {
       Board board = env.board();

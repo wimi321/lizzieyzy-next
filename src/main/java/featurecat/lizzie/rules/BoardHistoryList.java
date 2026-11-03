@@ -725,6 +725,7 @@ public class BoardHistoryList {
               0,
               0);
       newState.dummy = dummy;
+      newState.moveMNNumber = curNode.getData().nextMoveMNNumber(newBranch);
 
       // update history with pass
       if (addLast) {
@@ -830,10 +831,7 @@ public class BoardHistoryList {
       Zobrist zobrist = curNode.getData().zobrist.clone();
       Optional<int[]> lastMove = Optional.of(new int[] {x, y});
       int moveNumber = curNode.getData().moveNumber + 1;
-      int moveMNNumber =
-          curNode.getData().moveMNNumber > -1 && !newBranch
-              ? curNode.getData().moveMNNumber + 1
-              : -1;
+      int moveMNNumber = curNode.getData().nextMoveMNNumber(newBranch);
       int[] moveNumberList =
           newBranch && curNode.next(true).map(s -> s.getData()).isPresent()
               ? new int[Board.boardWidth * Board.boardHeight]
