@@ -185,6 +185,7 @@ public class Menu extends JMenuBar {
   JFontCheckBox chkShowWinrate;
   JFontCheckBox chkShowScore;
   JToolBar toolPanel;
+  private SuggestionLimitField suggestionLimit;
 
   // private int doubleMenuOriWidth;
   private JFontButton doubleMenuNewGame;
@@ -4412,7 +4413,6 @@ public class Menu extends JMenuBar {
     bottomToolBar.addSeparator();
     bottomToolBar.addMenuListener(
         new MenuListener() {
-
           public void menuSelected(MenuEvent e) {
             syncBottomToolbarMarks.run();
             if (Lizzie.config.showDetailedToolbarMenu) showDetailedMenu.setState(true);
@@ -4420,15 +4420,10 @@ public class Menu extends JMenuBar {
           }
 
           @Override
-          public void menuDeselected(MenuEvent e) {
-            // TODO Auto-generated method stub
-          }
+          public void menuDeselected(MenuEvent e) {}
 
           @Override
-          public void menuCanceled(MenuEvent e) {
-            // TODO Auto-generated method stub
-
-          }
+          public void menuCanceled(MenuEvent e) {}
         });
 
     final JFontMenu customTopToolBar =
@@ -4535,6 +4530,11 @@ public class Menu extends JMenuBar {
             setKomiPanelExtra();
           }
         });
+
+    suggestionLimit =
+        new SuggestionLimitField(
+            Lizzie.config, resourceBundle, this::setKomiPanelExtra, () -> Lizzie.frame.refresh());
+    customTopToolBar.add(suggestionLimit.toggle);
 
     final JFontCheckBoxMenuItem showAnalyzeController =
         new JFontCheckBoxMenuItem(
@@ -4647,7 +4647,6 @@ public class Menu extends JMenuBar {
 
     customTopToolBar.addMenuListener(
         new MenuListener() {
-
           public void menuSelected(MenuEvent e) {
             Config config = Lizzie.config;
             playMoveTools.setSelected(config.showEditbar);
@@ -4663,21 +4662,17 @@ public class Menu extends JMenuBar {
             parameterToggles.sync();
             showTimeLimitController.setState(config.showTimeControlInMenu);
             showPlayoutLimitController.setState(config.showPlayoutControlInMenu);
+            suggestionLimit.sync();
             showCandidateInfoController.setSelected(config.showDoubleMenuMoveInfo);
             showBasicBtn.setSelected(config.showBasicBtn);
             showAnalyzeController.setState(config.showAnalyzeController);
           }
 
           @Override
-          public void menuDeselected(MenuEvent e) {
-            // TODO Auto-generated method stub
-          }
+          public void menuDeselected(MenuEvent e) {}
 
           @Override
-          public void menuCanceled(MenuEvent e) {
-            // TODO Auto-generated method stub
-
-          }
+          public void menuCanceled(MenuEvent e) {}
         });
 
     final JFontMenu customToolbarItem =
@@ -9265,21 +9260,22 @@ public class Menu extends JMenuBar {
 
     setPdaAndWrnByEngineForDouble();
 
-    if (Lizzie.config.showTimeControlInMenu || Lizzie.config.showPlayoutControlInMenu) {
-      Lizzie.frame.topPanel.addSeparator(
-          new Dimension(ToolbarSizing.SEPARATOR_WIDTH, Config.menuHeight + 2));
-      Lizzie.frame.topPanel.add(
-          new JFontLabel(resourceBundle.getString("Menu.lblLimit"))); // "限制:"));
-
-      if (Lizzie.config.showTimeControlInMenu) {
-        Lizzie.frame.topPanel.add(chkTime);
-        Lizzie.frame.topPanel.add(txtTimeLimit);
+    TopHeaderPanel top = Lizzie.frame.topPanel;
+    Config config = Lizzie.config;
+    boolean suggestions = suggestionLimit != null && suggestionLimit.shown();
+    if (config.showTimeControlInMenu || config.showPlayoutControlInMenu || suggestions) {
+      top.addSeparator(new Dimension(ToolbarSizing.SEPARATOR_WIDTH, Config.menuHeight + 2));
+      top.add(new JFontLabel(resourceBundle.getString("Menu.lblLimit"))); // "限制:"));
+      if (config.showTimeControlInMenu) {
+        top.add(chkTime);
+        top.add(txtTimeLimit);
       }
-      if (Lizzie.config.showPlayoutControlInMenu) {
-        Lizzie.frame.topPanel.add(chkPlayOut);
-        Lizzie.frame.topPanel.add(txtPlayOutsLimit);
+      if (config.showPlayoutControlInMenu) {
+        top.add(chkPlayOut);
+        top.add(txtPlayOutsLimit);
       }
-      Lizzie.frame.topPanel.addSeparator(new Dimension(2, 0));
+      if (suggestions) suggestionLimit.addTo(top);
+      top.addSeparator(new Dimension(2, 0));
     }
 
     if (chkShowBlack == null) {
@@ -9693,18 +9689,21 @@ public class Menu extends JMenuBar {
             toolPanel.add(selectAvoidMore);
             toolPanel.add(clearSelect);
 
-            if (Lizzie.config.showTimeControlInMenu || Lizzie.config.showPlayoutControlInMenu) {
+            Config config = Lizzie.config;
+            boolean suggestions = suggestionLimit != null && suggestionLimit.shown();
+            if (config.showTimeControlInMenu || config.showPlayoutControlInMenu || suggestions) {
               toolPanel.addSeparator(
                   new Dimension(ToolbarSizing.SEPARATOR_WIDTH, Config.menuHeight + 2));
               toolPanel.add(new JFontLabel(resourceBundle.getString("Menu.lblLimit"))); // "限制:"));
-              if (Lizzie.config.showTimeControlInMenu) {
+              if (config.showTimeControlInMenu) {
                 toolPanel.add(chkTime);
                 toolPanel.add(txtTimeLimit);
               }
-              if (Lizzie.config.showPlayoutControlInMenu) {
+              if (config.showPlayoutControlInMenu) {
                 toolPanel.add(chkPlayOut);
                 toolPanel.add(txtPlayOutsLimit);
               }
+              if (suggestions) suggestionLimit.addTo(toolPanel);
               toolPanel.addSeparator(new Dimension(2, 0));
             }
 
@@ -10015,6 +10014,7 @@ public class Menu extends JMenuBar {
     chkTime.setSelected(Lizzie.config.limitTime);
     txtTimeLimit.setEnabled(Lizzie.config.limitTime);
     txtTimeLimit.setText(String.valueOf(Lizzie.config.maxAnalyzeTimeMillis / 1000));
+    if (suggestionLimit != null) suggestionLimit.sync();
     if (needReCalculatePondering) reCalculateLeelazPonderingIfOutOfLimit();
   }
 
