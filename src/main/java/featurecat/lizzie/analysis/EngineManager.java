@@ -693,8 +693,8 @@ public class EngineManager {
       e.height = engineDt.height;
       e.oriWidth = engineDt.width;
       e.oriHeight = engineDt.height;
-      e.komi = engineDt.komi;
-      e.orikomi = engineDt.komi;
+      e.komi = RulePreset.newGameKomi(config, engineDt.komi);
+      e.orikomi = e.komi;
       e.useJavaSSH = engineDt.useJavaSSH;
       e.ip = engineDt.ip;
       e.port = engineDt.port;
@@ -4283,8 +4283,8 @@ public class EngineManager {
     engine.height = engineDt.height;
     engine.oriWidth = engineDt.width;
     engine.oriHeight = engineDt.height;
-    engine.komi = engineDt.komi;
-    engine.orikomi = engineDt.komi;
+    engine.komi = RulePreset.newGameKomi(Lizzie.config, engineDt.komi);
+    engine.orikomi = engine.komi;
     engine.useJavaSSH = engineDt.useJavaSSH;
     engine.ip = engineDt.ip;
     engine.port = engineDt.port;

@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis;
 
+import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryNode;
@@ -48,18 +49,32 @@ public class AnalysisRequestBuilder {
   }
 
   static void addRules(JSONObject request) {
-    JSONObject ruleSettings;
-    if (!Lizzie.config.analysisUseCurrentRules) {
-      if (!Lizzie.config.analysisSpecificRules.equals("")) {
-        ruleSettings = new JSONObject(Lizzie.config.analysisSpecificRules);
-        request.put("rules", ruleSettings);
-      } else request.put("rules", "tromp-taylor");
-    } else if (!Lizzie.config.currentKataGoRules.equals("")) {
-      ruleSettings = new JSONObject(new String(Lizzie.config.currentKataGoRules.substring(2)));
-      request.put("rules", ruleSettings);
-    } else if (Lizzie.config.autoLoadKataRules && !Lizzie.config.kataRules.equals("")) {
-      ruleSettings = new JSONObject(Lizzie.config.kataRules);
-      request.put("rules", ruleSettings);
-    } else request.put("rules", "tromp-taylor");
+    request.put("rules", rules());
+  }
+
+  /** The rules analysis requests send: KataGo rules as JSON, or "tromp-taylor". */
+  static Object rules() {
+    Config config = Lizzie.config;
+    if (!config.analysisUseCurrentRules) {
+      return config.analysisSpecificRules.equals("")
+          ? "tromp-taylor"
+          : new JSONObject(config.analysisSpecificRules);
+    }
+    if (!config.currentKataGoRules.equals("")) {
+      return new JSONObject(config.currentKataGoRules.substring(2));
+    }
+    if (config.autoLoadKataRules && !config.kataRules.equals("")) {
+      return new JSONObject(config.kataRules);
+    }
+    return "tromp-taylor";
+  }
+
+  /** Whether analysis requests ask for rules that give a drawn count to the first passer. */
+  public static boolean sendsFirstPassDrawRule() {
+    try {
+      return FirstPassDraw.applies(KataGoRules.parse(String.valueOf(rules())).orElse(null));
+    } catch (RuntimeException unreadable) {
+      return false; // A count must still end; requests report unreadable rules themselves.
+    }
   }
 }

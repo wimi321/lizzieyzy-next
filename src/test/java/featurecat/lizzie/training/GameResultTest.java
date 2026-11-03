@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.rules.Stone;
 import org.junit.jupiter.api.Test;
 
 class GameResultTest {
@@ -25,6 +26,24 @@ class GameResultTest {
     assertTrue(draw.isDraw());
     assertTrue(draw.isCounted());
     assertEquals("0", draw.sgf());
+  }
+
+  @Test
+  void underTheFirstPassDrawRuleKataGosButtonHalfPointComesOffAndADrawGoesToTheFirstPasser() {
+    // 2027 rules, komi 7: KataGo adds half a point for the first player to pass.
+    GameResult drawToBlack = GameResult.byScore(0.4, 7.0, Stone.BLACK);
+    assertFalse(drawToBlack.isDraw());
+    assertTrue(drawToBlack.wonOnDraw());
+    assertTrue(drawToBlack.isCounted());
+    assertEquals(Boolean.TRUE, drawToBlack.blackWins());
+    assertEquals("B+", drawToBlack.sgf());
+    assertEquals("W+", GameResult.byScore(-0.6, 7.0, Stone.WHITE).sgf());
+
+    assertEquals("B+3", GameResult.byScore(3.5, 7.0, Stone.BLACK).sgf());
+    assertEquals("B+3", GameResult.byScore(2.5, 7.0, Stone.WHITE).sgf());
+    assertEquals("W+2", GameResult.byScore(-2.5, 7.0, Stone.WHITE).sgf());
+    assertFalse(GameResult.byScore(3.5, 7.0, Stone.BLACK).wonOnDraw());
+    assertTrue(GameResult.byScore(0.3, 6.0, null).isDraw(), "other rules keep the draw");
   }
 
   @Test

@@ -138,9 +138,7 @@ public final class NewHumanSlGameDialog extends JDialog {
       setIconImage(ImageIO.read(MoreEngines.class.getResourceAsStream("/assets/logo.png")));
     } catch (IOException ignored) {
     }
-    form =
-        new CoachSetupForm(
-            this::text, Lizzie.board.getHistory().getMoveNumber() > 0, this::packForContent);
+    form = new CoachSetupForm(this::text, CoachSetupContext.ofMainWindow(), this::packForContent);
     JScrollPane contentScroll = new JScrollPane(buildContent());
     contentScroll.setBorder(null);
     contentScroll.getViewport().setBackground(CoachSetupWidgets.Palette.current().sheet());

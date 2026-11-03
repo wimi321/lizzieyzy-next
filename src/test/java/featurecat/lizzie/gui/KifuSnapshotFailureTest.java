@@ -84,6 +84,28 @@ class KifuSnapshotFailureTest {
   }
 
   @Test
+  void aWhiteToPlaySetupTheEngineCannotBeToldAboutStopsRetryingAndExplains() throws Exception {
+    try (Fixture f = new Fixture()) {
+      // The script-launched engine restores setups in-band but names no side to play.
+      Method advertise = Leelaz.class.getDeclaredMethod("advertiseCommandsForTest", List.class);
+      advertise.setAccessible(true);
+      advertise.invoke(f.engine, List.of("set_position"));
+      f.engine.canAddPlayer = false;
+
+      f.submit(false);
+      f.runPending();
+
+      assertNull(field(f.frame, "pendingKifuEngineSyncRoot"));
+      assertEquals(true, field(f.frame, "userAnalysisPaused"));
+      assertEquals(0, f.executor.retries, "no retry can make the engine represent the position");
+      assertEquals(1, f.frame.failures);
+      assertEquals(0, f.resumes);
+      assertTrue(f.output.toString().isEmpty(), "the position is refused before any command");
+      assertNotNull(field(f.frame, "failedKifuPositionRetry"), "Continue still retries");
+    }
+  }
+
+  @Test
   void rulesOverrideTransfersResumeBeforeItsDelayedPostLoadAction() throws Exception {
     try (Fixture f = new Fixture(true)) {
       f.install(f.engine, f.output, List.of("katago.exe", "gtp"));
