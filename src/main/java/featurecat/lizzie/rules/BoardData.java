@@ -314,6 +314,14 @@ public class BoardData {
     return getNodeKind() == BoardNodeKind.PASS;
   }
 
+  /**
+   * The number within its variation ({@link #moveMNNumber}) of a move or pass played after this
+   * position, or -1 when it has none, such as the first action of a new branch.
+   */
+  int nextMoveMNNumber(boolean newBranch) {
+    return moveMNNumber > -1 && !newBranch ? moveMNNumber + 1 : -1;
+  }
+
   public boolean isSnapshotNode() {
     return getNodeKind() == BoardNodeKind.SNAPSHOT;
   }

@@ -2643,6 +2643,7 @@ public class Board {
               0,
               0);
       newState.dummy = dummy;
+      newState.moveMNNumber = history.getData().nextMoveMNNumber(newBranch);
       // A pass already played as a later variation is reused, like place() does for stones.
       if (!newBranch && !dummy && history.nextByMoveIdentity(newState).isPresent())
         clearAfterMove();
@@ -2917,8 +2918,7 @@ public class Board {
       Zobrist zobrist = history.getZobrist();
       Optional<int[]> lastMove = Optional.of(new int[] {x, y});
       int moveNumber = history.getMoveNumber() + 1;
-      int moveMNNumber =
-          history.getMoveMNNumber() > -1 && !newBranch ? history.getMoveMNNumber() + 1 : -1;
+      int moveMNNumber = history.getData().nextMoveMNNumber(newBranch);
       int[] moveNumberList =
           newBranch && history.getNext(true).isPresent()
               ? new int[Board.boardWidth * Board.boardHeight]

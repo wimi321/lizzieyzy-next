@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- A pass inside a variation no longer makes the variation's later moves fall back to the main line's move count: after the variation's moves 1 to 3 and a pass, the next stone is numbered 5 instead of its move number in the whole game. Passes now count within the variation the way moves do, also when an SGF file is loaded.
+
 - Under the 2027 rules' second draw rule (平局时，最先放弃着手一方胜, KataGo's button), a drawn count goes to the player who passed first, taken from the game record: the count window shows 黑胜（和棋，黑方最先放弃着手）, and AI Coach reports that game as B+ or W+. AI Coach takes off the half point KataGo gives the first passer before rounding its count, so its other results keep whole-point margins. AI Coach now plays by the main window's current rules and their komi, such as 7 for the 2027 rules or 6.5 for the Japanese (0.5 with a handicap, as before), instead of always 7.5, so a game no longer mixes the button with komi 7.5. The Japanese and Thai label for a drawn coaching game no longer reads "to draw a picture" (描く, วาด).
 
 - The rules caption's menu offers the 2027 Chinese rules' two ways to break a draw where a game must have a winner (第九条): a draw goes to White, which counts like komi 7.5, or to the player who passed first, which is KataGo's button rule with komi 7; the caption names the one in use, and any rules caption too wide for the space between the two stones is drawn smaller. The rule set picked from the menu is now also the one new games start with: KataGo starts with its rules, a cleared board gets its komi on every engine, and the new-game dialogs offer that komi. It stays so until the startup rules are changed in the rules dialog.
