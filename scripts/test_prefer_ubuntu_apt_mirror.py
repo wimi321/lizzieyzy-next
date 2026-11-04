@@ -20,6 +20,10 @@ EXPECTED = (
     "https://archive.ubuntu.com/ubuntu/\tpriority:1\n"
     "https://security.ubuntu.com/ubuntu/\tpriority:3\n"
 )
+EC2_MIRROR = "http://us-east-2.ec2.archive.ubuntu.com/ubuntu/"
+# The list GitHub-hosted runners in AWS have, as CI logged it on 2026-11-03.
+EC2_ORIGINAL = ORIGINAL.replace("http://azure.archive.ubuntu.com/ubuntu/", EC2_MIRROR)
+EC2_EXPECTED = EXPECTED.replace("http://azure.archive.ubuntu.com/ubuntu/", EC2_MIRROR)
 HOSTED = {
     "GITHUB_ACTIONS": "true", "RUNNER_ENVIRONMENT": "github-hosted",
     "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64",
@@ -37,6 +41,31 @@ class PreferUbuntuAptMirrorTest(unittest.TestCase):
 
     def test_repeated_configuration_is_idempotent(self):
         self.assertEqual(EXPECTED, mirrors.prefer_official_archive(EXPECTED))
+
+    def test_an_aws_regional_mirror_takes_the_azure_mirrors_place(self):
+        self.assertEqual(EC2_EXPECTED, mirrors.prefer_official_archive(EC2_ORIGINAL))
+        self.assertEqual(EC2_EXPECTED, mirrors.prefer_official_archive(EC2_EXPECTED))
+        for region in ("us-east-1", "eu-central-1", "ap-southeast-2", "us-gov-west-1"):
+            with self.subTest(region=region):
+                self.assertEqual(
+                    EC2_EXPECTED.replace("us-east-2", region),
+                    mirrors.prefer_official_archive(EC2_ORIGINAL.replace("us-east-2", region)),
+                )
+
+    def test_rejects_lookalike_regional_mirrors_and_a_second_cloud_mirror(self):
+        lookalikes = (
+            "https://us-east-2.ec2.archive.ubuntu.com/ubuntu/",
+            "http://ec2.archive.ubuntu.com/ubuntu/",
+            "http://us-east-2.ec2.archive.ubuntu.com.example.invalid/ubuntu/",
+            "http://example.invalid/us-east-2.ec2.archive.ubuntu.com/ubuntu/",
+            "http://us-east-2.ec2.archive.ubuntu.com/debian/",
+            "http://us_east_2.ec2.archive.ubuntu.com/ubuntu/",
+        )
+        for uri in lookalikes:
+            with self.subTest(uri=uri), self.assertRaises(ValueError):
+                mirrors.prefer_official_archive(EC2_ORIGINAL.replace(EC2_MIRROR, uri))
+        with self.assertRaises(ValueError):
+            mirrors.prefer_official_archive(ORIGINAL + EC2_MIRROR + "\tpriority:1\n")
 
     def test_rejects_unexpected_lists_instead_of_guessing_or_adding_sources(self):
         malformed = (

@@ -12,10 +12,13 @@ import tempfile
 
 
 AZURE = "http://azure.archive.ubuntu.com/ubuntu/"
+# Runners hosted in AWS list their region's mirror in Azure's place, such as us-east-2's.
+EC2 = re.compile(r"http://[a-z]{2}(?:-[a-z]+)+-[1-9][0-9]*\.ec2\.archive\.ubuntu\.com/ubuntu/")
 ARCHIVE = "https://archive.ubuntu.com/ubuntu/"
 SECURITY = "https://security.ubuntu.com/ubuntu/"
-DEFAULT_PRIORITIES = {AZURE: 1, ARCHIVE: 2, SECURITY: 3}
-PREFERRED_PRIORITIES = {AZURE: 2, ARCHIVE: 1, SECURITY: 3}
+CLOUD = "cloud mirror"  # AZURE or an EC2 mirror: a role, never a URI, as URIs have no spaces
+DEFAULT_PRIORITIES = {CLOUD: 1, ARCHIVE: 2, SECURITY: 3}
+PREFERRED_PRIORITIES = {CLOUD: 2, ARCHIVE: 1, SECURITY: 3}
 MIRROR_FILE = Path("/etc/apt/apt-mirrors.txt")
 
 
@@ -42,11 +45,12 @@ def prefer_official_archive(content: str) -> str:
             updated.append(line)
             continue
         match = re.fullmatch(r"([^\s]+)(\t[ \t]*priority:)([1-3])([ \t]*\n?)", line)
-        if match is None or match[1] not in DEFAULT_PRIORITIES or match[1] in entries:
+        uri = match[1] if match else ""
+        role = CLOUD if uri == AZURE or EC2.fullmatch(uri) else uri
+        if role not in DEFAULT_PRIORITIES or role in entries:
             raise ValueError(f"Unexpected hosted-runner mirrorlist entry at line {number}")
-        uri = match[1]
-        entries[uri] = int(match[3])
-        updated.append(f"{uri}{match[2]}{PREFERRED_PRIORITIES[uri]}{match[4]}")
+        entries[role] = int(match[3])
+        updated.append(f"{uri}{match[2]}{PREFERRED_PRIORITIES[role]}{match[4]}")
     if entries not in (DEFAULT_PRIORITIES, PREFERRED_PRIORITIES):
         raise ValueError("Expected all three runner mirrors with known explicit priorities")
     return "".join(updated)
