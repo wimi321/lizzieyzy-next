@@ -1513,20 +1513,9 @@ public final class FunctionCatalog {
                       TargetType.WINDOW,
                       "Menu.sync",
                       "Menu.yikeRoom"),
-                  menuEntry(
-                      "menu.foxKifu",
-                      "Menu.foxKifu",
-                      "FunctionSearch.category.sync",
-                      TargetType.WINDOW,
-                      "Menu.sync",
-                      "Menu.foxKifu"),
-                  menuEntry(
-                      "menu.tencentKifu",
-                      "Menu.tencentKifu",
-                      "FunctionSearch.category.sync",
-                      TargetType.WINDOW,
-                      "Menu.sync",
-                      "Menu.tencentKifu"),
+                  kifuEntry("fox"),
+                  kifuEntry("tencent"),
+                  kifuEntry("ogs"),
                   menuEntry(
                       "sync.board",
                       "Menu.readBoard",
@@ -1942,6 +1931,17 @@ public final class FunctionCatalog {
           .toList();
 
   private FunctionCatalog() {}
+
+  private static Entry kifuEntry(String provider) {
+    String title = "Menu." + provider + "Kifu";
+    return menuEntry(
+        "menu." + provider + "Kifu",
+        title,
+        "FunctionSearch.category.sync",
+        TargetType.WINDOW,
+        "Menu.sync",
+        title);
+  }
 
   private static Entry menuEntry(
       String id, String titleKey, String categoryKey, TargetType type, String... pathKeys) {

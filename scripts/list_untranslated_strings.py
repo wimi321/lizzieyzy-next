@@ -32,7 +32,7 @@ BASELINE_FILE = Path("scripts/untranslated_baseline.json")
 KEEP_VALUES = {
     "% of winDiff", "% stdev", "CFG", "DLL", "Dialog.plain", "Elo", "English", "GitHub",
     "HumanSL AI", "HumanSL CUDA companion", "Java", "KeyGen", "Lcb(%)", "Lizzie", "LizzieYzy",
-    "NVIDIA GPU", "PDA", "PDA:", "ReadBoard", "ReadBoard/Yike", "SSH", "Tencent", "TensorRT profile",
+    "NVIDIA GPU", "OGS", "PDA", "PDA:", "ReadBoard", "ReadBoard/Yike", "SSH", "Tencent", "TensorRT profile",
     "UID", "URL", "URL:", "VIP", "url",
     "LizzieYzyの使い方",  # label of the Japanese manual, Japanese in every language
 }

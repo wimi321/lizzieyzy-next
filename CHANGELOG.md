@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- OGS now has a game-record button beside Fox and Tencent, with username/player-ID search, completed-game history, paging, and selection to open an SGF through the shared downloaded-kifu and analysis flow. Open online link also accepts public OGS game/SGF URLs. Failed downloads keep the current board.
+
 - A pass inside a variation no longer makes the variation's later moves fall back to the main line's move count: after the variation's moves 1 to 3 and a pass, the next stone is numbered 5 instead of its move number in the whole game. Passes now count within the variation the way moves do, also when an SGF file is loaded.
 
 - AI commentary names moves the way players do, 挂角, 点三三, 扳, 断, 拆二, instead of reading out coordinates. The evidence sent to the model now names the shape of the played move and of each candidate from the stones alone (capture, atari, connection, wedge, cut, hane, extension, attachment, an empty corner, 3-3 invasion, corner approach and enclosure, side extension, diagonal move, jumps and knight's moves, invasion), and the model is asked to use those names, give a coordinate at most once, and not name shapes that are not listed. Moves whose shape the stones do not settle get no name.
