@@ -350,22 +350,14 @@ public final class TeacherSettings {
           || uri.getFragment() != null) {
         throw new IllegalArgumentException("Base URL must be an HTTP(S) server URL.");
       }
-      if ("http".equalsIgnoreCase(scheme) && !isLoopbackHost(uri.getHost())) {
+      if ("http".equalsIgnoreCase(scheme) && !TeacherServiceHost.allowsPlainHttp(uri.getHost())) {
         throw new IllegalArgumentException(
-            "Plain HTTP is allowed only for a provider running on this computer.");
+            "Plain HTTP requires localhost or a literal private network IP address.");
       }
       return candidate;
     } catch (URISyntaxException e) {
       throw new IllegalArgumentException("Base URL is invalid.", e);
     }
-  }
-
-  private static boolean isLoopbackHost(String host) {
-    String normalized = host == null ? "" : host.trim().toLowerCase(java.util.Locale.ROOT);
-    return "localhost".equals(normalized)
-        || "127.0.0.1".equals(normalized)
-        || "::1".equals(normalized)
-        || "0:0:0:0:0:0:0:1".equals(normalized);
   }
 
   static String validateModel(String value) {
