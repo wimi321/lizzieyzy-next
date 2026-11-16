@@ -2602,12 +2602,10 @@ public class EngineManager {
                     return;
                   }
                 }
-                if (!runEngineGameIoStep(
-                    gameTransaction, () -> blackEngine.sendCommand("clear_cache"))) {
+                if (!runEngineGameIoStep(gameTransaction, blackEngine::clearCacheIfSupported)) {
                   return;
                 }
-                if (!runEngineGameIoStep(
-                    gameTransaction, () -> whiteEngine.sendCommand("clear_cache"))) {
+                if (!runEngineGameIoStep(gameTransaction, whiteEngine::clearCacheIfSupported)) {
                   return;
                 }
                 if (!runEngineGameIoStep(
@@ -2712,10 +2710,10 @@ public class EngineManager {
                     return;
                   }
                 }
-                if (!runEngineGameIoStep(
-                    gameTransaction, () -> blackEngine.sendCommand("clear_cache"))) return;
-                if (!runEngineGameIoStep(
-                    gameTransaction, () -> whiteEngine.sendCommand("clear_cache"))) return;
+                if (!runEngineGameIoStep(gameTransaction, blackEngine::clearCacheIfSupported))
+                  return;
+                if (!runEngineGameIoStep(gameTransaction, whiteEngine::clearCacheIfSupported))
+                  return;
                 if (!isCurrentEngineGameTransaction(gameTransaction)) return;
                 Leelaz moverEngine;
                 String moverColor;

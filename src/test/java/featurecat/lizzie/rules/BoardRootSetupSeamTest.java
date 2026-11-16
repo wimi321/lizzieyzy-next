@@ -586,6 +586,24 @@ class BoardRootSetupSeamTest {
   }
 
   @Test
+  void undoPassIsForwardedToGenericAndSaiEngines() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      TrackingLeelaz engine = (TrackingLeelaz) Lizzie.leelaz;
+      for (boolean sai : List.of(false, true)) {
+        engine.isKatago = false;
+        engine.isSai = sai;
+        engine.playedMoves.clear();
+        Lizzie.board.pass(Stone.BLACK);
+        assertTrue(Lizzie.board.previousMove(false));
+        assertEquals(List.of("BLACK pass", "undo"), engine.playedMoves);
+      }
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void setupModeExitResyncsFinalRootSnapshotWithoutReplayingSetupStones() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     EngineFollowController previousController = Lizzie.engineFollowController;
@@ -1128,6 +1146,11 @@ class BoardRootSetupSeamTest {
     @Override
     public void playMove(Stone color, String move, boolean addPlayer, boolean blackToPlay) {
       playedMoves.add(color + " " + move);
+    }
+
+    @Override
+    public void undo(boolean addPlayer, boolean blackToPlay) {
+      playedMoves.add("undo");
     }
 
     @Override

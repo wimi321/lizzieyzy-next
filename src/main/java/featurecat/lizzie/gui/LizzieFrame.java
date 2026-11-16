@@ -291,8 +291,6 @@ public class LizzieFrame extends JFrame {
   // public String komi = "7.5";
   double winRate;
   double score;
-  double scoreLead;
-  double scoreStdev;
   // private ChangeMoveDialog2 ChangeMoveDialog2 = new ChangeMoveDialog2();
 
   // Save the player title
@@ -8642,6 +8640,7 @@ public class LizzieFrame extends JFrame {
     double lastWR = 50; // winrate the previous move
     double lastScore = 0;
     boolean validLastWinrate = false; // whether it was actually calculated
+    boolean validLastScore = false;
     Optional<BoardHistoryNode> previous =
         Lizzie.board.getHistory().getCurrentHistoryNode().previous();
     BoardData curData = Lizzie.board.getHistory().getCurrentHistoryNode().getData();
@@ -8657,6 +8656,7 @@ public class LizzieFrame extends JFrame {
       if (previous.get().getData().getPlayouts() > 0) {
         lastWR = previous.get().getData().winrate;
         lastScore = previous.get().getData().scoreMean;
+        validLastScore = AnalysisFieldDisplay.hasScore(previous.get().getData());
         validLastWinrate = true;
       } else {
         if (previous.get().previous().isPresent()) {
@@ -8664,6 +8664,7 @@ public class LizzieFrame extends JFrame {
           if (prePreData.getPlayouts() > 0) {
             lastWR = 100 - prePreData.winrate;
             lastScore = -prePreData.scoreMean;
+            validLastScore = AnalysisFieldDisplay.hasScore(prePreData);
             validLastWinrate = true;
           }
         }
@@ -8710,48 +8711,14 @@ public class LizzieFrame extends JFrame {
     // Last move
     // validLastWinrate && validWinrate
     //   if (true) {
-    String text = "";
-    boolean isKataStyle = false;
-    Leelaz engineGameBlack = EngineGamePresentation.blackEngine(engineGame);
-    Leelaz engineGameWhite = EngineGamePresentation.whiteEngine(engineGame);
-    if (curData.isKataData
-        || curData.isSaiData
-        || (Lizzie.leelaz != null && Lizzie.leelaz.isKatago && !EngineManager.isEmpty)
-        || (engineGame.playing()
-            && ((engineGameBlack != null && engineGameBlack.isKatago)
-                || (engineGameWhite != null && engineGameWhite.isKatago)))) {
-      isKataStyle = true;
-      if (!curData.bestMoves.isEmpty()) {
-        double score = curData.bestMoves.get(0).scoreMean;
-        if (Lizzie.config.showKataGoScoreLeadWithKomi) {
-          if (curData.blackToPlay) {
-            score = score + curData.getKomi();
-          } else {
-            score = -score + curData.getKomi();
-          }
-        } else if (!curData.blackToPlay) {
-          score = -score;
-        }
-        scoreLead = score;
-        scoreStdev = curData.scoreStdev;
-      } // +"目差:""复杂度:"
-
-      if (Lizzie.config.showKataGoScoreLeadWithKomi)
-        text +=
-            Lizzie.resourceBundle.getString("LizzieFrame.scoreLeadWithKomi")
-                + String.format(Locale.ENGLISH, "%.1f", scoreLead);
-      else if (!curData.bestMoves.isEmpty())
-        text += MoveStatusText.lead(Lizzie.resourceBundle, scoreLead);
-      if (!text.isEmpty() && (Lizzie.config.isThinkingMode() || Lizzie.config.isFourSubMode()))
-        text += " (±" + String.format(Locale.ENGLISH, "%.1f", curData.scoreStdev) + ")";
-      if (engineGame.playing() && !Lizzie.leelaz.isSai)
-        text =
-            text
-                + " "
-                + Lizzie.resourceBundle.getString("LizzieFrame.scoreStdev")
-                + String.format(Locale.ENGLISH, "%.1f", scoreStdev)
-                + " ";
-    }
+    boolean isKataStyle = AnalysisFieldDisplay.hasScore(curData);
+    String text =
+        AnalysisFieldDisplay.summary(
+            Lizzie.resourceBundle,
+            curData,
+            Lizzie.config.showKataGoScoreLeadWithKomi,
+            Lizzie.config.isThinkingMode() || Lizzie.config.isFourSubMode(),
+            engineGame.playing());
     if (Lizzie.leelaz != null && Lizzie.leelaz.isColorEngine) {
       // "阶段:""贴目:"
       text =
@@ -8775,7 +8742,7 @@ public class LizzieFrame extends JFrame {
           0,
           false);
     } else {
-      Double scoreChange = isKataStyle ? (-lastScore) - curScore : null;
+      Double scoreChange = isKataStyle && validLastScore ? (-lastScore) - curScore : null;
       MoveStatusLine.draw(
           g,
           uiFont,
@@ -14448,7 +14415,7 @@ public class LizzieFrame extends JFrame {
                   if (move.order == 0) {
                     move.isNextMove = true;
                     move.bestWinrate = data2.get(0).winrate;
-                    move.bestScoreMean = data2.get(0).scoreMean;
+                    move.setBestScoreMean(data2.get(0));
                   } else {
                     if (data2.size() > 0 && !hasData && !next.getData().bestMoves.isEmpty()) {
                       if (next.getData().getPlayouts() > move.playouts) {
@@ -14456,11 +14423,12 @@ public class LizzieFrame extends JFrame {
                         curMove.playouts = next.getData().getPlayouts();
                         curMove.coordinate = Board.convertCoordinatesToName(coords[0], coords[1]);
                         curMove.winrate = 100.0 - next.getData().winrate;
+                        curMove.copyAnalysisFieldPresenceFrom(next.getData().bestMoves.get(0));
                         curMove.scoreMean = -next.getData().scoreMean;
                         curMove.order = move.order;
                         curMove.isNextMove = true;
                         curMove.bestWinrate = data2.get(0).winrate;
-                        curMove.bestScoreMean = data2.get(0).scoreMean;
+                        curMove.setBestScoreMean(data2.get(0));
                         data2.add(0, curMove);
                         hasData = true;
                         break;
@@ -14471,11 +14439,12 @@ public class LizzieFrame extends JFrame {
                     curMove.coordinate = move.coordinate;
                     curMove.winrate = move.winrate;
                     curMove.policy = move.policy;
+                    curMove.copyAnalysisFieldPresenceFrom(move);
                     curMove.scoreMean = move.scoreMean;
                     curMove.order = move.order;
                     curMove.isNextMove = true;
                     curMove.bestWinrate = data2.get(0).winrate;
-                    curMove.bestScoreMean = data2.get(0).scoreMean;
+                    curMove.setBestScoreMean(data2.get(0));
                     data2.add(0, curMove);
                   }
                   hasData = true;
@@ -14488,13 +14457,14 @@ public class LizzieFrame extends JFrame {
                 curMove.coordinate = Board.convertCoordinatesToName(coords[0], coords[1]);
                 curMove.winrate = 100.0 - next.getData().winrate;
                 curMove.policy = 0;
+                curMove.copyAnalysisFieldPresenceFrom(next.getData().bestMoves.get(0));
                 curMove.scoreMean = -next.getData().scoreMean;
                 curMove.scoreStdev = 0;
                 curMove.order = -100;
                 curMove.isNextMove = true;
                 curMove.lcb = 0;
                 curMove.bestWinrate = data2.get(0).winrate;
-                curMove.bestScoreMean = data2.get(0).scoreMean;
+                curMove.setBestScoreMean(data2.get(0));
                 data2.add(0, curMove);
                 hasData = true;
               }
@@ -14585,10 +14555,7 @@ public class LizzieFrame extends JFrame {
                 }
               }
             }
-            if (data.isNextMove && data.order != 0) {
-              return CandidateTableText.valueWithDifference(
-                  score, data.scoreMean - data.bestScoreMean);
-            } else return String.format(Locale.ENGLISH, "%.1f", score);
+            return AnalysisFieldDisplay.scoreCell(data, score);
           default:
             return "";
         }
