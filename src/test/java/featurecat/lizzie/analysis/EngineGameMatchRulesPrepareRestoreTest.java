@@ -349,6 +349,30 @@ class EngineGameMatchRulesPrepareRestoreTest {
     assertTrue(white.effective().semanticallyEquals(CHINESE));
   }
 
+  @Test
+  void leelaZeroGenmoveMatchDoesNotSendUnsupportedCacheCommand() {
+    assertLeelaZeroMatchStarts(genmoveSpec(CHINESE));
+  }
+
+  @Test
+  void leelaZeroAnalysisMatchDoesNotSendUnsupportedCacheCommand() {
+    assertLeelaZeroMatchStarts(analysisSpec(CHINESE));
+  }
+
+  private void assertLeelaZeroMatchStarts(EngineGameBatchSpec spec) {
+    for (StatefulMatchRulesLeelaz engine : List.of(black, white)) {
+      engine.isKatago = false;
+      engine.rejectClearCache = true;
+      engine.advertiseCommandsForTest(
+          List.of("play", "undo", "genmove", "lz-analyze", "lz-genmove_analyze"));
+    }
+    assertInstanceOf(Acceptance.Accepted.class, Lizzie.engineGame.accept(spec, observer));
+    awaitPlaying();
+    assertTrue(black.searches.get() + white.searches.get() > 0);
+    assertEquals(0, black.cacheCommands.get() + white.cacheCommands.get());
+    assertTrue(observer.failures.isEmpty());
+  }
+
   private static EngineGameBatchSpec genmoveSpec(KataGoRules rules) {
     return EngineGameBatchSpecFactory.from(
         EngineGameParsedStart.builder()
@@ -494,6 +518,8 @@ class EngineGameMatchRulesPrepareRestoreTest {
     private final AtomicInteger applies = new AtomicInteger();
     private final AtomicBoolean failQuery = new AtomicBoolean();
     private final AtomicBoolean rejectSet = new AtomicBoolean();
+    private boolean rejectClearCache;
+    private final AtomicInteger cacheCommands = new AtomicInteger();
     private final java.util.Map<String, String> parameters =
         new java.util.concurrent.ConcurrentHashMap<>(
             java.util.Map.of("analysisWideRootNoise", "0.04", "playoutDoublingAdvantage", "0"));
@@ -507,6 +533,12 @@ class EngineGameMatchRulesPrepareRestoreTest {
       ExactSnapshotRestoreProtocolFixture.install(
           this,
           gtp -> {
+            if (gtp.equals("clear_cache")) {
+              cacheCommands.incrementAndGet();
+              if (rejectClearCache) {
+                return ExactSnapshotRestoreProtocolFixture.Response.error("unknown command");
+              }
+            }
             // KataGo keeps and reports breadth and PDA; engine games read them back.
             String[] parts = gtp.split(" ");
             if (parts.length == 3

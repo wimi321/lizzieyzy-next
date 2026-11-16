@@ -20,6 +20,49 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class PositionConfirmedAnalysisTest {
   @Test
+  void kataGenmoveOnlyUsesDecimalPayloadWithoutChangingLeelaAnalysisFormat() throws Exception {
+    try (Fixture fixture = new Fixture()) {
+      fixture.engine.isKatago = false;
+      fixture.engine.advertiseCommandsForTest(List.of("kata-genmove_analyze", "lz-analyze"));
+      assertFalse(fixture.engine.usesKataAnalysis());
+      fixture.engine.sendCommand("kata-genmove_analyze B 10");
+      assertEquals(61, parsedWinrate(fixture.engine, "0.61"), 0.00001);
+      fixture.respond(0, "=");
+      fixture.engine.sendCommand("lz-analyze B 10");
+      assertEquals(61, parsedWinrate(fixture.engine, "6100"), 0.00001);
+    }
+  }
+
+  private static double parsedWinrate(Leelaz engine, String value) throws Exception {
+    var parser = Leelaz.class.getDeclaredMethod("parseAnalysisInfoPayload", String.class);
+    parser.setAccessible(true);
+    Object parsed = parser.invoke(engine, "move D4 visits 30 winrate " + value + " pv D4");
+    Field moves = parsed.getClass().getDeclaredField("moves");
+    moves.setAccessible(true);
+    return ((MoveData) ((List<?>) moves.get(parsed)).get(0)).winrate;
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"boardsize", ""})
+  void commandDiscoveryAcceptsAnyFirstCommandOrEmptyHeader(String firstCommand) throws Exception {
+    try (Fixture fixture = new Fixture()) {
+      fixture.engine.isKatago = false;
+      fixture.engine.isCheckingName = false;
+      fixture.engine.sendCommand("list_commands");
+      String raw = fixture.transport.rawCommands().get(0);
+      String id = raw.startsWith("list_commands") ? "" : raw.substring(0, raw.indexOf(' '));
+      fixture.engine.dispatchReaderLineForTest("=" + id + " " + firstCommand);
+      fixture.engine.dispatchReaderLineForTest("kata-analyze");
+      fixture.engine.dispatchReaderLineForTest("protocol_version");
+      assertFalse(fixture.engine.usesKataAnalysis(), "the list must complete before publication");
+      fixture.engine.dispatchReaderLineForTest("");
+      assertTrue(fixture.engine.usesKataAnalysis());
+      assertEquals(!firstCommand.isEmpty(), fixture.engine.supportsGtpCommand("boardsize", false));
+      assertFalse(fixture.engine.supportsGtpCommand("stop", false));
+    }
+  }
+
+  @Test
   void commandDiscoveryOwnsPayloadWhileNumberedPositionResponseIsPending() throws Exception {
     try (Fixture fixture = new Fixture()) {
       fixture.engine.dispatchReaderLineForTest("= protocol_version");

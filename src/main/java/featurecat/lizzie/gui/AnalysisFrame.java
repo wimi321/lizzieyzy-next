@@ -823,7 +823,7 @@ public class AnalysisFrame extends JFrame {
                   move.winrate = data2.get(0).winrate;
                   move.isNextMove = true;
                   move.bestWinrate = data2.get(0).winrate;
-                  move.bestScoreMean = data2.get(0).scoreMean;
+                  move.setBestScoreMean(data2.get(0));
                 } else {
                   if (index == 1) {
                     if (data2.size() > 0
@@ -835,13 +835,14 @@ public class AnalysisFrame extends JFrame {
                       curMove.coordinate = Board.convertCoordinatesToName(coords[0], coords[1]);
                       curMove.winrate = 100.0 - next.getData().winrate;
                       curMove.policy = move.policy;
+                      curMove.copyAnalysisFieldPresenceFrom(next.getData().bestMoves.get(0));
                       curMove.scoreMean = -next.getData().scoreMean;
                       curMove.scoreStdev = next.getData().scoreStdev;
                       curMove.order = move.order;
                       curMove.isNextMove = true;
                       curMove.lcb = -10000;
                       curMove.bestWinrate = data2.get(0).winrate;
-                      curMove.bestScoreMean = data2.get(0).scoreMean;
+                      curMove.setBestScoreMean(data2.get(0));
                       data2.add(0, curMove);
                       hasData = true;
                       break;
@@ -856,13 +857,14 @@ public class AnalysisFrame extends JFrame {
                       curMove.coordinate = Board.convertCoordinatesToName(coords[0], coords[1]);
                       curMove.winrate = 100.0 - next.getData().winrate2;
                       curMove.policy = move.policy;
+                      curMove.copyAnalysisFieldPresenceFrom(next.getData().bestMoves2.get(0));
                       curMove.scoreMean = -next.getData().scoreMean2;
                       curMove.scoreStdev = next.getData().scoreStdev2;
                       curMove.order = move.order;
                       curMove.isNextMove = true;
                       curMove.lcb = -10000;
                       curMove.bestWinrate = data2.get(0).winrate;
-                      curMove.bestScoreMean = data2.get(0).scoreMean;
+                      curMove.setBestScoreMean(data2.get(0));
                       data2.add(0, curMove);
                       hasData = true;
                       break;
@@ -874,13 +876,14 @@ public class AnalysisFrame extends JFrame {
                   curMove.coordinate = move.coordinate;
                   curMove.winrate = move.winrate;
                   curMove.policy = move.policy;
+                  curMove.copyAnalysisFieldPresenceFrom(move);
                   curMove.scoreMean = move.scoreMean;
                   curMove.scoreStdev = move.scoreStdev;
                   curMove.order = move.order;
                   curMove.isNextMove = true;
                   curMove.lcb = move.lcb;
                   curMove.bestWinrate = data2.get(0).winrate;
-                  curMove.bestScoreMean = data2.get(0).scoreMean;
+                  curMove.setBestScoreMean(data2.get(0));
                   data2.add(0, curMove);
                 }
                 hasData = true;
@@ -894,13 +897,14 @@ public class AnalysisFrame extends JFrame {
                 curMove.coordinate = Board.convertCoordinatesToName(coords[0], coords[1]);
                 curMove.winrate = 100.0 - next.getData().winrate;
                 curMove.policy = -10000;
+                curMove.copyAnalysisFieldPresenceFrom(next.getData().bestMoves.get(0));
                 curMove.scoreMean = -next.getData().scoreMean;
                 curMove.scoreStdev = next.getData().scoreStdev;
                 curMove.order = -100;
                 curMove.isNextMove = true;
                 curMove.lcb = -10000;
                 curMove.bestWinrate = data2.get(0).winrate;
-                curMove.bestScoreMean = data2.get(0).scoreMean;
+                curMove.setBestScoreMean(data2.get(0));
                 data2.add(0, curMove);
               }
             } else {
@@ -910,13 +914,14 @@ public class AnalysisFrame extends JFrame {
                 curMove.coordinate = Board.convertCoordinatesToName(coords[0], coords[1]);
                 curMove.winrate = 100.0 - next.getData().winrate2;
                 curMove.policy = -10000;
+                curMove.copyAnalysisFieldPresenceFrom(next.getData().bestMoves2.get(0));
                 curMove.scoreMean = -next.getData().scoreMean2;
                 curMove.scoreStdev = next.getData().scoreStdev2;
                 curMove.order = -100;
                 curMove.isNextMove = true;
                 curMove.lcb = -10000;
                 curMove.bestWinrate = data2.get(0).winrate;
-                curMove.bestScoreMean = data2.get(0).scoreMean;
+                curMove.setBestScoreMean(data2.get(0));
                 data2.add(0, curMove);
               }
             }
@@ -956,8 +961,7 @@ public class AnalysisFrame extends JFrame {
                 //                      if (s1.order < s2.order) return -1;
                 //                    }
                 if (sortnum == 2) {
-                  if (s1.lcb < s2.lcb) return 1;
-                  if (s1.lcb > s2.lcb) return -1;
+                  return AnalysisFieldDisplay.descending(s1.lcb, s1.hasLcb(), s2.lcb, s2.hasLcb());
                 }
                 if (sortnum == 3) {
                   if (s1.winrate < s2.winrate) return 1;
@@ -976,12 +980,12 @@ public class AnalysisFrame extends JFrame {
                   if (s1.policy > s2.policy) return -1;
                 }
                 if (sortnum == 7) {
-                  if (s1.scoreMean < s2.scoreMean) return 1;
-                  if (s1.scoreMean > s2.scoreMean) return -1;
+                  return AnalysisFieldDisplay.descending(
+                      s1.scoreMean, s1.hasScoreMean(), s2.scoreMean, s2.hasScoreMean());
                 }
                 if (sortnum == 8) {
-                  if (s1.scoreStdev < s2.scoreStdev) return 1;
-                  if (s1.scoreStdev > s2.scoreStdev) return -1;
+                  return AnalysisFieldDisplay.descending(
+                      s1.scoreStdev, s1.hasScoreStdev(), s2.scoreStdev, s2.hasScoreStdev());
                 }
                 return 0;
               }
@@ -1007,8 +1011,7 @@ public class AnalysisFrame extends JFrame {
             // else
             return Board.maybeConvertNormalCoordsToOther(data.coordinate);
           case 2:
-            if (data.isNextMove && data.lcb < -1000) return "--";
-            return String.format(Locale.ENGLISH, "%.1f", data.lcb);
+            return AnalysisFieldDisplay.number(data.lcb, data.hasLcb());
           case 3:
             if (data.isNextMove) {
               if (data.order != 0) {
@@ -1048,12 +1051,9 @@ public class AnalysisFrame extends JFrame {
                 }
               }
             }
-            if (data.isNextMove && data.order != 0) {
-              return CandidateTableText.valueWithDifference(
-                  score, data.scoreMean - data.bestScoreMean);
-            } else return String.format(Locale.ENGLISH, "%.1f", score);
+            return AnalysisFieldDisplay.scoreCell(data, score);
           case 8:
-            return String.format(Locale.ENGLISH, "%.1f", data.scoreStdev);
+            return AnalysisFieldDisplay.number(data.scoreStdev, data.hasScoreStdev());
           default:
             return "";
         }

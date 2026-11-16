@@ -15,6 +15,8 @@ import java.util.Optional;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class TeacherSettingsTest {
   @TempDir Path temporaryDirectory;
@@ -183,6 +185,68 @@ class TeacherSettingsTest {
     assertEquals(
         "http://localhost:8080/v1", TeacherSettings.validateBaseUrl("http://localhost:8080/v1/"));
     assertThrows(IllegalArgumentException.class, () -> TeacherSettings.validateModel("  "));
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "localhost",
+        "127.0.0.1",
+        "10.0.0.1",
+        "10.255.255.254",
+        "172.16.0.1",
+        "172.31.255.254",
+        "192.168.1.3",
+        "[::1]",
+        "[0:0:0:0:0:0:0:1]",
+        "[fc00::1]",
+        "[fd12:3456:789a::1234]"
+      })
+  void acceptsLocalAndLiteralPrivateNetworkHttpServices(String host) throws Exception {
+    String base = "http://" + host + ":1234/v1";
+    assertEquals(base, TeacherSettings.validateBaseUrl(base + "/"));
+    assertEquals(base, TeacherLlmClient.normalizeApiBase(base).toString());
+    TeacherSettings settings =
+        new TeacherSettings(
+            temporaryDirectory.resolve("lan.properties"), new MemoryCredentialStore(true));
+    settings.save(base, "local-model", "local-key".toCharArray(), false);
+    assertEquals(base, settings.load().baseUrl);
+    assertFalse(
+        Files.readString(temporaryDirectory.resolve("lan.properties")).contains("local-key"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "8.8.8.8",
+        "172.15.255.255",
+        "172.32.0.1",
+        "192.167.255.255",
+        "192.169.0.1",
+        "169.254.169.254",
+        "100.64.0.1",
+        "0.0.0.0",
+        "224.0.0.1",
+        "10.0.0.256",
+        "010.0.0.1",
+        "10.1",
+        "167772161",
+        "0x0a000001",
+        "nas.local",
+        "192.168.1.3.example.com",
+        "localhost.example.com",
+        "[::]",
+        "[fe80::1]",
+        "[ff02::1]",
+        "[2001:db8::1]",
+        "[::ffff:192.168.1.3]",
+        "[::ffff:c0a8:103]",
+        "[fd00::1%25eth0]"
+      })
+  void refusesHttpPublicSpecialAmbiguousOrDnsAddresses(String host) {
+    String base = "http://" + host + ":1234/v1";
+    assertThrows(IllegalArgumentException.class, () -> TeacherSettings.validateBaseUrl(base));
+    assertThrows(IllegalArgumentException.class, () -> TeacherLlmClient.normalizeApiBase(base));
   }
 
   @Test

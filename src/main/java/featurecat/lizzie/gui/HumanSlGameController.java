@@ -109,6 +109,7 @@ public final class HumanSlGameController {
   private volatile BoardHistoryNode liveNode;
 
   private int takeBacks;
+  private CoachTakenBackLine takenBackLine;
 
   /** Rates the player's moves in 边下边提醒; null in the other modes. */
   private MoveReviewer reviewer;
@@ -709,7 +710,7 @@ public final class HumanSlGameController {
     updateTrainingBar();
   }
 
-  /** Takes back the player's last move, and the AI's reply to it when there is one. */
+  /** Returns before the player's last move, keeping it and any AI reply for later review. */
   public void takeBack() {
     if (finished || exitInProgress || isGameOver() || counting || !atLiveGame()) {
       return;
@@ -725,20 +726,22 @@ public final class HumanSlGameController {
     heldReply = null;
     assist.clearTurn();
     Board board = Lizzie.board;
-    Runnable deleteMoves =
+    CoachTakenBackLine withdrawn = CoachTakenBackLine.capture(liveNode, moves, takenBackLine);
+    Runnable rewindMoves =
         () -> {
           for (int i = 0; i < moves; i++) {
-            board.deleteMoveNoHint();
+            board.previousMove(true);
           }
         };
     if (config.mode.isLiveAnalysis()) {
-      deleteMoves.run();
+      rewindMoves.run();
     } else {
       // The hidden game's moves were never sent to the foreground engine. History navigation
       // needs the existing local-only scope too; isInputCommand only guards move placement.
-      board.applyReadBoardSyncLocally(deleteMoves);
+      board.applyReadBoardSyncLocally(rewindMoves);
     }
     liveNode = board.getHistory().getCurrentHistoryNode();
+    takenBackLine = withdrawn;
     takeBacks++;
     turnStartedAt = System.currentTimeMillis();
     if (reviewer != null) {
@@ -1507,7 +1510,10 @@ public final class HumanSlGameController {
       Lizzie.leelaz.isInputCommand = !config.mode.isLiveAnalysis();
     }
     try {
-      board.place(x, y, color, shouldForceTrainingBranch(before));
+      if (takenBackLine == null
+          || !takenBackLine.replayMatching(board, color, x, y, config.mode.isLiveAnalysis())) {
+        board.place(x, y, color, shouldForceTrainingBranch(before));
+      }
     } finally {
       if (Lizzie.leelaz != null) {
         Lizzie.leelaz.isInputCommand = previous;
@@ -1524,7 +1530,10 @@ public final class HumanSlGameController {
       Lizzie.leelaz.isInputCommand = !config.mode.isLiveAnalysis();
     }
     try {
-      board.pass(color, shouldForceTrainingBranch(before), false, true);
+      if (takenBackLine == null
+          || !takenBackLine.replayMatching(board, color, -1, -1, config.mode.isLiveAnalysis())) {
+        board.pass(color, shouldForceTrainingBranch(before), false, true);
+      }
     } finally {
       if (Lizzie.leelaz != null) {
         Lizzie.leelaz.isInputCommand = previous;
@@ -1538,6 +1547,9 @@ public final class HumanSlGameController {
     BoardHistoryNode after = board.getHistory().getCurrentHistoryNode();
     if (after == before) {
       return false;
+    }
+    if (takenBackLine != null) {
+      takenBackLine.resumeWith(board, before, after);
     }
     liveNode = after;
     return true;

@@ -4,6 +4,12 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Leela Zero engine matches no longer fail because startup sends an unsupported clear_cache command. Analysis, move-generation analysis, stop and raw-policy commands follow the running engine's advertised capabilities; mixed protocols parse win rates according to the command actually sent. Passes and their undo reach every engine. Live analysis tables distinguish missing score, spread and LCB from a reported zero. Optional argument probing and full rules, time and search-parameter capability negotiation remain follow-up work.
+
+- AI Coach take-backs and blunder retries retain the withdrawn moves, AI replies and comments as SGF variations. Replaying an earlier attempt reuses its branch, while a replacement move keeps the active game's original main-line or training-variation slot, including after repeated take-backs.
+
+- AI commentary can connect over HTTP to explicitly configured private LAN IPv4 addresses and IPv6 ULA addresses, as well as loopback. Public services still require HTTPS; address validation does not resolve hostnames, and redirects remain rejected. The address guidance is updated in all eight languages.
+
 - OGS now has a game-record button beside Fox and Tencent, with username/player-ID search, completed-game history, paging, and selection to open an SGF through the shared downloaded-kifu and analysis flow. Open online link also accepts public OGS game/SGF URLs. Failed downloads keep the current board.
 
 - A pass inside a variation no longer makes the variation's later moves fall back to the main line's move count: after the variation's moves 1 to 3 and a pass, the next stone is numbered 5 instead of its move number in the whole game. Passes now count within the variation the way moves do, also when an SGF file is loaded.
