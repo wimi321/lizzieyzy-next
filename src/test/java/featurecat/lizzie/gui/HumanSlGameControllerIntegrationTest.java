@@ -20,6 +20,7 @@ import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
+import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.training.AiResignation;
@@ -301,17 +302,35 @@ class HumanSlGameControllerIntegrationTest {
     }
   }
 
-  @Test
-  void takeBackAfterTheAiRepliedRemovesBothMoves() throws Exception {
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void takeBackKeepsBothMovesAndCommentsInSavedVariations(boolean imported) throws Exception {
     try (CoachEnvironment env = CoachEnvironment.open()) {
       TakeBackLeelaz engine = new TakeBackLeelaz();
       SwingUtilities.invokeAndWait(() -> Lizzie.leelaz = engine);
       BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
       runner.replyWith(HumanMoveChoice.of("A1"));
       env.allowStonePlacement();
-      HumanSlGameController controller = env.startCoach(runner);
+      BoardHistoryNode importedLine = null;
+      if (imported) {
+        Lizzie.board.getHistory().place(1, 0, Stone.BLACK, false);
+        importedLine = Lizzie.board.getHistory().getCurrentHistoryNode();
+        Lizzie.board.getHistory().previous();
+      }
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              runner,
+              HumanSlTrainingConfig.builder()
+                  .playerColor(HumanSlTrainingConfig.PlayerColor.BLACK)
+                  .fromCurrentPosition(imported)
+                  .moveTimeSeconds(2)
+                  .build(),
+              new HumanSlTrainingSession());
+      controller.setExitLifecycleForTesting(Runnable::run, Runnable::run, () -> true, null);
+      controller.start();
       controller.setThinkTimeForTesting(0L);
       BoardHistoryNode start = Lizzie.board.getHistory().getCurrentHistoryNode();
+      int trainingIndex = imported ? 1 : 0;
       assertFalse(controller.canTakeBack());
 
       controller.humanPass();
@@ -322,17 +341,57 @@ class HumanSlGameControllerIntegrationTest {
               () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
       SwingUtilities.invokeAndWait(() -> {});
       assertTrue(controller.canTakeBack());
+      BoardHistoryNode originalHuman = start.getVariation(trainingIndex).orElseThrow();
+      BoardHistoryNode originalAi = originalHuman.getVariation(0).orElseThrow();
+      SwingUtilities.invokeAndWait(
+          () -> {
+            originalHuman.getData().comment = "Original human move";
+            originalAi.getData().comment = "Original AI reply";
+          });
 
       SwingUtilities.invokeAndWait(controller::takeBack);
 
       assertSame(start, Lizzie.board.getHistory().getCurrentHistoryNode());
-      assertEquals(0, start.numberOfChildren());
+      assertEquals(trainingIndex + 1, start.numberOfChildren());
+      assertSame(originalHuman, start.getVariation(trainingIndex).orElseThrow());
+      assertSame(originalAi, originalHuman.getVariation(0).orElseThrow());
       assertEquals(1, controller.takeBackCount());
       assertTrue(controller.isHumanTurn());
       assertFalse(controller.canTakeBack());
       assertFalse(controller.isFinished());
       assertEquals(
           0, engine.forwardedUndos.get(), "neither hidden-game move reached the main engine");
+
+      SwingUtilities.invokeAndWait(() -> controller.onBoardClicked(2, 0));
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
+      assertEquals(trainingIndex + 2, start.numberOfChildren());
+      assertSame(originalHuman, start.getVariation(trainingIndex + 1).orElseThrow());
+      assertEquals(
+          Stone.BLACK,
+          start.getVariation(trainingIndex).orElseThrow().getData().stones[Board.getIndex(2, 0)]);
+      if (imported) {
+        assertSame(importedLine, start.getVariation(0).orElseThrow());
+      }
+      AtomicReference<String> saved = new AtomicReference<>();
+      SwingUtilities.invokeAndWait(
+          () -> {
+            try {
+              saved.set(SGFParser.saveSnapshot(Lizzie.board, false, true, false));
+            } catch (IOException failure) {
+              throw new AssertionError(failure);
+            }
+          });
+      BoardHistoryList reopened = SGFParser.parseSgf(saved.get(), true);
+      assertNotNull(reopened);
+      assertEquals(trainingIndex + 2, reopened.getStart().numberOfChildren());
+      BoardHistoryNode savedHuman =
+          reopened.getStart().getVariation(trainingIndex + 1).orElseThrow();
+      assertTrue(savedHuman.getData().isPassNode());
+      assertTrue(savedHuman.getData().comment.contains("Original human move"));
+      assertTrue(
+          savedHuman.getVariation(0).orElseThrow().getData().comment.contains("Original AI reply"));
     }
   }
 
@@ -361,12 +420,160 @@ class HumanSlGameControllerIntegrationTest {
           awaitCondition(
               () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
       SwingUtilities.invokeAndWait(() -> {});
-      assertEquals(1, start.numberOfChildren());
+      assertEquals(1, start.numberOfChildren(), "replaying a move reuses its retained variation");
       BoardHistoryNode humanPass = start.getVariation(0).get();
       assertEquals(1, humanPass.numberOfChildren());
       assertSame(
           humanPass.getVariation(0).get(), Lizzie.board.getHistory().getCurrentHistoryNode());
       assertFalse(controller.isFinished());
+    }
+  }
+
+  @ParameterizedTest
+  @EnumSource(TrainingMode.class)
+  void replayingTakenBackMoveKeepsOneBranchAndRetainsEarlierAiReply(TrainingMode mode)
+      throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
+      runner.replyWith(HumanMoveChoice.of("A1"));
+      env.allowStonePlacement();
+      Lizzie.board.getHistory().pass(Stone.BLACK);
+      BoardHistoryNode importedPass = Lizzie.board.getHistory().getCurrentHistoryNode();
+      Lizzie.board.getHistory().previous();
+      HumanSlGameController controller = env.startCoach(runner, mode);
+      controller.setThinkTimeForTesting(0L);
+      BoardHistoryNode start = Lizzie.board.getHistory().getCurrentHistoryNode();
+      SwingUtilities.invokeAndWait(controller::humanPass);
+      assertTrue(runner.awaitRequest());
+      runner.releaseResponse();
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
+      BoardHistoryNode firstHuman = start.getVariation(1).orElseThrow();
+      BoardHistoryNode firstAi = firstHuman.getVariation(0).orElseThrow();
+
+      SwingUtilities.invokeAndWait(controller::takeBack);
+      runner.replyWith(HumanMoveChoice.of("B2"));
+      SwingUtilities.invokeAndWait(controller::humanPass);
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
+      SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(2, start.numberOfChildren());
+      assertSame(importedPass, start.getVariation(0).orElseThrow());
+      assertSame(firstHuman, start.getVariation(1).orElseThrow());
+      assertEquals(2, firstHuman.numberOfChildren());
+      assertSame(firstAi, firstHuman.getVariation(1).orElseThrow());
+      assertSame(
+          firstHuman.getVariation(0).orElseThrow(),
+          Lizzie.board.getHistory().getCurrentHistoryNode());
+      assertEquals(Stone.WHITE, Lizzie.board.getData().stones[Board.getIndex(1, 1)]);
+
+      SwingUtilities.invokeAndWait(controller::takeBack);
+      runner.replyWith(HumanMoveChoice.of("A1"));
+      SwingUtilities.invokeAndWait(() -> controller.onBoardClicked(2, 0));
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
+      SwingUtilities.invokeAndWait(() -> {});
+      BoardHistoryNode differentHuman = start.getVariation(1).orElseThrow();
+
+      // Return to an older withdrawn attempt with an existing reply subtree. The identical
+      // imported pass stays separate, and the new AI reply becomes this attempt's active line.
+      SwingUtilities.invokeAndWait(controller::takeBack);
+      runner.replyWith(HumanMoveChoice.of("C1"));
+      SwingUtilities.invokeAndWait(controller::humanPass);
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
+      SwingUtilities.invokeAndWait(() -> {});
+      assertEquals(3, start.numberOfChildren());
+      assertSame(importedPass, start.getVariation(0).orElseThrow());
+      assertSame(firstHuman, start.getVariation(1).orElseThrow());
+      assertSame(differentHuman, start.getVariation(2).orElseThrow());
+      assertEquals(0, importedPass.numberOfChildren());
+      assertEquals(3, firstHuman.numberOfChildren());
+      assertSame(firstAi, firstHuman.getVariation(2).orElseThrow());
+      assertSame(
+          firstHuman.getVariation(0).orElseThrow(),
+          Lizzie.board.getHistory().getCurrentHistoryNode());
+      assertEquals(Stone.WHITE, Lizzie.board.getData().stones[Board.getIndex(2, 2)]);
+
+      // Replaying the oldest AI reply reuses the original node and moves it back to the front.
+      SwingUtilities.invokeAndWait(controller::takeBack);
+      runner.replyWith(HumanMoveChoice.of("A1"));
+      SwingUtilities.invokeAndWait(controller::humanPass);
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
+      SwingUtilities.invokeAndWait(() -> {});
+      assertEquals(3, start.numberOfChildren());
+      assertEquals(3, firstHuman.numberOfChildren());
+      assertSame(firstAi, firstHuman.getVariation(0).orElseThrow());
+      assertSame(firstAi, Lizzie.board.getHistory().getCurrentHistoryNode());
+      assertEquals(4, controller.takeBackCount());
+      assertFalse(controller.isFinished());
+    }
+  }
+
+  @Test
+  void consecutiveTakeBacksPreserveDeeperContinuationsWhenAnOlderAttemptIsReplayed()
+      throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
+      runner.replyWith(HumanMoveChoice.of("A1"));
+      env.allowStonePlacement();
+      HumanSlGameController controller = env.startCoach(runner);
+      controller.setThinkTimeForTesting(0L);
+      BoardHistoryNode start = Lizzie.board.getHistory().getCurrentHistoryNode();
+      SwingUtilities.invokeAndWait(controller::humanPass);
+      assertTrue(runner.awaitRequest());
+      runner.releaseResponse();
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
+      SwingUtilities.invokeAndWait(() -> {});
+      BoardHistoryNode firstAi = Lizzie.board.getHistory().getCurrentHistoryNode();
+
+      runner.replyWith(HumanMoveChoice.of("B1"));
+      SwingUtilities.invokeAndWait(() -> controller.onBoardClicked(2, 0));
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 4, Duration.ofSeconds(5)));
+      SwingUtilities.invokeAndWait(() -> {});
+      BoardHistoryNode olderHuman = firstAi.getVariation(0).orElseThrow();
+      BoardHistoryNode olderReply = olderHuman.getVariation(0).orElseThrow();
+      SwingUtilities.invokeAndWait(
+          () -> {
+            controller.takeBack();
+            controller.takeBack();
+          });
+      assertSame(start, Lizzie.board.getHistory().getCurrentHistoryNode());
+
+      runner.replyWith(HumanMoveChoice.of("A1"));
+      SwingUtilities.invokeAndWait(controller::humanPass);
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 2, Duration.ofSeconds(5)));
+      SwingUtilities.invokeAndWait(() -> {});
+      assertEquals(1, start.numberOfChildren());
+      assertSame(firstAi, Lizzie.board.getHistory().getCurrentHistoryNode());
+
+      runner.replyWith(HumanMoveChoice.of("C1"));
+      SwingUtilities.invokeAndWait(() -> controller.onBoardClicked(1, 0));
+      assertTrue(
+          awaitCondition(
+              () -> Lizzie.board.getHistory().getMoveNumber() == 4, Duration.ofSeconds(5)));
+      SwingUtilities.invokeAndWait(() -> {});
+      assertEquals(2, firstAi.numberOfChildren());
+      assertSame(olderHuman, firstAi.getVariation(1).orElseThrow());
+      assertSame(olderReply, olderHuman.getVariation(0).orElseThrow());
+      assertSame(
+          firstAi.getVariation(0).orElseThrow().getVariation(0).orElseThrow(),
+          Lizzie.board.getHistory().getCurrentHistoryNode());
+      assertEquals(Stone.BLACK, Lizzie.board.getData().stones[Board.getIndex(1, 0)]);
+      assertEquals(2, controller.takeBackCount());
     }
   }
 
@@ -446,25 +653,25 @@ class HumanSlGameControllerIntegrationTest {
             CoachBoard board = (CoachBoard) Lizzie.board;
             IllegalStateException failure =
                 new IllegalStateException("controlled take-back failure");
-            AtomicBoolean flagDuringDelete = new AtomicBoolean();
+            AtomicBoolean flagDuringRewind = new AtomicBoolean();
             original.isInputCommand = previousInput;
             replacement.isInputCommand = !previousInput;
-            board.beforeDelete =
+            board.beforePrevious =
                 () -> {
-                  flagDuringDelete.set(original.isInputCommand);
+                  flagDuringRewind.set(original.isInputCommand);
                   Lizzie.leelaz = replacement;
                   throw failure;
                 };
             try {
               assertSame(
                   failure, assertThrows(IllegalStateException.class, controller[0]::takeBack));
-              assertEquals(previousInput, flagDuringDelete.get());
+              assertEquals(previousInput, flagDuringRewind.get());
               assertEquals(previousInput, original.isInputCommand);
               assertEquals(!previousInput, replacement.isInputCommand);
               assertSame(replacement, Lizzie.leelaz);
               assertEquals(1, board.getHistory().getMoveNumber());
             } finally {
-              board.beforeDelete = null;
+              board.beforePrevious = null;
               Lizzie.leelaz = original;
             }
             assertTrue(board.previousMove(false));
@@ -853,10 +1060,14 @@ class HumanSlGameControllerIntegrationTest {
       assertTrue(
           awaitCondition(
               () -> onEventThread(controller::isAwaitingDecision), Duration.ofSeconds(5)));
+      BoardHistoryNode blunder = Lizzie.board.getHistory().getCurrentHistoryNode();
 
       SwingUtilities.invokeAndWait(controller::retryBlunder);
 
       assertEquals(0, Lizzie.board.getHistory().getMoveNumber());
+      assertSame(
+          blunder, Lizzie.board.getHistory().getCurrentHistoryNode().getVariation(0).orElseThrow());
+      assertEquals(0, blunder.numberOfChildren(), "the held AI reply must stay discarded");
       assertFalse(onEventThread(controller::isAwaitingDecision));
       assertTrue(onEventThread(controller::isHumanTurn));
       assertTrue(onEventThread(() -> controller.moveReviewer().feedback().isEmpty()));
@@ -2842,20 +3053,24 @@ class HumanSlGameControllerIntegrationTest {
 
     @Override
     public void removedrawmovestone() {}
+
+    // Starting a standalone game clears render caches; this fixture has no rendering state.
+    @Override
+    public void clearAfterMove() {}
   }
 
   private static final class CoachBoard extends Board {
     private List<Thread> movelistWorkers;
     private CountDownLatch movelistComplete;
     private Runnable beforeMovelistUpdate;
-    private Runnable beforeDelete;
+    private Runnable beforePrevious;
 
     @Override
-    public void deleteMoveNoHint() {
-      if (beforeDelete != null) {
-        beforeDelete.run();
+    public boolean previousMove(boolean needRefresh) {
+      if (beforePrevious != null) {
+        beforePrevious.run();
       }
-      super.deleteMoveNoHint();
+      return super.previousMove(needRefresh);
     }
 
     @Override

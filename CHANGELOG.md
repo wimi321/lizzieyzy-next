@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- AI Coach take-backs and blunder retries retain the withdrawn moves, AI replies and comments as SGF variations. Replaying an earlier attempt reuses its branch, while a replacement move keeps the active game's original main-line or training-variation slot, including after repeated take-backs.
+
 - AI commentary can connect over HTTP to explicitly configured private LAN IPv4 addresses and IPv6 ULA addresses, as well as loopback. Public services still require HTTPS; address validation does not resolve hostnames, and redirects remain rejected. The address guidance is updated in all eight languages.
 
 - OGS now has a game-record button beside Fox and Tencent, with username/player-ID search, completed-game history, paging, and selection to open an SGF through the shared downloaded-kifu and analysis flow. Open online link also accepts public OGS game/SGF URLs. Failed downloads keep the current board.
