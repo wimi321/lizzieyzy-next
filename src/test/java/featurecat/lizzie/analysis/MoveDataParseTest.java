@@ -36,6 +36,62 @@ class MoveDataParseTest {
   }
 
   @Test
+  void optionalKataFieldsDistinguishAbsentValuesFromReportedZero() {
+    MoveData absent = MoveData.fromInfoKatago("move D4 visits 10 winrate 0.5 pv D4");
+    assertFalse(absent.hasScoreMean());
+    assertFalse(absent.hasScoreStdev());
+    assertFalse(absent.hasLcb());
+    assertFalse(absent.isKataData, "Kata protocol alone does not establish a score estimate");
+
+    MoveData zero =
+        MoveData.fromInfoKatago(
+            "move D4 visits 10 winrate 0.5 scoreLead 0 scoreStdev 0 lcb 0 pv D4");
+    assertTrue(zero.hasScoreMean());
+    assertTrue(zero.hasScoreStdev());
+    assertTrue(zero.hasLcb());
+    assertTrue(zero.isKataData);
+    assertEquals(0, zero.scoreMean);
+    assertEquals(0, zero.scoreStdev);
+    assertEquals(0, zero.lcb);
+  }
+
+  @Test
+  void scorePresenceDoesNotImplySpreadOrLcbAndSurvivesSyntheticRows() {
+    MoveData parsed = MoveData.fromInfoKatago("move D4 visits 10 scoreMean -2 pv D4");
+    MoveData synthetic = new MoveData();
+    synthetic.scoreMean = -parsed.scoreMean;
+    synthetic.copyAnalysisFieldPresenceFrom(parsed);
+    synthetic.setBestScoreMean(MoveData.fromInfoKatago("move Q16 visits 20 pv Q16"));
+    assertTrue(synthetic.hasScoreMean());
+    assertFalse(synthetic.hasScoreStdev());
+    assertFalse(synthetic.hasLcb());
+    assertFalse(synthetic.hasBestScoreMean());
+    assertTrue(synthetic.isKataData);
+  }
+
+  @Test
+  void legacyLeelaLcbKeepsItsPercentScaleAndMayBeAbsent() {
+    MoveData with = MoveData.fromInfo("move D4 visits 10 winrate 5000 lcb 4750 pv D4");
+    MoveData without = MoveData.fromInfo("move D4 visits 10 winrate 5000 pv D4");
+    assertTrue(with.hasLcb());
+    assertEquals(47.5, with.lcb);
+    assertFalse(with.hasScoreMean());
+    assertFalse(without.hasLcb());
+    assertEquals(50, without.winrate);
+  }
+
+  @Test
+  void summaryLcbUsesTheReportedValueAndOldSummariesLeaveItAbsent() {
+    MoveData current =
+        MoveData.fromSummary("Q4 -> 4348 (V: 43.88%) (LCB: 43.81%) (N: 18.67%) PV: Q4 D16");
+    MoveData old = MoveData.fromSummary("P16 -> 4 (V: 50.94%) (N: 5.79%) PV: P16 N18");
+    assertEquals(43.81, current.lcb);
+    assertTrue(current.hasLcb());
+    assertFalse(current.hasScoreMean());
+    assertFalse(old.hasLcb());
+  }
+
+  @Test
   void parsesKataGoInfoLine() {
     MoveData move =
         MoveData.fromInfoKatago(

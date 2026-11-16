@@ -2,14 +2,14 @@
   "_comment": "Upper bounds that may only go down. Run `python3 scripts/check_architecture_budget.py --tighten` after shrinking code; see AGENTS.md.",
   "max_unlisted_file_lines": 2000,
   "max_lines": {
-    "src/main/java/featurecat/lizzie/analysis/Leelaz.java": 25535,
-    "src/main/java/featurecat/lizzie/gui/LizzieFrame.java": 18495,
-    "src/main/java/featurecat/lizzie/analysis/EngineManager.java": 15754,
+    "src/main/java/featurecat/lizzie/analysis/Leelaz.java": 25532,
+    "src/main/java/featurecat/lizzie/gui/LizzieFrame.java": 18462,
+    "src/main/java/featurecat/lizzie/analysis/EngineManager.java": 15752,
     "src/main/java/featurecat/lizzie/gui/Menu.java": 10916,
     "src/main/java/featurecat/lizzie/gui/MoveListFrame.java": 8313,
     "src/main/java/featurecat/lizzie/gui/KataGoAutoSetupDialog.java": 8248,
     "src/main/java/featurecat/lizzie/util/KataGoRuntimeHelper.java": 7610,
-    "src/main/java/featurecat/lizzie/rules/Board.java": 7386,
+    "src/main/java/featurecat/lizzie/rules/Board.java": 7379,
     "src/main/java/featurecat/lizzie/analysis/ReadBoard.java": 6957,
     "src/main/java/featurecat/lizzie/gui/ConfigDialog2.java": 6877,
     "src/main/java/featurecat/lizzie/gui/BottomToolbar.java": 5220,
@@ -28,10 +28,10 @@
     "src/main/java/featurecat/lizzie/gui/NewHumanSlGameDialog.java": 1652
   },
   "max_static_references": {
-    "Lizzie.config": 6715,
+    "Lizzie.config": 6714,
     "Lizzie.frame": 3202,
-    "Lizzie.board": 1938,
-    "Lizzie.leelaz": 1054,
+    "Lizzie.board": 1935,
+    "Lizzie.leelaz": 1049,
     "Lizzie.leelaz2": 115,
     "Lizzie.engineManager": 148
   },

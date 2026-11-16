@@ -3957,7 +3957,8 @@ public class Leelaz {
             AnalysisOutputOwnership.ordinary(
                 analysisOutputGeneration.get(),
                 binding.analysisStateLineage,
-                captureAnalysisInfoTarget()));
+                captureAnalysisInfoTarget(),
+                null));
         binding.suppressGlobalEnginePresentation = false;
         suppressGlobalEnginePresentationUntilOwned = false;
       }
@@ -5110,6 +5111,7 @@ public class Leelaz {
     private final SnapshotFileAccessKind snapshotFileAccessKind;
     private volatile Object analysisOutputRecoveryToken;
     private volatile Integer confirmedRuntimeSearchThreads;
+    private volatile Set<String> supportedCommands;
     private volatile RuntimeThreadOverrideState runtimeThreadOverrideState;
     private volatile B11ModelNotice.Lookup speedModelLookup;
 
@@ -5245,6 +5247,7 @@ public class Leelaz {
     private final long generation;
     private final AnalysisStateLineage analysisStateLineage;
     private final AnalysisInfoTarget target;
+    private final String command;
 
     private AnalysisOutputOwnership(
         EngineManager.EngineGamePrimaryContext exactContext,
@@ -5252,13 +5255,15 @@ public class Leelaz {
         Object recoveryToken,
         long generation,
         AnalysisStateLineage analysisStateLineage,
-        AnalysisInfoTarget target) {
+        AnalysisInfoTarget target,
+        String command) {
       this.exactContext = exactContext;
       this.ordinary = ordinary;
       this.recoveryToken = recoveryToken;
       this.generation = generation;
       this.analysisStateLineage = analysisStateLineage;
       this.target = target;
+      this.command = command;
     }
 
     private static AnalysisOutputOwnership exact(
@@ -5266,19 +5271,22 @@ public class Leelaz {
         long generation,
         AnalysisStateLineage analysisStateLineage) {
       return new AnalysisOutputOwnership(
-          context, false, null, generation, analysisStateLineage, null);
+          context, false, null, generation, analysisStateLineage, null, null);
     }
 
     private static AnalysisOutputOwnership ordinary(
-        long generation, AnalysisStateLineage analysisStateLineage, AnalysisInfoTarget target) {
+        long generation,
+        AnalysisStateLineage analysisStateLineage,
+        AnalysisInfoTarget target,
+        String command) {
       return new AnalysisOutputOwnership(
-          null, true, null, generation, analysisStateLineage, target);
+          null, true, null, generation, analysisStateLineage, target, command);
     }
 
     private static AnalysisOutputOwnership recoveryTombstone(
         Object recoveryToken, long generation, AnalysisStateLineage analysisStateLineage) {
       return new AnalysisOutputOwnership(
-          null, false, recoveryToken, generation, analysisStateLineage, null);
+          null, false, recoveryToken, generation, analysisStateLineage, null, null);
     }
 
     private boolean isExact() {
@@ -5583,7 +5591,15 @@ public class Leelaz {
   }
 
   private ParsedAnalysisInfo parseAnalysisInfoPayload(String payload) {
-    boolean kata = isKatago;
+    boolean kata = usesKataAnalysis();
+    ReaderStreamBinding binding = readerStreamBinding;
+    EngineGameResponseHandler genmove = activeEngineGameResponseHandler.get();
+    if (genmove != null && genmove.isActiveFor(binding)) {
+      kata = genmove.command.startsWith("kata-");
+    } else if (binding != null) {
+      AnalysisOutputOwnership owner = binding.analysisOutputOwnership.get();
+      if (owner != null && owner.command != null) kata = owner.command.startsWith("kata-");
+    }
     List<MoveData> parsedMoves;
     List<Double> estimateArray = null;
     if (kata) {
@@ -6414,23 +6430,9 @@ public class Leelaz {
       }
     } else if (isCheckingVersion && !isLeela0110) {
       if (isKatago) {
-        String[] ver = params[1].split("\\.");
-        if (ver.length >= 2) {
-          try {
-            if (Integer.parseInt(ver[0]) > 1 || Integer.parseInt(ver[1]) > 10) {
-              supportMovesOwnership = true;
-            }
-            int major = Integer.parseInt(ver[0]);
-            int minor = Integer.parseInt(ver[1]);
-            int patch = ver.length > 2 ? Integer.parseInt(ver[2].split("[^0-9]", 2)[0]) : 0;
-            supportRootInfo =
-                major > 1 || (major == 1 && (minor > 16 || (minor == 16 && patch >= 4)));
-          } catch (Exception ex) {
-            ex.printStackTrace();
-            supportMovesOwnership = false;
-            supportRootInfo = false;
-          }
-        }
+        var features = featurecat.lizzie.analysis.gtp.GtpEngineProtocol.kataVersion(params[1]);
+        supportMovesOwnership = features.movesOwnership();
+        supportRootInfo = features.rootInfo();
         isCheckingVersion = false;
       } else {
         String[] ver = params[1].split("\\.");
@@ -7090,7 +7092,8 @@ public class Leelaz {
                 binding.analysisStateLineage,
                 isOrdinaryPositionAnalysisCommand(command.command)
                     ? command.ordinaryAnalysisTarget
-                    : captureAnalysisInfoTarget());
+                    : captureAnalysisInfoTarget(),
+                command.command);
         binding.suppressGlobalEnginePresentation = false;
         suppressGlobalEnginePresentationUntilOwned = false;
       }
@@ -7766,6 +7769,7 @@ public class Leelaz {
       synchronized (engineArbitrationLock()) {
         startGetCommandList = false;
         endGetCommandList = true;
+        binding.supportedCommands = Set.copyOf(commandLists);
         commandListBinding = binding;
         commandListPendingBinding = null;
       }
@@ -9080,7 +9084,7 @@ public class Leelaz {
 
   public void nameCmd() {
     if (!stopMoveFocusForPause()) {
-      if (isKatago) sendCommand("stop");
+      if (supportsGtpCommand("stop", isKatago)) sendCommand("stop");
       else sendCommand("name");
     }
     LizzieFrame.menu.toggleEngineMenuStatus(false, false);
@@ -9279,7 +9283,7 @@ public class Leelaz {
             + isPondering
             + " caller="
             + buildPonderCallerTrace());
-    if (isKatago) sendCommand("stop");
+    if (supportsGtpCommand("stop", isKatago)) sendCommand("stop");
     else sendCommand("name");
   }
 
@@ -9289,7 +9293,7 @@ public class Leelaz {
             + isKatago
             + " isPondering="
             + isPondering);
-    return sendEngineGameCommand(isKatago ? "stop" : "name", turn);
+    return sendEngineGameCommand(supportsGtpCommand("stop", isKatago) ? "stop" : "name", turn);
   }
 
   private void readError() {
@@ -10050,7 +10054,7 @@ public class Leelaz {
 
   private void parseHeatMap(String line) {
     if (isheatmap) {
-      if (isKatago) {
+      if (supportsGtpCommand("kata-raw-nn", isKatago)) {
         if (line.startsWith("=")) {
           kataRawNnResponse = new KataRawNnResponse(Board.boardWidth, Board.boardHeight);
           heatPolicy = kataRawNnResponse.policyPermille();
@@ -12102,11 +12106,11 @@ public class Leelaz {
           || command.startsWith("kata-raw")
           || command.startsWith("heatmap");
     }
-    return (isKatago
+    return (usesKataAnalysis()
             && (command.startsWith("kata-analyze")
                 || command.startsWith("kata-raw")
                 || command.startsWith("stop-ponder")))
-        || (!isKatago
+        || (!usesKataAnalysis()
             && (command.startsWith("lz-analyze")
                 || command.startsWith("analyze")
                 || command.startsWith("heatmap")));
@@ -12238,7 +12242,26 @@ public class Leelaz {
    * restored position does not need a move history to tell the engine whose turn it is.
    */
   final boolean namesSideToPlayInCommands() {
-    return canAddPlayer && !useRemoteCompute;
+    return (usesKataAnalysis() || canAddPlayer) && !useRemoteCompute;
+  }
+
+  public boolean supportsGtpCommand(String command, boolean legacyFallback) {
+    ReaderStreamBinding binding = readerStreamBinding;
+    Set<String> commands = binding == null ? null : binding.supportedCommands;
+    return commands != null
+            && endGetCommandList
+            && commandListBinding == binding
+            && !binding.terminated
+        ? commands.contains(command)
+        : legacyFallback;
+  }
+
+  public boolean usesKataAnalysis() {
+    return supportsGtpCommand("kata-analyze", isKatago);
+  }
+
+  public void clearCacheIfSupported() {
+    if (supportsGtpCommand("clear_cache", isKatago)) sendCommand("clear_cache");
   }
 
   void advertiseCommandsForTest(List<String> commands) {
@@ -12248,6 +12271,7 @@ public class Leelaz {
       if (commands != null) {
         commandLists.addAll(commands);
       }
+      binding.supportedCommands = Set.copyOf(commandLists);
       startGetCommandList = false;
       commandListPendingBinding = null;
       endGetCommandList = true;
@@ -13076,14 +13100,7 @@ public class Leelaz {
           && queueHead.engineGameTransaction() != null
           && !isResponseUpToPreCommand()) {
         String lastQueuedCommand = targetQueue.peekLast().command;
-        if ((isKatago
-                && (lastQueuedCommand.startsWith("kata-analyze")
-                    || lastQueuedCommand.startsWith("kata-raw")
-                    || lastQueuedCommand.startsWith("stop-ponder")))
-            || (!isKatago
-                && (lastQueuedCommand.startsWith("lz-analyze")
-                    || lastQueuedCommand.startsWith("analyze")
-                    || lastQueuedCommand.startsWith("heatmap")))) return;
+        if (shouldCoalesceQueuedCommand(lastQueuedCommand, false)) return;
       }
       queuedCommand = queueHead;
       if (targetQueue.peekFirst() == queueHead) targetQueue.removeFirst();
@@ -14552,6 +14569,19 @@ public class Leelaz {
                   || (matchedPendingHandler == null
                       && (parseResponseCommandId(line) != NO_RESPONSE_COMMAND_ID
                           || hasStrictPendingResponseHandlerAtFront()));
+          if (!ignoreResponse
+              && !currentCommandResponseError
+              && matchedPendingHandler != null
+              && !matchedPendingHandler.isOutstandingResponseRetired()
+              && matchedPendingHandler.command.equals("list_commands")) {
+            startGetCommandList = true;
+            endGetCommandList = false;
+            commandListPendingBinding = responseBinding;
+            commandListBinding = null;
+            commandLists.clear();
+            String payload = gtpResponsePayload(line).trim();
+            if (!payload.isEmpty()) commandLists.addAll(List.of(payload.split("\\s+")));
+          }
           foregroundRestoreResponseError =
               !ignoreResponse
                   && matchedPendingHandler != null
@@ -17056,6 +17086,7 @@ public class Leelaz {
     private final EngineManager.EngineGameMoveResponseContext context;
     private final ReaderStreamBinding binding;
     private final boolean analyzeStream;
+    private final String command;
     private final AtomicInteger state = new AtomicInteger(RESERVED);
     private final AtomicReference<EngineManager.EngineGamePhysicalRequestLease> physicalLease =
         new AtomicReference<>();
@@ -17065,11 +17096,12 @@ public class Leelaz {
         Leelaz owner,
         EngineManager.EngineGameMoveResponseContext context,
         ReaderStreamBinding binding,
-        boolean analyzeStream) {
+        String command) {
       this.owner = owner;
       this.context = context;
       this.binding = binding;
-      this.analyzeStream = analyzeStream;
+      this.analyzeStream = isAnalyzeStyleEngineGameGenmove(command);
+      this.command = command;
     }
 
     private boolean isAnalyzeStream() {
@@ -19810,15 +19842,6 @@ public class Leelaz {
   }
 
   public void playMove(Stone color, String move, boolean addPlayer, boolean blackToPlay) {
-    if ((!isKatago || isSai)
-        && "pass".equals(move)
-        && Lizzie.board.getHistory().getCurrentHistoryNode() != Lizzie.board.getHistory().getStart()
-        && Lizzie.board.getData().isPassNode()) {
-      this.setModifyEnd();
-      return;
-    }
-    //		canGetGenmoveInfoGen = true;
-    //	getGenmoveInfoPrevious = true;
     String colorString;
     switch (color) {
       case BLACK:
@@ -19829,8 +19852,6 @@ public class Leelaz {
         break;
       default:
         return;
-        //          throw new IllegalArgumentException(
-        //              "The stone color must be B or W, but was " + color.toString());
     }
     boolean continuePonderAfterMove = isPondering();
     boolean resumeAnalysisAfterMove = stopByLimit || continuePonderAfterMove;
@@ -19843,7 +19864,6 @@ public class Leelaz {
     retireAnalysisInfoBeforeQueuedPlay();
     sendCommand("play " + colorString + " " + move);
     if (Lizzie.frame.isPlayingAgainstLeelaz) this.canGetSummaryInfo = true;
-    //				bestMovesPrevious = new ArrayList<>();
     if (Lizzie.frame.isAnaPlayingAgainstLeelaz
         && !Lizzie.frame.bothSync
         && Lizzie.frame.playerIsBlack == blackToPlay) return;
@@ -19853,7 +19873,8 @@ public class Leelaz {
       nameCmdfornoponder();
       underPonder = true;
     }
-    if (!isPondering && !Lizzie.config.playponder && isKatago) sendCommand("stop-ponder");
+    if (!isPondering && !Lizzie.config.playponder && supportsGtpCommand("stop", isKatago))
+      sendCommand("stop-ponder");
   }
 
   public void playMoveNoPonder(Stone color, String move) {
@@ -19939,7 +19960,7 @@ public class Leelaz {
       return nameCmdfornoponder(turn);
     }
     String analyzeCommand =
-        isKatago
+        usesKataAnalysis()
             ? "kata-analyze " + getInterval() + addKataTag()
             : isSayuri ? "analyze 1 " + getInterval() : "lz-analyze " + getInterval();
     boolean accepted = sendEngineGameCommand(analyzeCommand, turn);
@@ -19988,6 +20009,7 @@ public class Leelaz {
   }
 
   public String addKataTag() {
+    if (!isKatago) return "";
     return (supportRootInfo ? " rootInfo true" : "")
         + (Lizzie.config.showKataGoEstimate ? " ownership true" : "")
         + (Lizzie.config.showPvVisits ? " pvVisits true" : "")
@@ -20013,11 +20035,11 @@ public class Leelaz {
     }
     sendPlayingAgainstHumanTimeLeftBeforeGenmove();
     String command =
-        (this.isKatago
+        (supportsGtpCommand("kata-genmove_analyze", isKatago)
             ? ("kata-genmove_analyze " + color + " " + getInterval() + addKataTag())
             : (this.isSayuri
                 ? ("genmove_analyze " + color + " " + getInterval())
-                : (this.isSai || this.isLeela
+                : (supportsGtpCommand("lz-genmove_analyze", isSai || isLeela)
                     ? ("lz-genmove_analyze " + color + " " + getInterval())
                     : ("genmove " + color))));
     if (manualRequest) {
@@ -22780,20 +22802,13 @@ public class Leelaz {
       return false;
     }
     String command =
-        (this.isKatago
+        (supportsGtpCommand("kata-genmove_analyze", isKatago)
             ? ("kata-genmove_analyze " + color + " " + getIntervalForGenmovePk() + addKataTag())
             : (this.isSayuri
                 ? ("genmove_analyze " + color + " " + getInterval())
-                : (this.isSai || this.isLeela
+                : (supportsGtpCommand("lz-genmove_analyze", isSai || isLeela)
                     ? ("lz-genmove_analyze " + color + " " + getInterval())
                     : ("genmove " + color))));
-    /*
-     * We don't support displaying this while playing, so no reason to request it
-     * (for now) if (isPondering) { command = "lz-genmove_analyze " + color + " 10";
-     * }
-     */
-    // bestMoves = new ArrayList<>();
-    // canGetGenmoveInfo = true;
     ReaderStreamBinding binding = currentReaderStreamBinding();
     EngineManager.EngineGameMoveResponseContext responseContext =
         turn == null
@@ -22803,8 +22818,7 @@ public class Leelaz {
       return false;
     }
     EngineGameResponseHandler responseHandler =
-        new EngineGameResponseHandler(
-            this, responseContext, binding, isAnalyzeStyleEngineGameGenmove(command));
+        new EngineGameResponseHandler(this, responseContext, binding, command);
     boolean accepted =
         sendCommand(
             command,
@@ -22821,29 +22835,12 @@ public class Leelaz {
     if (!accepted) {
       throw new IllegalStateException("Engine-game genmove command was rejected");
     }
-    // isThinking = true;
-
-    // isPondering = false;
-    // genmovenoponder =false;
     return true;
   }
 
   public void clearPkMoveStartTime() {
     pkMoveStartTime = System.currentTimeMillis();
   }
-
-  //	public void genmove_analyze(String color) {
-  //		String command = "lz-genmove_analyze " + color + " " +
-  // Lizzie.config.analyzeUpdateIntervalCentisec;
-  //		sendCommand(command);
-  //		isThinking = true;
-  //		isPondering = false;
-  //	}
-
-  //  public void time_settings() {
-  //    Lizzie.leelaz.sendCommand("time_settings 0 " + Lizzie.config.maxGameThinkingTimeSeconds + "
-  // 1");
-  //  }
 
   public void clear() {
     synchronized (this) {
@@ -22915,7 +22912,7 @@ public class Leelaz {
                 untilMove <= 0 ? 1 : untilMove);
     sendCommand(
         String.format(
-            (isKatago
+            (usesKataAnalysis()
                 ? "kata-analyze %s%d %s" + addKataTag()
                 : (isSayuri ? "analyze %s%d %s" : "lz-analyze %s%d %s")),
             maybeAddPlayer(addPlayer, blackToPlay),
@@ -22932,7 +22929,7 @@ public class Leelaz {
     }
     sendCommand(
         String.format(
-            (isKatago
+            (usesKataAnalysis()
                 ? "kata-analyze %s%d %s" + addKataTag()
                 : (isSayuri ? "analyze %s%d %s" : "lz-analyze %s%d %s")),
             maybeAddPlayer(),
@@ -23028,7 +23025,7 @@ public class Leelaz {
       LizzieFrame.allowcoords = "";
       LizzieFrame.avoidcoords = "";
       Lizzie.frame.clearSelectImage();
-      if (this.isKatago) {
+      if (usesKataAnalysis()) {
         sendCommand(
             "kata-analyze "
                 + maybeAddPlayer(addPlayer, blackToPlay)
@@ -23048,7 +23045,7 @@ public class Leelaz {
   }
 
   private String maybeAddPlayer(boolean addPlayer, boolean reverse) {
-    if (!canAddPlayer) return "";
+    if (!usesKataAnalysis() && !canAddPlayer) return "";
     else if (addPlayer) return (reverse ? "B " : "W ");
     // 试下激活时 mainline currentHistoryNode 停在 anchor，但要分析的是 displayNode（trial 子树里），
     // 用 mainline 视角会让 kata-analyze 颜色错位 → KataGo 用错视角给 winrate → 画面上"轮谁谁稳赢"。
@@ -23081,8 +23078,8 @@ public class Leelaz {
       leela0110Ponder(true);
       return;
     }
-    if (this.isKatago) {
-      if (Lizzie.config.showKataGoEstimate)
+    if (usesKataAnalysis()) {
+      if (isKatago && Lizzie.config.showKataGoEstimate)
         sendCommand("kata-analyze " + getInterval() + addKataTag() + " ownership true");
       else sendCommand("kata-analyze " + getInterval() + addKataTag());
     } else {
@@ -24240,7 +24237,7 @@ public class Leelaz {
   }
 
   private void sendHeatCommand() {
-    if (isKatago) {
+    if (supportsGtpCommand("kata-raw-nn", isKatago)) {
       sendCommand("kata-raw-nn " + new Random().nextInt(8));
     } else sendCommand("heatmap");
   }

@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Leela Zero engine matches no longer fail because startup sends an unsupported clear_cache command. Analysis, move-generation analysis, stop and raw-policy commands follow the running engine's advertised capabilities; mixed protocols parse win rates according to the command actually sent. Passes and their undo reach every engine. Live analysis tables distinguish missing score, spread and LCB from a reported zero. Optional argument probing and full rules, time and search-parameter capability negotiation remain follow-up work.
+
 - AI Coach take-backs and blunder retries retain the withdrawn moves, AI replies and comments as SGF variations. Replaying an earlier attempt reuses its branch, while a replacement move keeps the active game's original main-line or training-variation slot, including after repeated take-backs.
 
 - AI commentary can connect over HTTP to explicitly configured private LAN IPv4 addresses and IPv6 ULA addresses, as well as loopback. Public services still require HTTPS; address validation does not resolve hostnames, and redirects remain rejected. The address guidance is updated in all eight languages.

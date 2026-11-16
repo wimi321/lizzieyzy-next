@@ -39,6 +39,45 @@ public class MoveData {
   public long lastTimeUnlimitedTime;
   public boolean isSymmetry = false;
 
+  private static final int SCORE = 1;
+  private static final int SCORE_STDEV = 2;
+  private static final int LCB = 4;
+  // Legacy SGF and synthesized records assign fields directly. Live parsers track presence.
+  private int reportedFields = -1;
+  private boolean bestScoreMeanAvailable = true;
+
+  public boolean hasScoreMean() {
+    return hasField(SCORE) && Double.isFinite(scoreMean);
+  }
+
+  public boolean hasScoreStdev() {
+    return hasField(SCORE_STDEV) && Double.isFinite(scoreStdev);
+  }
+
+  public boolean hasLcb() {
+    return hasField(LCB) && Double.isFinite(lcb) && lcb >= -1000;
+  }
+
+  private boolean hasField(int field) {
+    return reportedFields < 0 || (reportedFields & field) != 0;
+  }
+
+  public void copyAnalysisFieldPresenceFrom(MoveData source) {
+    reportedFields = source.reportedFields;
+    isKataData = source.isKataData;
+    isSaiData = source.isSaiData;
+    scoreMeanIsBlackPerspective = source.scoreMeanIsBlackPerspective;
+  }
+
+  public void setBestScoreMean(MoveData best) {
+    bestScoreMean = best.scoreMean;
+    bestScoreMeanAvailable = best.hasScoreMean();
+  }
+
+  public boolean hasBestScoreMean() {
+    return bestScoreMeanAvailable && Double.isFinite(bestScoreMean);
+  }
+
   /** Root allocation when supplied by KataGo, otherwise the legacy candidate count. */
   public int allocationVisits() {
     return edgeVisits >= 0 ? edgeVisits : playouts;
@@ -75,6 +114,7 @@ public class MoveData {
    */
   public static MoveData fromInfo(String line) throws ArrayIndexOutOfBoundsException {
     MoveData result = new MoveData();
+    result.reportedFields = 0;
     String[] data = line.trim().split(" ");
     // int k =
     // Lizzie.config.config.getJSONObject("leelaz").getInt("max-suggestion-moves");
@@ -111,6 +151,7 @@ public class MoveData {
         if (key.equals("lcb")) {
           // LCB support
           result.lcb = Integer.parseInt(value) / 100.0;
+          result.reportedFields |= LCB;
           //          if (islcb) {
           //            result.winrate = Integer.parseInt(value) / 100.0;
           //          }
@@ -150,6 +191,7 @@ public class MoveData {
   public static MoveData fromInfoSai(String line, boolean isSayuri)
       throws ArrayIndexOutOfBoundsException {
     MoveData result = new MoveData();
+    result.reportedFields = 0;
     String[] data = line.trim().split(" ");
     // int k =
     // Lizzie.config.config.getJSONObject("leelaz").getInt("max-suggestion-moves");
@@ -186,6 +228,7 @@ public class MoveData {
         if (key.equals("lcb")) {
           // LCB support
           result.lcb = Integer.parseInt(value) / 100.0;
+          result.reportedFields |= LCB;
           //          if (islcb) {
           //            result.winrate = Integer.parseInt(value) / 100.0;
           //          }
@@ -196,12 +239,14 @@ public class MoveData {
         if (isSayuri) {
           if (key.equals("scoreLead")) {
             result.scoreMean = Double.parseDouble(value);
+            result.reportedFields |= SCORE;
           }
         } else if (key.equals("areas")) {
           result.scoreMean =
               Lizzie.board.getHistory().isBlacksTurn()
                   ? result.scoreMean = Integer.parseInt(value) / 10000.0
                   : -Integer.parseInt(value) / 10000.0;
+          result.reportedFields |= SCORE;
         }
         if (key.equals("winrate")) {
           // support 0.16 0.15
@@ -213,7 +258,7 @@ public class MoveData {
         }
       }
     }
-    result.isKataData = true;
+    result.isKataData = result.hasScoreMean();
     result.isSaiData = true;
     result.scoreMeanIsBlackPerspective = !isSayuri;
     return result;
@@ -225,6 +270,7 @@ public class MoveData {
 
   static MoveData fromInfoKatago(TokenCursor tokens) {
     MoveData result = new MoveData();
+    result.reportedFields = 0;
     String line = tokens.value;
     while (tokens.next()) {
       if (tokens.isTopLevelBoundary()) {
@@ -250,6 +296,7 @@ public class MoveData {
         result.edgeVisits = tokens.fastInt();
       } else if (tokens.matches(line, keyStart, keyEnd, "lcb")) {
         result.lcb = tokens.fastDouble() * 100;
+        result.reportedFields |= LCB;
       } else if (tokens.matches(line, keyStart, keyEnd, "prior")) {
         result.policy = tokens.fastDouble() * 100;
       } else if (tokens.matches(line, keyStart, keyEnd, "winrate")) {
@@ -257,13 +304,15 @@ public class MoveData {
       } else if (tokens.matches(line, keyStart, keyEnd, "scoreLead")
           || tokens.matches(line, keyStart, keyEnd, "scoreMean")) {
         result.scoreMean = tokens.fastDouble();
+        result.reportedFields |= SCORE;
       } else if (tokens.matches(line, keyStart, keyEnd, "scoreStdev")) {
         result.scoreStdev = tokens.fastDouble();
+        result.reportedFields |= SCORE_STDEV;
       } else if (tokens.matches(line, keyStart, keyEnd, "isSymmetryOf")) {
         result.isSymmetry = true;
       }
     }
-    result.isKataData = true;
+    result.isKataData = result.hasScoreMean();
     result.isSaiData = false;
     return result;
   }
@@ -560,6 +609,7 @@ public class MoveData {
     // boolean hasPda = summary.contains("PDA");
     String[] params = summary.trim().split("PV");
     MoveData result = new MoveData();
+    result.reportedFields = 0;
     if (params.length <= 2) {
       String[] params2 = params[0].trim().split(" ");
       if (params2.length >= 8) {
@@ -569,6 +619,7 @@ public class MoveData {
         result.winrate = Double.parseDouble(params2[3].replace("%", ""));
         result.scoreMean = Double.parseDouble(params2[5]);
         result.scoreStdev = Double.parseDouble(params2[7]);
+        result.reportedFields = SCORE | SCORE_STDEV;
       }
       if (params.length == 2) {
         result.variation =
@@ -613,6 +664,7 @@ public class MoveData {
         // throw new IllegalArgumentException("Unexpected summary format: " + summary);
       } else {
         MoveData result = new MoveData();
+        result.reportedFields = 0;
         result.coordinate = matchold.group(1);
         result.playouts = Integer.parseInt(matchold.group(2));
         result.winrate = Double.parseDouble(matchold.group(3));
@@ -623,9 +675,11 @@ public class MoveData {
       }
     } else {
       MoveData result = new MoveData();
+      result.reportedFields = LCB;
       result.coordinate = match.group(1);
       result.playouts = Integer.parseInt(match.group(2));
       result.winrate = Double.parseDouble(match.group(3));
+      result.lcb = Double.parseDouble(match.group(4));
       result.variation = Arrays.asList(match.group(5).split(" ", Lizzie.config.limitBranchLength));
       // result.variation = Arrays.asList(match.group(5).split(" "));
       return result;
@@ -641,6 +695,7 @@ public class MoveData {
       throw new IllegalArgumentException("Unexpected summary format: " + summary);
     } else {
       MoveData result = new MoveData();
+      result.reportedFields = 0;
       result.coordinate = matchold.group(1);
       result.playouts = Integer.parseInt(matchold.group(2));
       result.winrate = Double.parseDouble(matchold.group(3));
@@ -656,9 +711,11 @@ public class MoveData {
     Matcher match = summaryPatternSai.matcher(summary.trim());
     if (match.matches()) {
       MoveData result = new MoveData();
+      result.reportedFields = SCORE | LCB;
       result.coordinate = match.group(1);
       result.playouts = Integer.parseInt(match.group(2));
       result.winrate = Double.parseDouble(match.group(3));
+      result.lcb = Double.parseDouble(match.group(4));
       result.scoreMean =
           Lizzie.board.getHistory().isBlacksTurn()
               ? Double.parseDouble(match.group(5))
@@ -680,6 +737,7 @@ public class MoveData {
 
     if (params.length == 3) {
       MoveData result = new MoveData();
+      result.reportedFields = 0;
       String[] params1 = params[0].trim().split("->");
       if (params1.length == 2) {
         result.coordinate = params1[0].trim();

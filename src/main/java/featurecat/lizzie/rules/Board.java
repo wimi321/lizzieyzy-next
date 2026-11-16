@@ -5717,7 +5717,6 @@ public class Board {
       }
       modifyStart();
       BoardData currentData = history.getData();
-      boolean isPass = isKnownPass(currentData);
       boolean isHistoryAction = isHistoryAction(currentData);
       boolean needSync =
           history.getCurrentHistoryNode().hasRemovedStone() || currentData.isSnapshotNode();
@@ -5734,18 +5733,12 @@ public class Board {
           && isHistoryAction
           && currentData.lastMoveColor != Stone.EMPTY
           && shouldForwardHistoryNavigationToPrimaryEngine()) {
-        boolean nopass = false;
-        if (!Lizzie.leelaz.isKatago || Lizzie.leelaz.isSai) {
-          if (isPass && previousCurrentNode.previous().isPresent()) nopass = true;
-        }
-        if (!nopass) {
-          submitOrdinaryEngineForwarding(
-              Lizzie.leelaz,
-              () -> {
-                Lizzie.leelaz.undo(true, history.getData().blackToPlay);
-                return true;
-              });
-        } else modifyEnd();
+        submitOrdinaryEngineForwarding(
+            Lizzie.leelaz,
+            () -> {
+              Lizzie.leelaz.undo(true, history.getData().blackToPlay);
+              return true;
+            });
       }
       if (!needSync && shouldForwardHistoryNavigationToPrimaryEngine()) {
         previousCurrentNode.undoExtraStones();
