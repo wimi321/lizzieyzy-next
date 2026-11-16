@@ -74,6 +74,7 @@ public class Menu extends JMenuBar {
   JFontMenuItem shutdownOtherEngine;
   JFontMenuItem minPlayoutsForNextMove;
   private TencentKifuDownload tencentKifuDownload;
+  private OgsKifuDownload ogsKifuDownload;
   private EngineGameKomiState shownKomiFailure;
 
   /** Returns true when Engine Game owns this edit, including a retiring/starting game. */
@@ -247,8 +248,6 @@ public class Menu extends JMenuBar {
     setOpaque(true);
     setBackground(MorandiPalette.TOOLBAR_BG);
     setBorder(new EmptyBorder(1, 8, 1, 8));
-    // headFont = new Font(Config.sysDefaultFontName, Font.PLAIN,
-    // Math.max(Lizzie.config.allFontSize, 12)); // 中16 大20
     Font baseMenuFont = new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize);
     final JFontMenu fileMenu = new JFontMenu(resourceBundle.getString("Menu.fileMenu")); // ("文件");
     fileMenu.setFont(baseMenuFont);
@@ -4035,6 +4034,11 @@ public class Menu extends JMenuBar {
           }
         });
 
+    final JFontMenuItem ogsKifu = new JFontMenuItem(resourceBundle.getString("Menu.ogsKifu"));
+    ogsKifu.putClientProperty(AutoAnalyzeMenu.ACTION_PROPERTY, "menu.ogsKifu");
+    ogsKifu.addActionListener(e -> openKifu(true));
+    live.add(ogsKifu);
+
     final JFontMenuItem readBoard =
         new JFontMenuItem(resourceBundle.getString("Menu.readBoard")); // ("棋盘识别工具(Alt+O)");
     if (OsPlatform.isWindows()) {
@@ -6590,11 +6594,23 @@ public class Menu extends JMenuBar {
   }
 
   private void openTencentKifu() {
-    if (tencentKifuDownload == null || !tencentKifuDownload.isDisplayable()) {
-      tencentKifuDownload = new TencentKifuDownload();
+    openKifu(false);
+  }
+
+  private void openKifu(boolean ogs) {
+    LizzieFrame frame = Lizzie.frame;
+    frame.preloadQuickAnalysisEngineForKifuBrowsing();
+    if (ogs) {
+      if (ogsKifuDownload == null || !ogsKifuDownload.isDisplayable()) {
+        ogsKifuDownload = new OgsKifuDownload(frame, resourceBundle);
+      }
+      ogsKifuDownload.presentWindow();
+    } else {
+      if (tencentKifuDownload == null || !tencentKifuDownload.isDisplayable()) {
+        tencentKifuDownload = new TencentKifuDownload();
+      }
+      tencentKifuDownload.presentWindow();
     }
-    Lizzie.frame.preloadQuickAnalysisEngineForKifuBrowsing();
-    tencentKifuDownload.presentWindow();
   }
 
   private void selectLanguage(AppLocale locale) {
@@ -7914,30 +7930,12 @@ public class Menu extends JMenuBar {
             }
           });
 
-      JFontButton btnFoxKifu = new JFontButton(resourceBundle.getString("Menu.foxKifuButton"));
-      btnFoxKifu.setFocusable(false);
-      AppleStyleSupport.markPrimary(btnFoxKifu);
-      ToolbarSizing.fitText(btnFoxKifu);
-      btnFoxKifu.setToolTipText(resourceBundle.getString("Menu.foxKifu"));
-      btnFoxKifu.addActionListener(
-          new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-              Lizzie.frame.openFoxReq();
-            }
-          });
-
+      JFontButton btnFoxKifu =
+          KifuBrowseControls.button(resourceBundle, "fox", () -> Lizzie.frame.openFoxReq());
       JFontButton btnTencentKifu =
-          new JFontButton(resourceBundle.getString("Menu.tencentKifuButton"));
-      btnTencentKifu.setFocusable(false);
-      AppleStyleSupport.markPrimary(btnTencentKifu);
-      ToolbarSizing.fitText(btnTencentKifu);
-      btnTencentKifu.setToolTipText(resourceBundle.getString("Menu.tencentKifu"));
-      btnTencentKifu.addActionListener(
-          new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-              openTencentKifu();
-            }
-          });
+          KifuBrowseControls.button(resourceBundle, "tencent", this::openTencentKifu);
+      JFontButton btnOgsKifu =
+          KifuBrowseControls.button(resourceBundle, "ogs", () -> openKifu(true));
 
       JFontButton btnPlayerStrengthEstimate =
           new JFontButton(resourceBundle.getString("Menu.playerStrengthEstimateButton"));
@@ -8205,7 +8203,9 @@ public class Menu extends JMenuBar {
       Lizzie.frame.topPanel.leftArea.add(btnOpen);
       Lizzie.frame.topPanel.leftArea.add(btnSave);
       Lizzie.frame.topPanel.leftArea.add(btnFoxKifu);
-      Lizzie.frame.topPanel.leftArea.add(btnTencentKifu);
+      JPanel kifuButtons = Lizzie.frame.topPanel.leftArea;
+      kifuButtons.add(btnTencentKifu);
+      kifuButtons.add(btnOgsKifu);
       Lizzie.frame.topPanel.leftArea.add(btnPlayerStrengthEstimate);
       Lizzie.frame.topPanel.centerArea.add(btnAutoSetup);
       Lizzie.frame.topPanel.centerArea.add(btnFlashAnalyze);

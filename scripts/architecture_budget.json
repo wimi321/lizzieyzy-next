@@ -15,7 +15,7 @@
     "src/main/java/featurecat/lizzie/gui/BottomToolbar.java": 5220,
     "src/main/java/featurecat/lizzie/rules/SGFParser.java": 5019,
     "src/main/java/featurecat/lizzie/gui/BoardRenderer.java": 4719,
-    "src/main/java/featurecat/lizzie/gui/OnlineDialog.java": 4565,
+    "src/main/java/featurecat/lizzie/gui/OnlineDialog.java": 4552,
     "src/main/java/featurecat/lizzie/util/KataGoAutoSetupHelper.java": 3996,
     "src/main/java/featurecat/lizzie/Config.java": 4031,
     "src/main/java/featurecat/lizzie/analysis/AnalysisEngine.java": 3267,
