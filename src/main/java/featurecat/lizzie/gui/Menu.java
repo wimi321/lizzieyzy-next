@@ -10742,7 +10742,7 @@ public class Menu extends JMenuBar {
     txtWRN.setText(String.valueOf(wrn));
     ShouldIgnoreDtChange = false;
     chkWRN.setSelected(use);
-    refreshBreadthAdmission();
+    SwingUtilities.invokeLater(this::refreshBreadthAdmission);
   }
 
   public void setUseGfPda(boolean use, String pda) {
@@ -10750,7 +10750,7 @@ public class Menu extends JMenuBar {
     txtGfPDA.setText(String.valueOf(pda));
     ShouldIgnoreDtChange = false;
     chkPDA.setSelected(use);
-    refreshBreadthAdmission();
+    SwingUtilities.invokeLater(this::refreshBreadthAdmission);
   }
 
   public void setChkShowBlack(boolean show) {

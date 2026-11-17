@@ -33,6 +33,11 @@ import org.junit.jupiter.api.Test;
  */
 public class ZhiziQuickAnalysisAcceptanceIT {
   @Test
+  void importedGameNavigationDoesNotCreateTimeoutThreadsOrStrandAnalysis() throws Exception {
+    run("navigation");
+  }
+
+  @Test
   void foxImportCompletesRemoteCurveAndHandsBackForeground() throws Exception {
     run("normal");
   }
@@ -197,7 +202,9 @@ public class ZhiziQuickAnalysisAcceptanceIT {
             .put("use-language", 1)
             .put(
                 "auto-quick-analyze-on-load",
-                !mode.equals("disabled") && !mode.equals("manual-overview"))
+                !mode.equals("disabled")
+                    && !mode.equals("manual-overview")
+                    && !mode.equals("navigation"))
             .put("analysis-reuse-current-engine", false)
             .put("quick-analysis-lightweight-model-enabled", false)
             .put("analysis-engine-command", "")
@@ -242,6 +249,11 @@ public class ZhiziQuickAnalysisAcceptanceIT {
             "remote ready and startup board restored");
       if (mode.equals("manual-overview")) {
         manualOverview(primary[0], server, result);
+        primary[0].normalQuit();
+        return;
+      }
+      if (mode.equals("navigation")) {
+        navigation(primary[0], server, result);
         primary[0].normalQuit();
         return;
       }
@@ -318,6 +330,76 @@ public class ZhiziQuickAnalysisAcceptanceIT {
           result, "result=PASS\nmode=" + mode + "\nsessions=" + server.sessions.get() + "\n");
       primary[0].normalQuit();
     }
+  }
+
+  private static void navigation(Leelaz primary, ZhiziLoopbackAcceptanceServer server, Path result)
+      throws Exception {
+    StringBuilder sgf = new StringBuilder("(;FF[4]GM[1]SZ[19]KM[7.5]RU[Chinese]GN[navigation]");
+    for (int i = 0; i < 96; i++) {
+      sgf.append(i % 2 == 0 ? ";B[" : ";W[")
+          .append((char) ('a' + (i / 2) % 16))
+          .append((char) ('a' + (i / 32) * 4 + (i % 2) * 2))
+          .append(']');
+    }
+    loadFox(sgf.append(')').toString());
+    await(
+        () ->
+            onEventThread(
+                () -> primary.isPondering() && Lizzie.board.getData().getPlayouts() > 100),
+        30,
+        "import analysis at the restored position");
+    long start = System.nanoTime();
+    SwingUtilities.invokeAndWait(
+        () -> {
+          for (int target : new int[] {96, 0, 80, 10, 96, 20, 70, 0, 96, 24}) {
+            Lizzie.board.goToMoveNumber(target);
+            assertEquals(target, Lizzie.board.getHistory().getMoveNumber());
+          }
+        });
+    long navigationMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+    long timeoutThreads =
+        Thread.getAllStackTraces().keySet().stream()
+            .filter(
+                thread ->
+                    thread.getName().equals("lizzie-position-response-timeout")
+                        || thread.getName().equals("lizzie-gtp-response-timeouts"))
+            .count();
+    assertTrue(timeoutThreads <= 1, "per-command threads during navigation: " + timeoutThreads);
+    await(
+        () ->
+            onEventThread(
+                () ->
+                    !primary.isDownWithError
+                        && primary.isPondering()
+                        && Lizzie.board.getHistory().getMoveNumber() == 24
+                        && Lizzie.board.getData().getPlayouts() > 100),
+        40,
+        "analysis at final selected move");
+    SwingUtilities.invokeAndWait(() -> Lizzie.frame.togglePonderMannul());
+    assertTrue(onEventThread(() -> Lizzie.frame.isUserAnalysisPaused() && !primary.isPondering()));
+    int[] pausedVisits = new int[1];
+    SwingUtilities.invokeAndWait(() -> pausedVisits[0] = Lizzie.board.getData().getPlayouts());
+    SwingUtilities.invokeAndWait(() -> Lizzie.frame.togglePonderMannul());
+    await(
+        () ->
+            onEventThread(
+                () ->
+                    primary.isPondering()
+                        && Lizzie.board.getData().getPlayouts() > pausedVisits[0]),
+        15,
+        "visits grow after navigation pause");
+    assertEquals(1, server.sessions.get(), "navigation must not reconnect the cloud worker");
+    screenshot(result);
+    Files.writeString(result.resolveSibling("commands.txt"), String.join("\n", server.commands));
+    Files.writeString(
+        result,
+        "result=PASS\nmode=navigation\npositions=96\njumps=10\nelapsedMillis="
+            + navigationMillis
+            + "\ntimeoutThreads="
+            + timeoutThreads
+            + "\nsessions="
+            + server.sessions.get()
+            + "\n");
   }
 
   private static void manualOverview(
@@ -462,7 +544,9 @@ public class ZhiziQuickAnalysisAcceptanceIT {
 
   private static void await(BooleanSupplier condition, int seconds, String stage) throws Exception {
     long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(seconds);
-    while (!condition.getAsBoolean() && System.nanoTime() < deadline) Thread.sleep(50);
-    assertTrue(condition.getAsBoolean(), stage);
+    while (!condition.getAsBoolean()) {
+      assertTrue(System.nanoTime() < deadline, stage);
+      Thread.sleep(50);
+    }
   }
 }
