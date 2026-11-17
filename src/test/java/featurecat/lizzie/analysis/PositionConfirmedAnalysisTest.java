@@ -6,19 +6,85 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.logging.DiagnosticModule;
+import featurecat.lizzie.logging.LoggingLimits;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.LoggingSettings;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
 import featurecat.lizzie.rules.Board;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class PositionConfirmedAnalysisTest {
+  @Test
+  void navigationBurstDoesNotCreateAThreadPerPendingPosition() throws Exception {
+    long baseline = positionTimeoutThreads();
+    try (Fixture fixture = new Fixture()) {
+      for (int i = 0; i < 128; i++) fixture.engine.sendCommand("undo");
+      fixture.engine.sendCommand("kata-analyze B 10");
+      assertEquals(128, fixture.transport.commands().size());
+      try {
+        long additionalThreads = positionTimeoutThreads() - baseline;
+        assertTrue(
+            additionalThreads <= 1, "Position timeout threads created: " + additionalThreads);
+        for (int i = 0; i < 127; i++) fixture.respond(i, "=");
+        assertEquals(128, fixture.transport.commands().size(), "analysis must wait for every ACK");
+      } finally {
+        for (int i = 0; i < 128; i++) fixture.respond(i, "=");
+      }
+      assertEquals(129, fixture.transport.commands().size());
+      assertEquals("kata-analyze B 10", fixture.transport.commands().get(128));
+    }
+  }
+
+  private static long positionTimeoutThreads() {
+    return Thread.getAllStackTraces().keySet().stream()
+        .filter(
+            thread ->
+                thread.getName().equals("lizzie-position-response-timeout")
+                    || thread.getName().equals("lizzie-gtp-response-timeouts"))
+        .count();
+  }
+
+  @Test
+  void analysisDiagnosticsReportOnlyTheRequestThatReachesTheTransport(@TempDir Path work)
+      throws Exception {
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(work, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.applySettings(
+        LoggingSettings.defaults()
+            .withDiagnosticsEnabled(true)
+            .withDiagnosticModules(EnumSet.of(DiagnosticModule.ENGINE)));
+    try (Fixture fixture = new Fixture()) {
+      fixture.engine.sendCommand("undo");
+      for (int i = 0; i < 128; i++) fixture.engine.sendCommand("kata-analyze B 10");
+      assertEquals(List.of("undo"), fixture.transport.commands());
+      fixture.respond(0, "=");
+      assertEquals(List.of("undo", "kata-analyze B 10"), fixture.transport.commands());
+    } finally {
+      runtime.shutdown();
+    }
+    long starts =
+        Files.readAllLines(work.resolve("logs/app.log")).stream()
+            .filter(line -> line.contains("event=analysis-started"))
+            .count();
+    assertEquals(1, starts, "coalesced analysis requests were never sent");
+  }
+
   @Test
   void kataGenmoveOnlyUsesDecimalPayloadWithoutChangingLeelaAnalysisFormat() throws Exception {
     try (Fixture fixture = new Fixture()) {
