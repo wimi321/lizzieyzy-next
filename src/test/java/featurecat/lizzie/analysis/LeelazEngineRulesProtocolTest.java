@@ -24,10 +24,47 @@ import java.nio.file.Files;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
 class LeelazEngineRulesProtocolTest {
+  @Test
+  void parameterReadbackRefreshesAdmissionAfterReleasingEngineLocks() throws Exception {
+    try (Fixture fixture = Fixture.controlledParameters()) {
+      AdmissionRecordingMenu toolbar =
+          fixture.installParameterToolbar(AdmissionRecordingMenu.class);
+      Field primaryField = Lizzie.class.getDeclaredField("PRIMARY_ENGINE_LOCK");
+      primaryField.setAccessible(true);
+      ReentrantLock primary = (ReentrantLock) primaryField.get(null);
+      Field arbitrationField = Leelaz.class.getDeclaredField("engineArbitrationLock");
+      arbitrationField.setAccessible(true);
+      Object arbitration = arbitrationField.get(fixture.engine);
+      Field parametersField = Leelaz.class.getDeclaredField("parameterReadLock");
+      parametersField.setAccessible(true);
+      Object parameters = parametersField.get(fixture.engine);
+      AtomicInteger refreshes = new AtomicInteger();
+      AtomicBoolean unsafeRefresh = new AtomicBoolean();
+      toolbar.onAdmissionRefresh =
+          () -> {
+            refreshes.incrementAndGet();
+            if (!SwingUtilities.isEventDispatchThread()
+                || primary.isHeldByCurrentThread()
+                || Thread.holdsLock(arbitration)
+                || Thread.holdsLock(parameters)) unsafeRefresh.set(true);
+          };
+      fixture.engine.readKataParameters(30_000);
+      fixture.reply("kata-get-param playoutDoublingAdvantage", "1.75");
+      fixture.reply("kata-get-param analysisWideRootNoise", "0.35");
+      assertParameterToolbar(toolbar, "1.75", "0.35");
+      SwingUtilities.invokeAndWait(() -> {});
+      assertEquals(2, refreshes.get());
+      assertFalse(unsafeRefresh.get(), "admission must not invert PRIMARY -> selection lock order");
+    }
+  }
+
   // Short enough to keep the timeout tests quick, long enough that the queued command is
   // written before it expires even on a loaded CI runner (50 ms was not).
   private static final long SHORT_RULES_TIMEOUT_MILLIS = 500L;
@@ -837,6 +874,15 @@ class LeelazEngineRulesProtocolTest {
     public void refresh() {}
   }
 
+  private static final class AdmissionRecordingMenu extends Menu {
+    private Runnable onAdmissionRefresh;
+
+    @Override
+    public void refreshBreadthAdmission() {
+      onAdmissionRefresh.run();
+    }
+  }
+
   private static final class SilentGtpConsole extends GtpConsolePane {
     private SilentGtpConsole() {
       super(null);
@@ -977,8 +1023,12 @@ class LeelazEngineRulesProtocolTest {
     }
 
     Menu installParameterToolbar() throws Exception {
+      return installParameterToolbar(Menu.class);
+    }
+
+    <T extends Menu> T installParameterToolbar(Class<T> type) throws Exception {
       ParameterFrame frame = allocate(ParameterFrame.class);
-      Menu toolbar = allocate(Menu.class);
+      T toolbar = allocate(type);
       SwingUtilities.invokeAndWait(
           () -> {
             try {
@@ -1039,8 +1089,10 @@ class LeelazEngineRulesProtocolTest {
     }
 
     @Override
-    public void close() {
+    public void close() throws Exception {
       engine.cancelParameterRead();
+      SwingUtilities.invokeAndWait(() -> {});
+      SwingUtilities.invokeAndWait(() -> {});
       EngineManager.resetEngineGameTransactionStateForTest();
       Lizzie.config = previousConfig;
       Lizzie.leelaz = previousLeelaz;

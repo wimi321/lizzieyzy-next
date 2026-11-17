@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- Engine parameter readback no longer refreshes toolbar admission while holding PRIMARY and endpoint locks. Deferring the admission projection until those locks are released avoids a Windows-observed deadlock against engine startup's final selection commit, without weakening stale-response checks or changing the parameter values.
+
 - Remote game-record navigation no longer creates a new timeout thread for every play/undo command. Position acknowledgements and failure checks remain intact, cancelled deadlines are removed promptly, and the existing command dispatcher handles timeout recovery without blocking other deadlines. Removed unused caller-stack collection from the analysis hot path; engine diagnostics now record analysis only after delivery and remote startup only at connection startup. The intermittent Zhizi import/no-analysis report remains under investigation (#752).
 
 - Leela Zero engine matches no longer fail because startup sends an unsupported clear_cache command. Analysis, move-generation analysis, stop and raw-policy commands follow the running engine's advertised capabilities; mixed protocols parse win rates according to the command actually sent. Passes and their undo reach every engine. Live analysis tables distinguish missing score, spread and LCB from a reported zero. Optional argument probing and full rules, time and search-parameter capability negotiation remain follow-up work.
