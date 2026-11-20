@@ -34,6 +34,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import javax.swing.JComponent;
+import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.border.Border;
 import org.json.JSONObject;
@@ -82,7 +83,47 @@ class SetKataRulesWindowTest {
   @Test
   void navigationFocusesScoringControlsWithoutChangingRulesOrSaving() throws Exception {
     assumeFalse(GraphicsEnvironment.isHeadless());
+    Path result =
+        DesktopProbeProcess.run(
+            SetKataRulesWindowTest.class, "rules-navigation-focus", List.of(), List.of());
+    assertEquals("result=PASS\n", Files.readString(result));
+  }
+
+  public static void main(String[] args) throws Exception {
+    Path result = Path.of(args[1]);
+    System.setProperty("lizzie.work.dir", args[0]);
+    int exitCode = 1;
+    try {
+      new SetKataRulesWindowTest().verifyRulesNavigation();
+      Files.writeString(result, "result=PASS\n");
+      exitCode = 0;
+    } catch (Throwable failure) {
+      failure.printStackTrace();
+      Files.writeString(result, "result=FAIL\nerror=" + failure + "\n");
+    } finally {
+      System.exit(exitCode);
+    }
+  }
+
+  private void verifyRulesNavigation() throws Exception {
     try (Fixture fixture = Fixture.ordinary()) {
+      JFrame host = readOnEdt(() -> new JFrame("Rules focus acceptance"));
+      runOnEdt(
+          () -> {
+            host.setSize(300, 200);
+            host.setLocationRelativeTo(null);
+            host.setVisible(true);
+            if (Desktop.isDesktopSupported()
+                && Desktop.getDesktop().isSupported(Desktop.Action.APP_REQUEST_FOREGROUND)) {
+              Desktop.getDesktop().requestForeground(true);
+            }
+            host.toFront();
+            host.requestFocus();
+          });
+      long hostDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (!readOnEdt(host::isFocused) && System.nanoTime() < hostDeadline) Thread.sleep(20L);
+      assertTrue(
+          readOnEdt(host::isFocused), "test application must be foreground before navigation");
       SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
       JFontRadioButton area = dialog.editor.rdoArea;
       JFontRadioButton territory = dialog.editor.rdoTerritory;
@@ -98,13 +139,6 @@ class SetKataRulesWindowTest {
           () -> {
             dialog.locateRulesEditor();
             dialog.setVisible(true);
-            // Earlier child-process probes may leave this JVM in the background on macOS.
-            if (Desktop.isDesktopSupported()
-                && Desktop.getDesktop().isSupported(Desktop.Action.APP_REQUEST_FOREGROUND)) {
-              Desktop.getDesktop().requestForeground(true);
-              dialog.toFront();
-              dialog.requestFocus();
-            }
           });
       boolean[] highlightVisible = new boolean[1];
       SwingUtilities.invokeAndWait(
