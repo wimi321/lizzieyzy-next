@@ -137,6 +137,12 @@ If you prefer the installer flow:
 
 ## macOS
 
+The bundled Metal engine in both Apple Silicon and Intel packages requires **macOS 15 or later**.
+Monterey 12, Ventura 13 and Sonoma 14 are not supported by this engine, even if the Java UI opens.
+`_quick_exit` / `Symbol not found` is not a missing model or a Windows DLL problem.
+If the UI runs but you cannot upgrade macOS, use remote compute or configure an external engine
+verified on your OS. We do not currently provide a Monterey-validated full package.
+
 ### Pick the correct chip build
 
 - Apple Silicon: `mac-apple-silicon.with-katago.dmg`

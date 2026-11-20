@@ -140,6 +140,12 @@ TensorRT 不再作为普通用户优先下载的巨大单文件包。RTX 30 系�
 
 ## macOS 安装
 
+当前 Apple Silicon 和 Intel 完整包的内置 Metal 引擎均要求 **macOS 15 或更新版本**。
+Monterey 12、Ventura 13 和 Sonoma 14 不在当前内置引擎的支持范围内，即使 Java 主界面可以打开。
+出现 `_quick_exit` / `Symbol not found` 不是权重丢失，也不能通过下载 Windows DLL 修复。
+无法升级系统时，可在可运行的主界面中使用远程算力，或自行配置经过该系统验证的本地引擎；
+本项目尚未提供经 Monterey 真机验证的新版完整包。
+
 ### 先确认你的芯片
 
 - `Apple 菜单 -> 关于本机` 中显示 Apple M 系列：下载 `mac-apple-silicon.with-katago.dmg`
