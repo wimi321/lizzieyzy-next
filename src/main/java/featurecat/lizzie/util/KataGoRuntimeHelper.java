@@ -1558,12 +1558,11 @@ public final class KataGoRuntimeHelper {
 
   public static void configureBundledProcessBuilder(
       ProcessBuilder processBuilder, Path enginePath) {
-    if (processBuilder == null || enginePath == null) {
-      return;
-    }
-    if (!Config.isBundledKataGoExecutable(enginePath)) {
-      return;
-    }
+    if (processBuilder == null
+        || enginePath == null
+        || !Config.isBundledKataGoExecutable(enginePath)) return;
+    featurecat.lizzie.util.katago.MacOsEngineCompatibility.requireSupported(
+        enginePath, key -> resource(key, key));
     if (Lizzie.config != null) {
       processBuilder.directory(Lizzie.config.getRuntimeWorkDirectory());
     }
