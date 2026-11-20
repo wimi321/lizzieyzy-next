@@ -18,6 +18,7 @@ import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryList;
 import java.awt.Color;
+import java.awt.Desktop;
 import java.awt.GraphicsEnvironment;
 import java.awt.KeyboardFocusManager;
 import java.awt.image.BufferedImage;
@@ -33,6 +34,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import javax.swing.JComponent;
+import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.border.Border;
 import org.json.JSONObject;
@@ -81,7 +83,47 @@ class SetKataRulesWindowTest {
   @Test
   void navigationFocusesScoringControlsWithoutChangingRulesOrSaving() throws Exception {
     assumeFalse(GraphicsEnvironment.isHeadless());
+    Path result =
+        DesktopProbeProcess.run(
+            SetKataRulesWindowTest.class, "rules-navigation-focus", List.of(), List.of());
+    assertEquals("result=PASS\n", Files.readString(result));
+  }
+
+  public static void main(String[] args) throws Exception {
+    Path result = Path.of(args[1]);
+    System.setProperty("lizzie.work.dir", args[0]);
+    int exitCode = 1;
+    try {
+      new SetKataRulesWindowTest().verifyRulesNavigation();
+      Files.writeString(result, "result=PASS\n");
+      exitCode = 0;
+    } catch (Throwable failure) {
+      failure.printStackTrace();
+      Files.writeString(result, "result=FAIL\nerror=" + failure + "\n");
+    } finally {
+      System.exit(exitCode);
+    }
+  }
+
+  private void verifyRulesNavigation() throws Exception {
     try (Fixture fixture = Fixture.ordinary()) {
+      JFrame host = readOnEdt(() -> new JFrame("Rules focus acceptance"));
+      runOnEdt(
+          () -> {
+            host.setSize(300, 200);
+            host.setLocationRelativeTo(null);
+            host.setVisible(true);
+            if (Desktop.isDesktopSupported()
+                && Desktop.getDesktop().isSupported(Desktop.Action.APP_REQUEST_FOREGROUND)) {
+              Desktop.getDesktop().requestForeground(true);
+            }
+            host.toFront();
+            host.requestFocus();
+          });
+      long hostDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (!readOnEdt(host::isFocused) && System.nanoTime() < hostDeadline) Thread.sleep(20L);
+      assertTrue(
+          readOnEdt(host::isFocused), "test application must be foreground before navigation");
       SetKataRules dialog = readOnEdt(() -> new SetKataRules(fixture.engine));
       JFontRadioButton area = dialog.editor.rdoArea;
       JFontRadioButton territory = dialog.editor.rdoTerritory;
@@ -120,7 +162,15 @@ class SetKataRulesWindowTest {
           () -> {
             assertSame(
                 territorySelected ? territory : area,
-                KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner());
+                KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner(),
+                "active="
+                    + dialog.isActive()
+                    + ", focused="
+                    + dialog.isFocused()
+                    + ", focusable="
+                    + dialog.isFocusableWindow()
+                    + ", target="
+                    + area.isFocusable());
             assertEquals(areaSelected, area.isSelected());
             assertEquals(territorySelected, territory.isSelected());
           });
