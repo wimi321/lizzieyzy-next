@@ -4,7 +4,7 @@
   "max_lines": {
     "src/main/java/featurecat/lizzie/analysis/Leelaz.java": 25467,
     "src/main/java/featurecat/lizzie/gui/LizzieFrame.java": 18462,
-    "src/main/java/featurecat/lizzie/analysis/EngineManager.java": 15752,
+    "src/main/java/featurecat/lizzie/analysis/EngineManager.java": 15750,
     "src/main/java/featurecat/lizzie/gui/Menu.java": 10916,
     "src/main/java/featurecat/lizzie/gui/MoveListFrame.java": 8313,
     "src/main/java/featurecat/lizzie/gui/KataGoAutoSetupDialog.java": 8248,
