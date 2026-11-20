@@ -18,6 +18,7 @@ import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryList;
 import java.awt.Color;
+import java.awt.Desktop;
 import java.awt.GraphicsEnvironment;
 import java.awt.KeyboardFocusManager;
 import java.awt.image.BufferedImage;
@@ -97,6 +98,13 @@ class SetKataRulesWindowTest {
           () -> {
             dialog.locateRulesEditor();
             dialog.setVisible(true);
+            // Earlier child-process probes may leave this JVM in the background on macOS.
+            if (Desktop.isDesktopSupported()
+                && Desktop.getDesktop().isSupported(Desktop.Action.APP_REQUEST_FOREGROUND)) {
+              Desktop.getDesktop().requestForeground(true);
+              dialog.toFront();
+              dialog.requestFocus();
+            }
           });
       boolean[] highlightVisible = new boolean[1];
       SwingUtilities.invokeAndWait(
@@ -120,7 +128,15 @@ class SetKataRulesWindowTest {
           () -> {
             assertSame(
                 territorySelected ? territory : area,
-                KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner());
+                KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner(),
+                "active="
+                    + dialog.isActive()
+                    + ", focused="
+                    + dialog.isFocused()
+                    + ", focusable="
+                    + dialog.isFocusableWindow()
+                    + ", target="
+                    + area.isFocusable());
             assertEquals(areaSelected, area.isSelected());
             assertEquals(territorySelected, territory.isSelected());
           });
