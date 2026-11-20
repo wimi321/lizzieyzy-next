@@ -4,6 +4,8 @@ All notable maintenance updates to this fork are documented here.
 
 ## Unreleased
 
+- First-time GPU tuning keeps startup alive while the engine reports real progress, including Transformer tuning stages on stdout or stderr. Slow OpenCL tuning is no longer stopped by a fixed ten-minute total deadline; silent/hung tuning still times out, and progress belongs only to its engine process (#755).
+
 - macOS startup now checks the bundled KataGo receipt's real minimum system version before launching it. Unsupported systems get an actionable explanation instead of a dyld crash; the current Metal packages require macOS 15 or later. This does not claim Monterey support or block compatible external engines (#754).
 
 - Engine parameter readback no longer refreshes toolbar admission while holding PRIMARY and endpoint locks. Deferring the admission projection until those locks are released avoids a Windows-observed deadlock against engine startup's final selection commit, without weakening stale-response checks or changing the parameter values.

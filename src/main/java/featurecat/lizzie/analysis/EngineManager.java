@@ -9480,14 +9480,7 @@ public class EngineManager {
     Lizzie.engineGame.onOwnerStartFailed(cause);
   }
 
-  /**
-   * Returns the first-stage budget for this exact pair of participants.
-   *
-   * <p>PK startup delegates each endpoint to the normal startup synchronizer, whose supported
-   * budgets are 60 seconds for remote engines, 90/180 seconds for bundled runtimes, and longer
-   * while OpenCL tuning is observed. A shorter transaction-wide constant must not cancel that
-   * legitimate endpoint work first.
-   */
+  /** The pair-wide deadline must cover each participant's normal startup and observed tuning. */
   protected long engineGameStartupTimeoutMillis(EngineGamePlan plan) {
     long timeoutMillis = Math.max(1L, engineGameStartupTimeoutMillis());
     if (plan == null || engineList == null) {
@@ -9524,6 +9517,10 @@ public class EngineManager {
         long extended = now > Long.MAX_VALUE - tuningNanos ? Long.MAX_VALUE : now + tuningNanos;
         extendEngineGameDeadline(transaction.deadlineNanos, extended);
       }
+      if (engine != null)
+        extendEngineGameDeadline(
+            transaction.deadlineNanos,
+            engine.extendStartupTuningDeadline(transaction.deadlineNanos.get(), System.nanoTime()));
     }
     return transaction.deadlineNanos.get();
   }
@@ -14123,6 +14120,7 @@ public class EngineManager {
                     Math.max(1L, engine.engineTuningSynchronizationTimeoutMillis()));
         tuningTimeoutApplied = true;
       }
+      deadline = engine.extendStartupTuningDeadline(deadline, now);
       if (now >= deadline) {
         engine.recordStartupFailure(
             expectedIncarnation,

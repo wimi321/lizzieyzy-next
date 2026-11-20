@@ -2343,6 +2343,7 @@ public class Leelaz {
                     Math.max(1L, engine.engineTuningSynchronizationTimeoutMillis()));
         tuningTimeoutApplied = true;
       }
+      deadline = engine.extendStartupTuningDeadline(deadline, now);
       if (now >= deadline) {
         return false;
       }
@@ -5112,6 +5113,8 @@ public class Leelaz {
     private final SSHController javaSSH;
     private final long incarnation;
     private EngineStartupDiagnostics.Attempt startupDiagnostic;
+    private final featurecat.lizzie.analysis.gtp.StartupTuningProgress startupTuning =
+        new featurecat.lizzie.analysis.gtp.StartupTuningProgress();
     private final Path processWorkingDirectory;
     private final SnapshotFileAccessKind snapshotFileAccessKind;
     private volatile Object analysisOutputRecoveryToken;
@@ -9339,18 +9342,11 @@ public class Leelaz {
   }
 
   private void parseLineForError(String line, ReaderStreamBinding binding) {
-    // TODO Auto-generated method stub
+    observeStartupTuning(line, binding);
     EngineManager.EngineGamePrimaryContext presentationGameContext =
         EngineManager.captureEngineGamePrimaryContext(this, binding);
     if (suppressesGlobalEnginePresentation(binding) && presentationGameContext == null) {
-      // Preserve the one internal readiness signal needed to extend the bundled startup deadline,
-      // but quarantine all ordinary stderr analysis, board, console, dialog, and autoplay routes.
-      if (!isLoaded
-          && (line.startsWith("Started OpenCL SGEMM")
-              || line.startsWith("Tuning xGemmDirect")
-              || line.contains("long time"))) {
-        isTuning = true;
-      }
+      // Progress was recorded above; ordinary presentation remains quarantined.
       return;
     }
     if (!this.isLoaded) {
@@ -9682,13 +9678,6 @@ public class Leelaz {
                   analysisOutputRouteAtParse, () -> this.pda = acceptedPda);
             }
           }
-        }
-      }
-      if (!isLoaded) {
-        if (line.startsWith("Started OpenCL SGEMM")
-            || line.startsWith("Tuning xGemmDirect")
-            || line.contains("long time")) {
-          isTuning = true;
         }
       }
       parseHeatMap(line);
@@ -10166,6 +10155,7 @@ public class Leelaz {
           return;
         }
         lineInProgress = true;
+        observeStartupTuning(line, binding);
         rememberRecentLine(recentStdoutLines, line);
         if (dispatchMoveFocusLine(binding, line)) {
           lineInProgress = false;
@@ -23516,6 +23506,20 @@ public class Leelaz {
     return FIRST_OPENCL_TUNING_START_TIMEOUT_MS;
   }
 
+  private void observeStartupTuning(String line, ReaderStreamBinding binding) {
+    if (!isLoaded
+        && isCurrentReaderStreamBinding(binding)
+        && binding.startupTuning.observe(line, System.nanoTime())) isTuning = true;
+  }
+
+  long extendStartupTuningDeadline(long deadline, long now) {
+    ReaderStreamBinding binding = readerStreamBinding;
+    return binding == null
+        ? deadline
+        : binding.startupTuning.extendDeadline(
+            deadline, now, engineTuningSynchronizationTimeoutMillis());
+  }
+
   void recordStartupFailure(Object expectedIncarnation, String stage, String detail) {
     if (expectedIncarnation instanceof ReaderStreamBinding binding
         && binding.startupDiagnostic != null) binding.startupDiagnostic.fail(stage, detail);
@@ -23874,8 +23878,8 @@ public class Leelaz {
     Thread watchdog =
         new Thread(
             () -> {
-              long deadline = System.currentTimeMillis() + timeoutMillis;
-              while (System.currentTimeMillis() < deadline) {
+              long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+              while (System.nanoTime() < deadline) {
                 if (token != bundledStartupToken
                     || readerStreamBinding != expectedBinding
                     || isLoaded
@@ -23886,13 +23890,9 @@ public class Leelaz {
                 if (expectedProcess != null && !expectedProcess.isAlive()) {
                   break;
                 }
-                // OpenCL autotuning can take several minutes; keep waiting while it runs.
-                if (isTuning) {
-                  deadline =
-                      Math.max(
-                          deadline,
-                          System.currentTimeMillis() + FIRST_OPENCL_TUNING_START_TIMEOUT_MS);
-                }
+                deadline =
+                    expectedBinding.startupTuning.extendDeadline(
+                        deadline, System.nanoTime(), engineTuningSynchronizationTimeoutMillis());
                 try {
                   Thread.sleep(250L);
                 } catch (InterruptedException e) {
